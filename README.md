@@ -38,9 +38,9 @@ CREATIVE_TAGGER_URL=https://api.creativetagger.dev creative-tagger-mcp
 Analyze any ad creative and get structured classification across 28 dimensions.
 
 ```
-Input: { "file_path": "./ad.mp4", "brand_name": "Nemah" }
-   or: { "url": "https://example.com/landing-page", "brand_name": "Nemah" }
-   or: { "html_content": "<html>...</html>", "brand_name": "Nemah" }
+Input: { "file_path": "./ad.mp4", "brand_name": "Brand" }
+   or: { "url": "https://example.com/landing-page", "brand_name": "Brand" }
+   or: { "html_content": "<html>...</html>", "brand_name": "Brand" }
 ```
 
 Returns: Full 28-dimension classification + naming conventions.
@@ -57,7 +57,7 @@ Input: { "dimension": "hook_type" }    # specific dimension
 Generate naming convention strings from classified attributes.
 
 ```
-Input: { "brand_name": "Nemah", "hook_type": "UGC", "cta_type": "ShopNow", "aspect_ratio": "9:16" }
+Input: { "brand_name": "Brand", "hook_type": "UGC", "cta_type": "ShopNow", "aspect_ratio": "9:16" }
 ```
 
 ## 28 Taxonomy Dimensions
