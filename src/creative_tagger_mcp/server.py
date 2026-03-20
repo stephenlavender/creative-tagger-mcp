@@ -216,148 +216,111 @@ def _get_taxonomy(args: dict) -> list[TextContent]:
     dimension = args.get("dimension")
 
     taxonomy = {
-        "hook_type": {
-            "description": "Creative hook in first 1-3 seconds",
+        "asset_type": {
+            "description": "Broad creative format and production level",
             "values": [
-                "UGC", "ProdShot", "Testi", "ProbAg", "BA", "Unbox", "Life",
-                "TalkHead", "TextOvr", "Mashup", "Demo", "SocProof", "Founder",
-                "Compare", "Tutorial", "Meme", "StopScrl", "Other",
+                "UGC", "Lifestyle", "Product Shot", "Studio", "High Production",
+                "Screen Recording", "Stock", "AI Generated", "Animation", "Mixed Media",
             ],
         },
-        "hook_style": {
-            "description": "How the hook is executed",
+        "visual_format": {
+            "description": "Specific execution style",
             "values": [
-                "TextOnly", "TalkingHead", "VOBroll", "NativeCaption", "SplitScreen",
-                "GreenScreen", "ScreenRec", "ProdCloseup", "TrendAudio", "StopMotion",
-                "StitchDuet", "PhotoMontage", "RapidCut", "ASMR", "HandDrawn",
+                "Talking Head", "Testimonial", "Before After", "Unboxing",
+                "Problem Agitate", "Listicle", "Text Overlay", "Mashup", "Demo",
+                "Social Proof", "Founder Story", "Comparison", "Tutorial", "Meme",
+                "Scroll Stopper", "Skit", "Podcast Clip", "Green Screen",
+                "Slideshow", "Carousel", "Static Image",
             ],
         },
         "visual_style": {
-            "description": "Overall visual aesthetic",
+            "description": "Look and feel / aesthetic",
             "values": [
-                "Min", "Bold", "Org", "Dark", "Bright", "Edit", "LoFi", "HiFi",
-                "Native", "Brand", "Retro", "Pastel", "HiContrast", "Editorial",
+                "Minimal", "Bold", "Organic", "Dark", "Bright", "Editorial",
+                "Lo-Fi", "Hi-Fi", "Native Feel", "Branded", "Retro", "Clean",
             ],
         },
-        "talent_type": {
-            "description": "Who appears in the creative",
+        "talent": {
+            "description": "Who is featured",
             "values": [
-                "NoTalent", "Creator", "Model", "Founder", "Customer", "VO", "Hands",
-                "Influencer", "Expert", "Employee", "AIAvatar", "Celebrity",
-                "MultiCreator", "Family", "Animated",
+                "No Talent", "Creator", "Model", "Founder", "Customer",
+                "Voiceover Only", "Hands Only", "Employee", "Expert", "Influencer",
             ],
         },
-        "cta_type": {
-            "description": "Call-to-action",
-            "values": [
-                "ShopNow", "LearnMore", "SignUp", "GetOffer", "BookNow", "Download",
-                "Subscribe", "WatchMore", "SwipeUp", "GetStarted", "TryFree",
-                "GetQuote", "AddToCart", "TakeQuiz", "ClaimDisc", "SeePlans",
-                "SendMsg", "ApplyNow", "None", "Other",
-            ],
-        },
-        "cta_placement": {
-            "description": "Where/how the CTA appears",
-            "values": [
-                "EndCard", "Verbal", "Persistent", "CaptionOnly", "MidRoll",
-                "ButtonOvr", "SwipeLink", "Multiple", "NoCTA",
-            ],
-        },
-        "primary_emotion": {
-            "description": "Dominant emotional tone",
-            "values": [
-                "Urgent", "Curious", "Trust", "Fear", "Desire", "Humor", "Aspire",
-                "Relief", "Neutral", "Emotional", "Empower", "Calming", "Nostalgic",
-                "Shocking", "Playful",
+        "audience": {
+            "description": "Target persona (AI-generated per brand)",
+            "values": "dynamic",
+            "examples": [
+                "New Moms", "Wellness Seekers", "Budget Conscious",
+                "Fitness Enthusiasts", "Gift Shoppers",
             ],
         },
         "messaging_angle": {
-            "description": "Persuasion architecture / narrative framework",
-            "values": [
-                "ProbSol", "BeforeAfter", "SocProof", "FearRisk", "Aspire", "Edu",
-                "Compare", "Scarcity", "ValuePrice", "Convenience", "EmoStory",
-                "MythBust", "BTS", "Community", "Guilt", "Novelty", "TrendRide",
-                "Health", "ProDev", "Guarantee",
+            "description": "Narrative/persuasion approach (AI-generated per brand)",
+            "values": "dynamic",
+            "examples": [
+                "Pain Point", "Aspiration", "Social Proof", "Education",
+                "Scarcity", "Value Prop", "Lifestyle", "Authority",
             ],
         },
-        "creative_type": {
-            "description": "Creative concept archetype",
+        "hook_type": {
+            "description": "What stops the scroll in first 1-3 seconds",
             "values": [
-                "Testimonial", "ProdDemo", "FounderStory", "Lifestyle", "Unboxing",
-                "Explainer", "Transform", "Comparison", "Listicle", "Skit", "PodClip",
-                "GRWM", "DayInLife", "Reaction", "Meme", "Advertorial", "Mashup",
-                "ProbAgit", "ProdOnly", "Catalog", "ScreenTut", "Announce",
-                "ManOnStreet", "SplitScreen",
+                "Question", "Bold Claim", "Callout", "Contrarian", "Confession",
+                "If Then", "Statistic", "Urgency", "Curiosity Gap", "Social Proof",
+                "Pain Point", "Transformation", "Challenge", "Story Open",
+                "Pattern Interrupt",
             ],
         },
-        "production_type": {
-            "description": "Production quality / style",
+        "cta": {
+            "description": "Call to action",
             "values": [
-                "HighProd", "LoFiUGC", "AuthUGC", "LifeLoc", "ScreenRec", "MoGraph",
-                "AIGen", "MixedMedia", "StockOvr", "PodVisual", "StopMotion",
-                "Whiteboard",
+                "Shop Now", "Learn More", "Sign Up", "Get Offer", "Book Now",
+                "Download", "Subscribe", "Watch More", "Swipe Up", "Try Free",
+                "No CTA",
             ],
         },
-        "product_presence": {
-            "description": "How the product appears",
+        "audio_type": {
+            "description": "Primary audio treatment",
             "values": [
-                "Hero", "Integrated", "Secondary", "Reveal", "EndCard", "NotShown",
-                "Multiple", "Packaging", "Ingredient", "Closeup",
+                "Voiceover + Music", "Voiceover Only", "Music Only",
+                "Trending Sound", "Native Audio", "Silent",
             ],
         },
-        "offer_type": {
-            "description": "Promotional structure",
+        "voiceover_tone": {
+            "description": "Spoken audio delivery style",
             "values": [
-                "PctOff", "DollarOff", "FreeShip", "FreeGift", "BOGO", "Bundle",
-                "FreeTrial", "SubDisc", "MoneyBack", "LimitedTime", "FlashSale",
-                "Exclusive", "Loyalty", "PriceAnchor", "NoOffer", "Charitable", "BNPL",
+                "Conversational", "Urgent", "Authoritative", "Friendly",
+                "Whispery", "Energetic", "Calm", "None",
             ],
         },
-        "social_proof_elements": {
-            "description": "Credibility signals present (can be multiple)",
+        "emotion": {
+            "description": "Primary emotional trigger",
             "values": [
-                "StarRating", "ReviewQuote", "ReviewCount", "CustCount", "PressLogos",
-                "ExpertEnd", "CelebEnd", "BAPhotos", "Awards", "RealTime",
-                "UGCCompile", "UserPhotos", "CaseStudy", "ClinicalData", "CommSize",
-                "NoProof",
-            ],
-        },
-        "brand_presence": {
-            "description": "How the brand appears",
-            "values": [
-                "LogoAll", "LogoEnd", "LogoProd", "NoLogo", "BrandColors",
-                "BrandIntro", "BrandText", "BrandSpoken", "Unbranded",
+                "Urgency", "Curiosity", "Trust", "Fear", "Desire",
+                "Humor", "Aspiration", "Relief", "Belonging", "Neutral",
             ],
         },
         "seasonality": {
             "description": "Temporal context",
             "values": [
-                "Evergreen", "BFCM", "Holiday", "NewYear", "Valentines", "MothFath",
-                "BTS", "Summer", "Spring", "Fall", "PrimeDay", "TaxSeason", "Wedding",
-                "Sports", "Cultural",
+                "Evergreen", "Black Friday", "Cyber Monday", "Holiday",
+                "New Year", "Valentines", "Mothers Day", "Fathers Day",
+                "Back To School", "Summer", "Spring", "Fall",
+                "Prime Day", "Launch", "Flash Sale",
             ],
         },
-        "text_overlay_treatment": {
-            "description": "On-screen text style",
+        "offer_type": {
+            "description": "Promotional lever",
             "values": [
-                "NoText", "Minimal", "Moderate", "Heavy", "Subtitles", "Kinetic",
-                "LowerThird", "FullCards", "Handwritten", "BrandStyled",
+                "No Offer", "Percent Off", "Dollar Off", "Free Shipping",
+                "BOGO", "Bundle", "Free Gift", "Subscribe Save",
+                "Limited Time", "Clearance",
             ],
         },
-        "audio_type": {
-            "description": "Primary audio composition",
-            "values": [
-                "voiceover_only", "music_only", "vo_over_music", "dialogue",
-                "sfx_only", "silent", "mixed",
-            ],
-        },
-        "video_length_bucket": {
-            "description": "Video duration classification",
-            "values": [
-                "Micro (0-6s)", "Short (6-15s)", "Standard (15-30s)",
-                "Medium (30-60s)", "Long (60-90s)", "Extended (90-180s)",
-                "LongForm (180s+)",
-            ],
+        "duration": {
+            "description": "Video duration bucket",
+            "values": ["6s", "15s", "30s", "60s", "90s+"],
         },
     }
 
