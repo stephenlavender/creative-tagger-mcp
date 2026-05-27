@@ -1,8 +1,13 @@
 # Creative Tagger MCP Server
 
-MCP (Model Context Protocol) server for [Creative Tagger](https://github.com/stephenlavender/creative-tagger) — structured creative intelligence for any ad format.
+The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Enables any AI agent (Claude, Cursor, Windsurf, etc.) to analyze ad creatives against a standardized 28-dimension taxonomy.
+Your AI of choice gets:
+
+- **Taxonomy** — 28 standardized dimensions for any ad creative (video, image, carousel, landing page, email)
+- **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
+- **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
+- **Competitive intelligence** — scan a competitor's Meta Ad Library and get classified strategy breakdowns
 
 ## Quick Start
 
@@ -10,14 +15,20 @@ Enables any AI agent (Claude, Cursor, Windsurf, etc.) to analyze ad creatives ag
 # Install
 pip install creative-tagger-mcp
 
-# Run (connects to local Creative Tagger API)
-creative-tagger-mcp
+# Run against production (default)
+CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
 
-# Or with a remote API
-CREATIVE_TAGGER_URL=https://api.creativetagger.dev creative-tagger-mcp
+# Or against a local API
+CREATIVE_TAGGER_URL=http://localhost:8000 \
+CREATIVE_TAGGER_API_KEY=ct_your_key \
+  creative-tagger-mcp
 ```
 
-## Add to Claude Code
+Get an API key at [creativetagger.ai/app](https://creativetagger.ai/app).
+
+## Add to Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -25,64 +36,97 @@ CREATIVE_TAGGER_URL=https://api.creativetagger.dev creative-tagger-mcp
     "creative-tagger": {
       "command": "creative-tagger-mcp",
       "env": {
-        "CREATIVE_TAGGER_URL": "http://localhost:8000"
+        "CREATIVE_TAGGER_URL": "https://api.creativetagger.ai",
+        "CREATIVE_TAGGER_API_KEY": "ct_your_key_here"
       }
     }
   }
 }
 ```
 
+Restart Claude Desktop. The tools appear in the MCP picker.
+
 ## Tools
 
 ### `analyze_creative`
 Analyze any ad creative and get structured classification across 28 dimensions.
-
 ```
-Input: { "file_path": "./ad.mp4", "brand_name": "Brand" }
-   or: { "url": "https://example.com/landing-page", "brand_name": "Brand" }
-   or: { "html_content": "<html>...</html>", "brand_name": "Brand" }
+{ "file_path": "./ad.mp4", "brand_name": "Brand" }
+{ "url": "https://example.com/landing-page", "brand_name": "Brand" }
+{ "html_content": "<html>...</html>", "brand_name": "Brand" }
 ```
-
-Returns: Full 28-dimension classification + naming conventions.
+Results auto-save to the user's library.
 
 ### `get_taxonomy`
-Browse the complete taxonomy — all dimensions and enum values.
-
+Live fetch of the complete taxonomy or a single dimension.
 ```
-Input: {}                              # full taxonomy
-Input: { "dimension": "hook_type" }    # specific dimension
+{}                                # all 28 dimensions
+{ "dimension": "hook_type" }      # one dimension
+```
+
+### `list_library`
+Browse saved analyses. Search by filename or hook, filter by format.
+```
+{ "limit": 50, "search": "BFCM", "format": "video" }
+```
+
+### `get_library_patterns`
+Cross-library pattern insights — concentration and diversity per dimension, plus rule-based diversification flags.
+
+### `get_analysis`
+Pull the full 28-dimension result for one library item.
+```
+{ "analysis_id": 42 }
+```
+
+### `recommend` ⭐
+Ask the Creative Strategist a question grounded in the user's library + brand context.
+```
+{ "brand_name": "Acme", "question": "What kind of UGC should I test for Q4?" }
+```
+Returns concrete recommendations using taxonomy values + library observations.
+
+### `analyze_gaps` ⭐
+Identify concentration risk in the library and propose next creatives that diversify it.
+```
+{ "brand_name": "Acme" }
+```
+
+### `get_brand_context` / `set_brand_context`
+Long-term memory per brand. Voice, target audience, top performers, anti-patterns, notes.
+```
+set_brand_context: {
+  "brand_name": "Acme",
+  "voice": "clinical, precise, no personality",
+  "target_audience": "new moms 28-40, postpartum recovery",
+  "top_performers": ["UGC TalkHead", "BeforeAfter visuals"],
+  "anti_patterns": ["loud humor", "celebrity endorsement"],
+  "notes": "Q4 focus: gift-shoppers + retention"
+}
+```
+Strategist tools auto-include this context.
+
+### `scan_competitor`
+Classify a competitor's Meta Ad Library ads and get strategy breakdown.
+```
+{ "page_name": "Hims & Hers", "limit": 25 }
 ```
 
 ### `generate_naming`
-Generate naming convention strings from classified attributes.
+Build naming strings from already-classified attributes (rarely needed — `analyze_creative` already includes naming).
+
+## Architecture
 
 ```
-Input: { "brand_name": "Brand", "hook_type": "UGC", "cta_type": "ShopNow", "aspect_ratio": "9:16" }
+Your AI agent  ←—stdio—→  creative-tagger-mcp  ←—HTTPS—→  api.creativetagger.ai
+                                                              │
+                                                              ├── Gemini 2.5 Flash (classifier)
+                                                              ├── Claude Sonnet (fallback)
+                                                              ├── SQLite (library + brand memory)
+                                                              └── Meta Ad Library
 ```
 
-## 28 Taxonomy Dimensions
-
-| # | Dimension | Values |
-|---|-----------|--------|
-| 1 | Format | video, image, carousel, landing_page, email, long_video |
-| 2 | Aspect ratio | 9:16, 4:5, 1:1, 16:9, etc. |
-| 3 | Video length | Micro, Short, Standard, Medium, Long, Extended, LongForm |
-| 4 | Hook type | 18 values (UGC, ProdShot, Testi, ProbAg, etc.) |
-| 5 | Hook style | 15 values (TalkingHead, VOBroll, GreenScreen, etc.) |
-| 6 | Messaging angle | 20 values (ProbSol, BeforeAfter, Aspire, etc.) |
-| 7 | CTA type | 20 values (ShopNow, LearnMore, TakeQuiz, etc.) |
-| 8 | CTA placement | 9 values (EndCard, Verbal, Persistent, etc.) |
-| 9 | Creative type | 24 values (Testimonial, ProdDemo, GRWM, etc.) |
-| 10 | Talent type | 15 values (Creator, Founder, Expert, Celebrity, etc.) |
-| 11 | Product presence | 10 values (Hero, Integrated, Reveal, etc.) |
-| 12 | Offer type | 17 values (PctOff, FreeShip, BOGO, NoOffer, etc.) |
-| 13 | Emotion | 15 values (Urgent, Curious, Trust, Humor, etc.) |
-| 14 | Production type | 12 values (HighProd, LoFiUGC, MoGraph, AIGen, etc.) |
-| 15 | Text overlay | 10 values (NoText, Subtitles, Kinetic, etc.) |
-| 16 | Social proof | 16 values (StarRating, PressLogos, BAPhotos, etc.) |
-| 17 | Brand presence | 9 values (LogoAll, LogoEnd, Unbranded, etc.) |
-| 18 | Seasonality | 15 values (Evergreen, BFCM, Holiday, etc.) |
-| 19-28 | Audio, copy style, user metadata | See full taxonomy |
+You bring the agent. We provide the taxonomy, the memory, and the strategist.
 
 ## License
 

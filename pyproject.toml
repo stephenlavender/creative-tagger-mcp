@@ -1,7 +1,7 @@
 [project]
 name = "creative-tagger-mcp"
-version = "0.1.0"
-description = "MCP server for Creative Tagger — structured creative intelligence for any ad format"
+version = "0.2.0"
+description = "MCP server for Creative Tagger — taxonomy + library memory + strategist tools for any AI agent"
 requires-python = ">=3.11"
 readme = "README.md"
 license = {text = "MIT"}
