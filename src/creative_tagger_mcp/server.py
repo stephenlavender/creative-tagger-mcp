@@ -313,6 +313,23 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="delete_brand_taxonomy_value",
+            description=(
+                "Delete one brand-specific taxonomy value by brand, dimension, and "
+                "canonical value. Use this to prune stale founders, segments, offers, "
+                "or internal labels from Brand Taxonomy Studio."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name", "dimension", "value"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "dimension": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+            },
+        ),
+        Tool(
             name="set_brand_entity",
             description=(
                 "Create or update a prompt/entity-based brand entity to recognize in "
@@ -328,6 +345,23 @@ async def list_tools() -> list[Tool]:
                     "name": {"type": "string"},
                     "description": {"type": "string"},
                     "aliases": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        ),
+        Tool(
+            name="delete_brand_entity",
+            description=(
+                "Delete one brand entity by brand, entity_type, and canonical name. "
+                "Useful when a creator, product, offer, customer segment, ICP, or "
+                "campaign label should no longer be recognized for the brand."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name", "entity_type", "name"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "entity_type": {"type": "string"},
+                    "name": {"type": "string"},
                 },
             },
         ),
@@ -561,8 +595,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_brand_taxonomy(arguments)
         if name == "set_brand_taxonomy_value":
             return await _set_brand_taxonomy_value(arguments)
+        if name == "delete_brand_taxonomy_value":
+            return await _delete_brand_taxonomy_value(arguments)
         if name == "set_brand_entity":
             return await _set_brand_entity(arguments)
+        if name == "delete_brand_entity":
+            return await _delete_brand_entity(arguments)
         if name == "get_naming_variables":
             return await _get_naming_variables(arguments)
         if name == "list_naming_templates":
@@ -812,6 +850,24 @@ async def _set_brand_taxonomy_value(args: dict) -> list[TextContent]:
         return _text(resp.json())
 
 
+async def _delete_brand_taxonomy_value(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    dimension = args.get("dimension", "")
+    value = args.get("value", "")
+    if not brand_name or not dimension or not value:
+        return _err("brand_name, dimension, and value are required")
+    params = {
+        **_auth_params(),
+        "brand_name": brand_name,
+        "dimension": dimension,
+        "value": value,
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.delete(f"{API_URL}/auth/brand-taxonomy/values", params=params)
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
 async def _set_brand_entity(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "")
     entity_type = args.get("entity_type", "")
@@ -831,6 +887,24 @@ async def _set_brand_entity(args: dict) -> list[TextContent]:
             params=_auth_params(),
             json=body,
         )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _delete_brand_entity(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    entity_type = args.get("entity_type", "")
+    name = args.get("name", "")
+    if not brand_name or not entity_type or not name:
+        return _err("brand_name, entity_type, and name are required")
+    params = {
+        **_auth_params(),
+        "brand_name": brand_name,
+        "entity_type": entity_type,
+        "name": name,
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.delete(f"{API_URL}/auth/brand-taxonomy/entities", params=params)
         resp.raise_for_status()
         return _text(resp.json())
 

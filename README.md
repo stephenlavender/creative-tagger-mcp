@@ -108,7 +108,7 @@ set_brand_context: {
 ```
 Strategist tools auto-include this context.
 
-### `get_brand_taxonomy` / `set_brand_taxonomy_value` / `set_brand_entity`
+### `get_brand_taxonomy` / `set_brand_taxonomy_value` / `delete_brand_taxonomy_value` / `set_brand_entity` / `delete_brand_entity`
 Customize the standard taxonomy for one brand without breaking cross-brand reporting.
 ```
 set_brand_taxonomy_value: {
@@ -124,6 +124,18 @@ set_brand_entity: {
   "entity_type": "product",
   "name": "Creative Tagger",
   "aliases": ["CT", "tagger"]
+}
+
+delete_brand_taxonomy_value: {
+  "brand_name": "Acme",
+  "dimension": "talent",
+  "value": "Old Founder Label"
+}
+
+delete_brand_entity: {
+  "brand_name": "Acme",
+  "entity_type": "product",
+  "name": "Retired Product"
 }
 ```
 
