@@ -6,6 +6,8 @@ Your AI of choice gets:
 
 - **Taxonomy** — 28 standardized dimensions for any ad creative (video, image, carousel, landing page, email)
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
+- **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
+- **Meta performance memory** — read-only Meta sync/status tools so agents can reason over winners and losers by taxonomy
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
 - **Competitive intelligence** — scan a competitor's Meta Ad Library and get classified strategy breakdowns
 
@@ -105,6 +107,31 @@ set_brand_context: {
 }
 ```
 Strategist tools auto-include this context.
+
+### `get_brand_taxonomy` / `set_brand_taxonomy_value` / `set_brand_entity`
+Customize the standard taxonomy for one brand without breaking cross-brand reporting.
+```
+set_brand_taxonomy_value: {
+  "brand_name": "Acme",
+  "dimension": "talent",
+  "value": "Stephen Lavender / Founder",
+  "aliases": ["Stephen", "founder"],
+  "description": "Use when Stephen appears or is referenced"
+}
+
+set_brand_entity: {
+  "brand_name": "Acme",
+  "entity_type": "product",
+  "name": "Creative Tagger",
+  "aliases": ["CT", "tagger"]
+}
+```
+
+### `get_meta_status` / `sync_meta_performance`
+Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
+```
+{ "brand_name": "Acme", "date_preset": "last_30d" }
+```
 
 ### `scan_competitor`
 Classify a competitor's Meta Ad Library ads and get strategy breakdown.

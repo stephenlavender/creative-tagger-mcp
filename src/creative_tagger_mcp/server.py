@@ -278,6 +278,85 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_brand_taxonomy",
+            description=(
+                "Retrieve the brand-custom taxonomy for a brand: custom values, aliases, "
+                "and entities such as founder, recurring creators, products, offers, "
+                "customer segments, ICPs, and campaign labels. Standard taxonomy still "
+                "lives in attributes; this is the brand-specific extension layer."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                },
+            },
+        ),
+        Tool(
+            name="set_brand_taxonomy_value",
+            description=(
+                "Create or update one brand-specific allowed value for an existing "
+                "Creative Tagger dimension, with aliases. Example: dimension=talent, "
+                "value='Stephen Lavender / Founder', aliases=['Stephen','founder']."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name", "dimension", "value"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "dimension": {"type": "string"},
+                    "value": {"type": "string"},
+                    "description": {"type": "string"},
+                    "aliases": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        ),
+        Tool(
+            name="set_brand_entity",
+            description=(
+                "Create or update a prompt/entity-based brand entity to recognize in "
+                "creative analysis: founder, creator, customer, spokesperson, product, "
+                "offer, customer_segment, icp, or campaign_label."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name", "entity_type", "name"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "entity_type": {"type": "string"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "aliases": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        ),
+        Tool(
+            name="get_meta_status",
+            description=(
+                "Check whether read-only Meta performance sync is connected for the "
+                "authenticated user. Returns account id, scopes, read-only status, "
+                "and latest sync metadata."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="sync_meta_performance",
+            description=(
+                "Trigger a read-only Meta ads performance sync for a brand. Syncs ad "
+                "performance rows and reports summaries by standard and brand-custom "
+                "taxonomy values. Does not create campaigns or edit budgets."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "account_id": {"type": "string"},
+                    "date_preset": {"type": "string", "default": "last_30d"},
+                },
+            },
+        ),
+        Tool(
             name="scan_competitor",
             description=(
                 "Scan a competitor's ads from the Meta Ad Library and return classified "
@@ -344,6 +423,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_brand_context(arguments)
         if name == "set_brand_context":
             return await _set_brand_context(arguments)
+        if name == "get_brand_taxonomy":
+            return await _get_brand_taxonomy(arguments)
+        if name == "set_brand_taxonomy_value":
+            return await _set_brand_taxonomy_value(arguments)
+        if name == "set_brand_entity":
+            return await _set_brand_entity(arguments)
+        if name == "get_meta_status":
+            return await _get_meta_status(arguments)
+        if name == "sync_meta_performance":
+            return await _sync_meta_performance(arguments)
         if name == "scan_competitor":
             return await _scan_competitor(arguments)
         if name == "generate_naming":
@@ -532,6 +621,84 @@ async def _set_brand_context(args: dict) -> list[TextContent]:
             f"{API_URL}/auth/brand-context",
             params=_auth_params(),
             json=body,
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_brand_taxonomy(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    if not brand_name:
+        return _err("brand_name is required")
+    params = {**_auth_params(), "brand_name": brand_name}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{API_URL}/auth/brand-taxonomy", params=params)
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _set_brand_taxonomy_value(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    dimension = args.get("dimension", "")
+    value = args.get("value", "")
+    if not brand_name or not dimension or not value:
+        return _err("brand_name, dimension, and value are required")
+    body = {
+        "brand_name": brand_name,
+        "dimension": dimension,
+        "value": value,
+        "description": args.get("description", ""),
+        "aliases": args.get("aliases") or [],
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{API_URL}/auth/brand-taxonomy/values",
+            params=_auth_params(),
+            json=body,
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _set_brand_entity(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    entity_type = args.get("entity_type", "")
+    name = args.get("name", "")
+    if not brand_name or not entity_type or not name:
+        return _err("brand_name, entity_type, and name are required")
+    body = {
+        "brand_name": brand_name,
+        "entity_type": entity_type,
+        "name": name,
+        "description": args.get("description", ""),
+        "aliases": args.get("aliases") or [],
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{API_URL}/auth/brand-taxonomy/entities",
+            params=_auth_params(),
+            json=body,
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_meta_status(args: dict) -> list[TextContent]:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{API_URL}/auth/meta/status", headers=_headers())
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _sync_meta_performance(args: dict) -> list[TextContent]:
+    body = {
+        "brand_name": args.get("brand_name", ""),
+        "account_id": args.get("account_id", ""),
+        "date_preset": args.get("date_preset", "last_30d"),
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            f"{API_URL}/meta/sync", json=body, headers=_headers()
         )
         resp.raise_for_status()
         return _text(resp.json())
