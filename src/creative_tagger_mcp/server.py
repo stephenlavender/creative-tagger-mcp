@@ -332,6 +332,70 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_naming_variables",
+            description=(
+                "List every variable available in saved naming templates, including "
+                "standard taxonomy fields plus brand-custom variables like founder, "
+                "product, offer, customer_segment, icp, and campaign_label."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="list_naming_templates",
+            description=(
+                "List the authenticated user's saved naming templates. Templates are "
+                "applied automatically to future analyze_creative results."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="save_naming_template",
+            description=(
+                "Create or update a saved naming template using {variable} placeholders. "
+                "Supports standard taxonomy fields and brand-custom variables."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["template"],
+                "properties": {
+                    "template": {
+                        "type": "string",
+                        "description": (
+                            "Template such as "
+                            "{brand}_{founder}_{hook_type}_{cta}_{ratio}_{version}"
+                        ),
+                    },
+                    "name": {"type": "string", "default": "default"},
+                    "separator": {"type": "string", "default": "_"},
+                },
+            },
+        ),
+        Tool(
+            name="delete_naming_template",
+            description="Delete a saved naming template by name.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "default": "default"},
+                },
+            },
+        ),
+        Tool(
+            name="preview_naming_template",
+            description=(
+                "Preview a naming template with sample taxonomy values before saving it."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["template"],
+                "properties": {
+                    "template": {"type": "string"},
+                    "name": {"type": "string", "default": "default"},
+                    "separator": {"type": "string", "default": "_"},
+                },
+            },
+        ),
+        Tool(
             name="get_meta_status",
             description=(
                 "Check whether read-only Meta performance sync is connected for the "
@@ -429,6 +493,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _set_brand_taxonomy_value(arguments)
         if name == "set_brand_entity":
             return await _set_brand_entity(arguments)
+        if name == "get_naming_variables":
+            return await _get_naming_variables(arguments)
+        if name == "list_naming_templates":
+            return await _list_naming_templates(arguments)
+        if name == "save_naming_template":
+            return await _save_naming_template(arguments)
+        if name == "delete_naming_template":
+            return await _delete_naming_template(arguments)
+        if name == "preview_naming_template":
+            return await _preview_naming_template(arguments)
         if name == "get_meta_status":
             return await _get_meta_status(arguments)
         if name == "sync_meta_performance":
@@ -679,6 +753,64 @@ async def _set_brand_entity(args: dict) -> list[TextContent]:
             params=_auth_params(),
             json=body,
         )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_naming_variables(args: dict) -> list[TextContent]:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{API_URL}/auth/naming/variables")
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _list_naming_templates(args: dict) -> list[TextContent]:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/auth/naming/templates", params=_auth_params()
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _save_naming_template(args: dict) -> list[TextContent]:
+    template = args.get("template", "")
+    if not template:
+        return _err("template is required")
+    body = {
+        "template": template,
+        "name": args.get("name", "default"),
+        "separator": args.get("separator", "_"),
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{API_URL}/auth/naming/templates",
+            params=_auth_params(),
+            json=body,
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _delete_naming_template(args: dict) -> list[TextContent]:
+    params = {**_auth_params(), "name": args.get("name", "default")}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.delete(f"{API_URL}/auth/naming/templates", params=params)
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _preview_naming_template(args: dict) -> list[TextContent]:
+    template = args.get("template", "")
+    if not template:
+        return _err("template is required")
+    body = {
+        "template": template,
+        "name": args.get("name", "default"),
+        "separator": args.get("separator", "_"),
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(f"{API_URL}/auth/naming/preview", json=body)
         resp.raise_for_status()
         return _text(resp.json())
 

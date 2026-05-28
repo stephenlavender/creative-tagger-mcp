@@ -127,6 +127,21 @@ set_brand_entity: {
 }
 ```
 
+### `get_naming_variables` / `list_naming_templates` / `save_naming_template`
+Manage saved naming templates from your agent. Templates support standard taxonomy
+fields plus brand-custom variables like founder, product, offer, customer_segment,
+icp, and campaign_label. Saved templates auto-apply to future `analyze_creative`
+results.
+```
+save_naming_template: {
+  "name": "default",
+  "template": "{brand}_{founder}_{customer_segment}_{hook_type}_{cta}_{ratio}_{version}"
+}
+```
+
+Use `preview_naming_template` to test a template before saving, and
+`delete_naming_template` to remove one.
+
 ### `get_meta_status` / `sync_meta_performance`
 Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
 ```
