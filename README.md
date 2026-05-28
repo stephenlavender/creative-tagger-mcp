@@ -26,7 +26,7 @@ CREATIVE_TAGGER_API_KEY=ct_your_key \
   creative-tagger-mcp
 ```
 
-Get an API key at [creativetagger.ai/app](https://creativetagger.ai/app).
+Get an API key at [app.creativetagger.ai](https://app.creativetagger.ai).
 
 ## Add to Claude Desktop
 
