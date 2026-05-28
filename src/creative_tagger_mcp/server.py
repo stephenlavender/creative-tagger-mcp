@@ -421,6 +421,76 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_meta_performance_summary",
+            description=(
+                "Read the saved Meta performance memory for a brand without triggering "
+                "a sync. Returns totals plus winners/losers by standard taxonomy and "
+                "brand-custom taxonomy values."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                },
+            },
+        ),
+        Tool(
+            name="get_taxonomy_performance",
+            description=(
+                "Return tag-level performance with significance gating and coverage "
+                "gaps. Use this to find which taxonomy values scale, which are "
+                "unproven, and which standard values have never been tried."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "dimension": {
+                        "type": "string",
+                        "description": "Optional dimension filter, e.g. hook_type",
+                    },
+                    "spend_threshold": {
+                        "type": "number",
+                        "default": 500,
+                        "description": "Spend floor before a tag is treated as proven",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_demographics_performance",
+            description=(
+                "Return saved age x gender performance memory with opportunity and "
+                "waste flags. Useful for audience strategy and Advantage+ diagnostics."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                },
+            },
+        ),
+        Tool(
+            name="generate_brand_taxonomy",
+            description=(
+                "Generate brand-specific messaging themes and intended audiences from "
+                "the analyzed creative library. Optionally persists them into Brand "
+                "Taxonomy Studio so future analyses and naming templates can use them."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "persist": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Save generated values to the brand taxonomy",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="scan_competitor",
             description=(
                 "Scan a competitor's ads from the Meta Ad Library and return classified "
@@ -507,6 +577,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_meta_status(arguments)
         if name == "sync_meta_performance":
             return await _sync_meta_performance(arguments)
+        if name == "get_meta_performance_summary":
+            return await _get_meta_performance_summary(arguments)
+        if name == "get_taxonomy_performance":
+            return await _get_taxonomy_performance(arguments)
+        if name == "get_demographics_performance":
+            return await _get_demographics_performance(arguments)
+        if name == "generate_brand_taxonomy":
+            return await _generate_brand_taxonomy(arguments)
         if name == "scan_competitor":
             return await _scan_competitor(arguments)
         if name == "generate_naming":
@@ -831,6 +909,65 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
             f"{API_URL}/meta/sync", json=body, headers=_headers()
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_meta_performance_summary(args: dict) -> list[TextContent]:
+    params = {"brand_name": args.get("brand_name", "")}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/meta/performance/summary",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_taxonomy_performance(args: dict) -> list[TextContent]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "spend_threshold": args.get("spend_threshold", 500),
+    }
+    if args.get("dimension"):
+        params["dimension"] = args["dimension"]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/performance/by-taxonomy",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_demographics_performance(args: dict) -> list[TextContent]:
+    params = {"brand_name": args.get("brand_name", "")}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/performance/demographics",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    if not brand_name:
+        return _err("brand_name is required")
+    data = {
+        "brand_name": brand_name,
+        "persist": str(args.get("persist", True)).lower(),
+    }
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        resp = await client.post(
+            f"{API_URL}/brand-taxonomy/generate",
+            data=data,
+            headers=_headers(),
         )
         resp.raise_for_status()
         return _text(resp.json())

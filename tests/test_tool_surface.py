@@ -34,6 +34,10 @@ EXPECTED_TOOLS = {
     "preview_naming_template",
     "get_meta_status",
     "sync_meta_performance",
+    "get_meta_performance_summary",
+    "get_taxonomy_performance",
+    "get_demographics_performance",
+    "generate_brand_taxonomy",
     "scan_competitor",
     "generate_naming",
 }
@@ -50,6 +54,10 @@ class ToolSurfaceTest(unittest.TestCase):
 
         for name in EXPECTED_TOOLS:
             self.assertIn(f'if name == "{name}":', source)
+
+    def test_package_version_matches_v2_surface(self) -> None:
+        init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
+        self.assertIn('__version__ = "0.2.0"', init_file.read_text())
 
 
 def _declared_tool_names() -> set[str]:

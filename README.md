@@ -7,7 +7,7 @@ Your AI of choice gets:
 - **Taxonomy** — 28 standardized dimensions for any ad creative (video, image, carousel, landing page, email)
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
-- **Meta performance memory** — read-only Meta sync/status tools so agents can reason over winners and losers by taxonomy
+- **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
 - **Competitive intelligence** — scan a competitor's Meta Ad Library and get classified strategy breakdowns
 
@@ -146,6 +146,33 @@ Use `preview_naming_template` to test a template before saving, and
 Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
 ```
 { "brand_name": "Acme", "date_preset": "last_30d" }
+```
+
+### `get_meta_performance_summary`
+Read saved Meta performance memory without triggering a sync.
+```
+{ "brand_name": "Acme" }
+```
+Returns account totals plus performance by standard taxonomy and brand-custom taxonomy.
+
+### `get_taxonomy_performance`
+Find which tags scale, which are unproven, and which standard taxonomy values have
+not been tested yet.
+```
+{ "brand_name": "Acme", "dimension": "hook_type", "spend_threshold": 500 }
+```
+
+### `get_demographics_performance`
+Read age x gender performance memory with opportunity and waste flags.
+```
+{ "brand_name": "Acme" }
+```
+
+### `generate_brand_taxonomy`
+Generate brand-specific messaging themes and intended audiences from the analyzed
+creative library, then optionally save them to Brand Taxonomy Studio.
+```
+{ "brand_name": "Acme", "persist": true }
 ```
 
 ### `scan_competitor`
