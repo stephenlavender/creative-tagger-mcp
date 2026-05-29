@@ -8,6 +8,7 @@ Cursor, Windsurf, ChatGPT with MCP, etc.) can:
 - Get strategist recommendations grounded in library + brand context
 - Set brand voice / audience / top performers / anti-patterns
 - Scan competitor ads from the Meta Ad Library
+- Generate V1-compatible standard naming conventions locally
 
 Usage:
     creative-tagger-mcp
@@ -548,21 +549,33 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="generate_naming",
             description=(
-                "Generate standardized naming convention strings from creative attributes. "
-                "Use when you already have classified attributes (e.g., from a prior "
-                "analyze_creative call) and just need the naming output."
+                "Generate V1-compatible standard, full, compact, and reporting naming "
+                "convention strings from creative attributes. Use when you already have "
+                "classified attributes (for example from analyze_creative) and need the "
+                "same naming structure the API returns."
             ),
             inputSchema={
                 "type": "object",
-                "required": ["brand_name", "hook_type", "cta_type", "aspect_ratio"],
+                "required": ["brand_name"],
                 "properties": {
                     "brand_name": {"type": "string"},
-                    "hook_type": {"type": "string"},
+                    "asset_type": {"type": "string", "default": "UGC"},
+                    "visual_format": {"type": "string", "default": "Talking Head"},
                     "visual_style": {"type": "string", "default": "Native"},
-                    "talent_type": {"type": "string", "default": "NoTalent"},
+                    "talent": {"type": "string"},
+                    "talent_type": {"type": "string", "default": "No Talent"},
+                    "audience": {"type": "string"},
+                    "messaging_angle": {"type": "string"},
+                    "seasonality": {"type": "string"},
+                    "offer_type": {"type": "string"},
+                    "hook_type": {"type": "string"},
+                    "cta": {"type": "string"},
                     "cta_type": {"type": "string"},
                     "aspect_ratio": {"type": "string", "default": "9:16"},
-                    "audio_shortcode": {"type": "string", "default": "Silent"},
+                    "duration": {"type": "string"},
+                    "audio_type": {"type": "string"},
+                    "voiceover_tone": {"type": "string"},
+                    "emotion": {"type": "string"},
                     "version": {"type": "integer", "default": 1},
                 },
             },
@@ -1065,24 +1078,103 @@ async def _scan_competitor(args: dict) -> list[TextContent]:
 
 
 def _generate_naming(args: dict) -> list[TextContent]:
-    brand = args.get("brand_name", "BRAND").upper()
-    hook = args.get("hook_type", "Other")
-    style = args.get("visual_style", "Native")
-    talent = args.get("talent_type", "NoTalent")
-    cta = args.get("cta_type", "None")
-    ratio = args.get("aspect_ratio", "9:16").replace(":", "x")
-    audio = args.get("audio_shortcode", "Silent")
+    brand = str(args.get("brand_name") or "BRAND").upper()
     ver = f"V{args.get('version', 1)}"
 
-    default = "_".join([brand, hook, talent, style, audio, cta, ratio, ver])
-    compact = "_".join([brand, hook, cta, ratio, ver])
+    attrs = {
+        "asset_type": args.get("asset_type", ""),
+        "visual_format": args.get("visual_format", ""),
+        "visual_style": args.get("visual_style", ""),
+        "talent": args.get("talent") or args.get("talent_type", ""),
+        "audience": args.get("audience", ""),
+        "messaging_angle": args.get("messaging_angle", ""),
+        "seasonality": args.get("seasonality", ""),
+        "offer_type": args.get("offer_type", ""),
+        "hook_type": args.get("hook_type", ""),
+        "cta": args.get("cta") or args.get("cta_type", ""),
+        "audio_type": args.get("audio_type", ""),
+        "voiceover_tone": args.get("voiceover_tone", ""),
+        "emotion": args.get("emotion", ""),
+        "aspect_ratio": args.get("aspect_ratio", ""),
+        "duration": args.get("duration", ""),
+    }
+    ratio = _ratio(attrs.get("aspect_ratio"))
+
+    standard = _join(
+        brand,
+        _sanitize(attrs.get("asset_type")),
+        _sanitize(attrs.get("visual_format")),
+        _sanitize(attrs.get("talent")),
+        _sanitize(attrs.get("hook_type")),
+        _sanitize(attrs.get("cta")),
+        ratio,
+        ver,
+    )
+    full = _join(
+        brand,
+        _sanitize(attrs.get("asset_type")),
+        _sanitize(attrs.get("visual_format")),
+        _sanitize(attrs.get("visual_style")),
+        _sanitize(attrs.get("talent")),
+        _sanitize(attrs.get("audience")),
+        _sanitize(attrs.get("messaging_angle")),
+        _sanitize(attrs.get("hook_type")),
+        _sanitize(attrs.get("audio_type")),
+        _sanitize(attrs.get("cta")),
+        _sanitize(attrs.get("offer_type")),
+        ratio,
+        str(attrs.get("duration") or ""),
+        ver,
+    )
+    compact = _join(
+        brand,
+        _sanitize(attrs.get("visual_format")),
+        _sanitize(attrs.get("talent")),
+        _sanitize(attrs.get("cta")),
+        ratio,
+        ver,
+    )
+    reporting = _join(
+        brand,
+        _sanitize(attrs.get("asset_type")),
+        _sanitize(attrs.get("visual_format")),
+        _sanitize(attrs.get("audience")),
+        _sanitize(attrs.get("messaging_angle")),
+        _sanitize(attrs.get("hook_type")),
+        _sanitize(attrs.get("seasonality")),
+        ver,
+    )
     return _text(
         {
-            "default": default,
+            "standard": standard,
+            "full": full,
             "compact": compact,
-            "note": "For naming with all 28 dimensions, use analyze_creative",
+            "reporting": reporting,
+            "variables": {
+                **attrs,
+                "brand": brand,
+                "version": ver,
+                "aspect_ratio": ratio,
+                "ratio": ratio,
+            },
         }
     )
+
+
+def _sanitize(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip().replace(" ", "").replace("-", "")
+
+
+def _ratio(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip().replace(":", "x")
+
+
+def _join(*parts: object) -> str:
+    return "_".join(str(part) for part in parts if str(part or "").strip())
 
 
 # ---------- Main ----------
