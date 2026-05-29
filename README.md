@@ -169,10 +169,21 @@ save_naming_template: {
 Use `preview_naming_template` to test a template before saving, and
 `delete_naming_template` to remove one.
 
-### `get_meta_status` / `sync_meta_performance`
-Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
+### `get_meta_status` / `sync_meta_performance` / `import_meta_performance`
+Check, trigger, or import read-only Meta performance memory. No campaign creation, no budget edits.
 ```
 { "brand_name": "Acme", "date_preset": "last_30d" }
+```
+
+When a user connects Meta through their own Meta MCP/CLI instead of Creative
+Tagger's native OAuth, use `import_meta_performance` to hand rows back to
+Creative Tagger:
+```
+{
+  "brand_name": "Acme",
+  "source": "meta_mcp",
+  "rows": [{ "ad_name": "ACME_Static_Hook_V1", "spend": 100, "impressions": 5000 }]
+}
 ```
 
 ### `get_meta_performance_summary`

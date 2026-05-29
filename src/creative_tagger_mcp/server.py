@@ -487,6 +487,28 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="import_meta_performance",
+            description=(
+                "Import Meta-style performance rows gathered by the user's own Meta "
+                "MCP/CLI or Ads Manager export. Use this when native Creative Tagger "
+                "Meta OAuth is unavailable; it stores performance memory without "
+                "creating campaigns or editing budgets."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["rows"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "rows": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Rows with ad_name/ad_id/spend/impressions/clicks/conversions/revenue/date fields.",
+                    },
+                    "source": {"type": "string", "default": "meta_mcp"},
+                },
+            },
+        ),
+        Tool(
             name="get_meta_performance_summary",
             description=(
                 "Read the saved Meta performance memory for a brand without triggering "
@@ -659,6 +681,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_meta_status(arguments)
         if name == "sync_meta_performance":
             return await _sync_meta_performance(arguments)
+        if name == "import_meta_performance":
+            return await _import_meta_performance(arguments)
         if name == "get_meta_performance_summary":
             return await _get_meta_performance_summary(arguments)
         if name == "get_taxonomy_performance":
@@ -1066,6 +1090,21 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
         resp = await client.post(
             f"{API_URL}/meta/sync", json=body, headers=_headers()
         )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _import_meta_performance(args: dict) -> list[TextContent]:
+    rows = args.get("rows") or []
+    if not isinstance(rows, list) or not rows:
+        return _err("rows must be a non-empty list of Meta performance objects")
+    body = {
+        "brand_name": args.get("brand_name", ""),
+        "rows": rows,
+        "source": args.get("source", "meta_mcp"),
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(f"{API_URL}/meta/import", json=body, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
 

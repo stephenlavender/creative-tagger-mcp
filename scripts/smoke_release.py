@@ -49,6 +49,7 @@ EXPECTED_TOOLS = {
     "preview_naming_template",
     "get_meta_status",
     "sync_meta_performance",
+    "import_meta_performance",
     "get_meta_performance_summary",
     "get_taxonomy_performance",
     "get_demographics_performance",
