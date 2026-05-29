@@ -64,7 +64,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('__version__ = "0.2.0"', init_file.read_text())
 
     def test_generate_naming_matches_v1_api_shape(self) -> None:
-        namespace = _load_naming_helpers()
+        namespace = _load_pure_helpers({"_generate_naming", "_sanitize", "_ratio", "_join"})
 
         result = namespace["_generate_naming"](
             {
@@ -102,27 +102,75 @@ class ToolSurfaceTest(unittest.TestCase):
         )
         self.assertEqual(payload["variables"]["aspect_ratio"], "9x16")
 
+    def test_analyze_creative_declares_carousel_and_version_inputs(self) -> None:
+        tools = _declared_tools()
+        analyze = tools["analyze_creative"]
+        props = analyze["inputSchema"]["properties"]
+        one_of = analyze["inputSchema"]["oneOf"]
+
+        self.assertIn("file_paths", props)
+        self.assertIn("version", props)
+        self.assertIn("format", props)
+        self.assertIn("include_transcript", props)
+        self.assertIn("forensic_mode", props)
+        self.assertIn({"required": ["file_paths"]}, one_of)
+
+    def test_analysis_form_data_matches_api_fields(self) -> None:
+        namespace = _load_pure_helpers({"_analysis_form_data"})
+
+        data = namespace["_analysis_form_data"](
+            {
+                "version": 3,
+                "format": "carousel",
+                "include_transcript": False,
+                "forensic_mode": True,
+            },
+            "Creative Tagger",
+        )
+
+        self.assertEqual(
+            data,
+            {
+                "brand_name": "Creative Tagger",
+                "version": "3",
+                "format": "carousel",
+                "include_transcript": "false",
+                "forensic_mode": "true",
+            },
+        )
+
 
 def _declared_tool_names() -> set[str]:
+    return set(_declared_tools())
+
+
+def _declared_tools() -> dict[str, dict]:
     tree = ast.parse(SERVER.read_text())
-    names: set[str] = set()
+    tools: dict[str, dict] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func_name = getattr(node.func, "id", "")
         if func_name != "Tool":
             continue
+        name = ""
+        schema: dict = {}
         for kw in node.keywords:
             if kw.arg == "name" and isinstance(kw.value, ast.Constant):
-                names.add(str(kw.value.value))
-    return names
+                name = str(kw.value.value)
+            if kw.arg == "inputSchema":
+                schema = ast.literal_eval(kw.value)
+        if name:
+            tools[name] = {"inputSchema": schema}
+    return tools
 
 
-def _load_naming_helpers() -> dict:
-    """Load only pure naming helpers, without importing MCP/httpx dependencies."""
+def _load_pure_helpers(wanted: set[str]) -> dict:
+    """Load pure helpers, without importing MCP/httpx dependencies."""
     tree = ast.parse(SERVER.read_text())
-    wanted = {"_generate_naming", "_sanitize", "_ratio", "_join"}
-    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in wanted]
+    functions = [
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in wanted
+    ]
     module = ast.Module(body=functions, type_ignores=[])
     ast.fix_missing_locations(module)
 

@@ -19,7 +19,7 @@ Usage:
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import httpx
 from mcp.server import Server
@@ -78,6 +78,14 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Local file path to analyze (image or video)",
                     },
+                    "file_paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Multiple local image paths to analyze as a carousel. "
+                            "Posts them to the API's `files` field."
+                        ),
+                    },
                     "url": {
                         "type": "string",
                         "description": (
@@ -93,9 +101,32 @@ async def list_tools() -> list[Tool]:
                         "description": "Brand name for naming conventions",
                         "default": "Brand",
                     },
+                    "version": {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Naming convention version number",
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": (
+                            "Optional explicit format: image, video, long_video, "
+                            "carousel, landing_page, or email."
+                        ),
+                    },
+                    "include_transcript": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Include transcript for video analysis",
+                    },
+                    "forensic_mode": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Request first-3-second forensic frame extraction for video",
+                    },
                 },
                 "oneOf": [
                     {"required": ["file_path"]},
+                    {"required": ["file_paths"]},
                     {"required": ["url"]},
                     {"required": ["html_content"]},
                 ],
@@ -661,12 +692,37 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def _analyze_creative(args: dict) -> list[TextContent]:
     file_path = args.get("file_path")
+    file_paths = args.get("file_paths") or []
     url = args.get("url")
     html_content = args.get("html_content")
     brand_name = args.get("brand_name", "Brand")
+    data = _analysis_form_data(args, brand_name)
 
     async with httpx.AsyncClient(timeout=180.0) as client:
-        if file_path:
+        if file_paths:
+            if not isinstance(file_paths, list):
+                return _err("file_paths must be a list of local image paths")
+            paths = [Path(str(path)).expanduser().resolve() for path in file_paths]
+            missing = [str(path) for path in paths if not path.exists()]
+            if missing:
+                return _err(f"File not found: {missing[0]}")
+            handles: list[BinaryIO] = []
+            try:
+                files = []
+                for path in paths:
+                    handle = open(path, "rb")
+                    handles.append(handle)
+                    files.append(("files", (path.name, handle)))
+                resp = await client.post(
+                    f"{API_URL}/analyze",
+                    files=files,
+                    data=data,
+                    headers=_headers(),
+                )
+            finally:
+                for handle in handles:
+                    handle.close()
+        elif file_path:
             path = Path(file_path).expanduser().resolve()
             if not path.exists():
                 return _err(f"File not found: {file_path}")
@@ -674,7 +730,7 @@ async def _analyze_creative(args: dict) -> list[TextContent]:
                 resp = await client.post(
                     f"{API_URL}/analyze",
                     files={"file": (path.name, f)},
-                    data={"brand_name": brand_name},
+                    data=data,
                     headers=_headers(),
                 )
         elif url:
@@ -682,7 +738,7 @@ async def _analyze_creative(args: dict) -> list[TextContent]:
                 url.lower().endswith(ext)
                 for ext in (".mp4", ".mov", ".jpg", ".jpeg", ".png", ".webp", ".gif")
             )
-            data = {"brand_name": brand_name}
+            data = dict(data)
             if is_page:
                 data["page_url"] = url
             else:
@@ -693,14 +749,27 @@ async def _analyze_creative(args: dict) -> list[TextContent]:
         elif html_content:
             resp = await client.post(
                 f"{API_URL}/analyze",
-                data={"brand_name": brand_name, "html_content": html_content},
+                data={**data, "html_content": html_content},
                 headers=_headers(),
             )
         else:
-            return _err("Provide file_path, url, or html_content")
+            return _err("Provide file_path, file_paths, url, or html_content")
 
         resp.raise_for_status()
         return _text(resp.json())
+
+
+def _analysis_form_data(args: dict, brand_name: str) -> dict[str, str]:
+    """Build form data accepted by the API `/analyze` endpoint."""
+    data = {
+        "brand_name": str(brand_name),
+        "version": str(args.get("version", 1)),
+        "include_transcript": str(args.get("include_transcript", True)).lower(),
+        "forensic_mode": str(args.get("forensic_mode", False)).lower(),
+    }
+    if args.get("format"):
+        data["format"] = str(args["format"])
+    return data
 
 
 async def _get_taxonomy(args: dict) -> list[TextContent]:
