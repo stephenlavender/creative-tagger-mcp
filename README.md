@@ -28,6 +28,21 @@ CREATIVE_TAGGER_API_KEY=ct_your_key \
 
 Get an API key at [app.creativetagger.ai](https://app.creativetagger.ai).
 
+## Release Verification
+
+Before publishing a new MCP version, build the artifacts and smoke-test the
+wheel that will be uploaded to PyPI:
+
+```bash
+python -m build
+python scripts/smoke_release.py
+python -m twine check dist/*
+```
+
+The smoke test installs the wheel into a temporary virtualenv, verifies the
+`creative-tagger-mcp` console entry point, checks the package version, and
+confirms the V1 tool surface is present from the installed artifact.
+
 ## Add to Claude Desktop
 
 `~/Library/Application Support/Claude/claude_desktop_config.json`:
