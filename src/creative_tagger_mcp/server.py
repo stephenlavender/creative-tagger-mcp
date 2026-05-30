@@ -590,9 +590,12 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="generate_brand_taxonomy",
             description=(
-                "Generate brand-specific messaging themes and intended audiences from "
-                "the analyzed creative library. Optionally persists them into Brand "
-                "Taxonomy Studio so future analyses and naming templates can use them."
+                "Auto-build a brand's ENTIRE custom taxonomy from trends in its analyzed "
+                "creative library — messaging themes, intended audiences, AND entities "
+                "(products, founders, creators, offers, customer segments, campaign "
+                "labels). Lets a brand get the full brand-custom layer with zero manual "
+                "setup. Optionally persists everything into Brand Taxonomy Studio so "
+                "future analyses, predictions, and naming templates use them."
             ),
             inputSchema={
                 "type": "object",
