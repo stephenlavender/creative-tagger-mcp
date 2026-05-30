@@ -546,6 +546,35 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="predict_creative",
+            description=(
+                "Pre-flight: predict how a creative will perform for a brand BEFORE it "
+                "spends, by scoring its classified tags against the brand's OWN historical "
+                "tag-level ROAS. Returns a 0-100 fit score, per-tag brand-relative ratings, "
+                "and concrete 'swap X for Y' fixes. The one thing connected-account tools "
+                "can't do: grade a concept before launch. Pass a saved analysis_id (from "
+                "analyze_creative) or a raw attributes object."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "analysis_id": {
+                        "type": "integer",
+                        "description": "Saved analysis id to score (from analyze_creative)",
+                    },
+                    "attributes": {
+                        "type": "object",
+                        "description": (
+                            "Creative attributes, alternative to analysis_id, e.g. "
+                            "{hook_type, visual_format, cta, emotion, offer_type}"
+                        ),
+                    },
+                },
+            },
+        ),
+        Tool(
             name="get_demographics_performance",
             description=(
                 "Return saved age x gender performance memory with opportunity and "
@@ -687,6 +716,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_meta_performance_summary(arguments)
         if name == "get_taxonomy_performance":
             return await _get_taxonomy_performance(arguments)
+        if name == "predict_creative":
+            return await _predict_creative(arguments)
         if name == "get_demographics_performance":
             return await _get_demographics_performance(arguments)
         if name == "generate_brand_taxonomy":
@@ -1117,6 +1148,23 @@ async def _get_meta_performance_summary(args: dict) -> list[TextContent]:
             params=params,
             headers=_headers(),
         )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _predict_creative(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    if not brand_name:
+        return _err("brand_name is required")
+    data: dict[str, Any] = {"brand_name": brand_name}
+    if args.get("analysis_id") is not None:
+        data["analysis_id"] = args["analysis_id"]
+    if args.get("attributes"):
+        import json as _json
+
+        data["attributes"] = _json.dumps(args["attributes"])
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(f"{API_URL}/predict", data=data, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
 
