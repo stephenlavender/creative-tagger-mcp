@@ -83,6 +83,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("id-token: write", source)
         self.assertIn("PYPI_API_TOKEN", source)
 
+    def test_release_smoke_does_not_require_tomli_on_old_python(self) -> None:
+        smoke = ROOT / "scripts" / "smoke_release.py"
+        source = smoke.read_text()
+
+        self.assertIn("tomllib = None", source)
+        self.assertIn("_project_version", source)
+        self.assertNotIn("import tomli", source)
+
     def test_generate_naming_matches_v1_api_shape(self) -> None:
         namespace = _load_pure_helpers({"_generate_naming", "_sanitize", "_ratio", "_join"})
 

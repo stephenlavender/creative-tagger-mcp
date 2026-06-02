@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -20,7 +21,7 @@ from pathlib import Path
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
-    import tomli as tomllib
+    tomllib = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -107,7 +108,14 @@ def main() -> int:
 
 
 def _project_version() -> str:
-    data = tomllib.loads(PYPROJECT.read_text())
+    text = PYPROJECT.read_text(encoding="utf-8")
+    if tomllib is None:
+        match = re.search(r'(?m)^version\s*=\s*["\']([^"\']+)["\']', text)
+        if not match:
+            raise SystemExit(f"Could not read project version from {PYPROJECT}")
+        return match.group(1)
+
+    data = tomllib.loads(text)
     return str(data["project"]["version"])
 
 
