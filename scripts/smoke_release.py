@@ -62,6 +62,7 @@ EXPECTED_TOOLS = {
     "get_demographics_performance",
     "generate_brand_taxonomy",
     "scan_competitor",
+    "import_competitor_ads",
     "generate_naming",
 }
 

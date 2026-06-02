@@ -780,6 +780,46 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="import_competitor_ads",
+            description=(
+                "Import competitor Meta Ad Library rows gathered by the user's own "
+                "browser, CSV export, CLI, or MCP/agent workflow. Use this when "
+                "Creative Tagger's native Meta Ad Library token/app approval is not "
+                "available. Returns normalized ads, optional joined analyses, and the "
+                "same aggregate strategy breakdown as scan_competitor."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["ads"],
+                "properties": {
+                    "competitor_name": {
+                        "type": "string",
+                        "description": (
+                            "Fallback competitor/brand name when rows omit page_name."
+                        ),
+                    },
+                    "ads": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": (
+                            "Raw Meta Ad Library rows or normalized rows. Supports "
+                            "fields like ad_id, page_name, primary_text/body_text, "
+                            "headline, platforms, spend/spend_lower/spend_upper, "
+                            "impressions, and snapshot_url."
+                        ),
+                    },
+                    "analyses": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": (
+                            "Optional Creative Tagger analysis rows keyed by ad_id. "
+                            "Useful when the external agent already analyzed assets."
+                        ),
+                    },
+                },
+            },
+        ),
+        Tool(
             name="generate_naming",
             description=(
                 "Generate V1-compatible standard, full, compact, and reporting naming "
@@ -887,6 +927,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _generate_brand_taxonomy(arguments)
         if name == "scan_competitor":
             return await _scan_competitor(arguments)
+        if name == "import_competitor_ads":
+            return await _import_competitor_ads(arguments)
         if name == "generate_naming":
             return _generate_naming(arguments)
         return _err(f"Unknown tool: {name}")
@@ -1504,6 +1546,26 @@ async def _scan_competitor(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=300.0) as client:
         resp = await client.post(
             f"{API_URL}/competitors/scan", json=body, headers=_headers()
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _import_competitor_ads(args: dict) -> list[TextContent]:
+    ads = args.get("ads") or []
+    analyses = args.get("analyses") or []
+    if not isinstance(ads, list) or not ads:
+        return _err("ads must be a non-empty list of Meta Ad Library row objects")
+    if not isinstance(analyses, list):
+        return _err("analyses must be a list when provided")
+    body = {
+        "competitor_name": args.get("competitor_name", ""),
+        "ads": ads,
+        "analyses": analyses,
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            f"{API_URL}/competitors/import", json=body, headers=_headers()
         )
         resp.raise_for_status()
         return _text(resp.json())

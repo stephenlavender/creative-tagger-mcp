@@ -9,7 +9,7 @@ Your AI of choice gets:
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library and get classified strategy breakdowns
+- **Competitive intelligence** — scan a competitor's Meta Ad Library, or import rows gathered by the user's own browser/CSV/MCP workflow while app approval is pending
 
 ## Quick Start
 
@@ -265,6 +265,29 @@ Classify a competitor's Meta Ad Library ads and get strategy breakdown.
 ```
 { "page_name": "Hims & Hers", "limit": 25 }
 ```
+
+### `import_competitor_ads`
+Import competitor Meta Ad Library rows gathered outside Creative Tagger. Use
+this when the user's own browser, CSV export, CLI, or Meta MCP can access the
+rows before Creative Tagger's native Meta Ad Library token/app approval is
+available.
+```
+{
+  "competitor_name": "Rival Brand",
+  "ads": [
+    {
+      "ad_id": "manual-1",
+      "page_name": "Rival Brand",
+      "primary_text": "Founder story import hook",
+      "headline": "Starter kit",
+      "platforms": "instagram",
+      "spend": "$100 - $499"
+    }
+  ]
+}
+```
+Returns normalized ads, optional joined analyses, and the same aggregate
+strategy breakdown as `scan_competitor`.
 
 ### `generate_naming`
 Build naming strings from already-classified attributes (rarely needed — `analyze_creative` already includes naming).

@@ -51,6 +51,7 @@ EXPECTED_TOOLS = {
     "get_demographics_performance",
     "generate_brand_taxonomy",
     "scan_competitor",
+    "import_competitor_ads",
     "generate_naming",
 }
 
@@ -177,6 +178,16 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("reusable custom report", saved_desc)
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
+
+    def test_competitor_import_tool_documents_approval_workaround(self) -> None:
+        tools = _declared_tools()
+        import_tool = tools["import_competitor_ads"]
+        props = import_tool["inputSchema"]["properties"]
+
+        self.assertIn("native Meta Ad Library token/app approval", import_tool["description"])
+        self.assertIn("ads", import_tool["inputSchema"]["required"])
+        self.assertIn("spend_lower", props["ads"]["description"])
+        self.assertIn("ad_id", props["analyses"]["description"])
 
 
 def _declared_tool_names() -> set[str]:
