@@ -556,7 +556,7 @@ async def list_tools() -> list[Tool]:
             name="get_prebuilt_reports",
             description=(
                 "Return Motion-style prebuilt creative reports for a brand: best hooks, "
-                "LP/format, messaging angles, audiences, offers, CTAs, visual formats, "
+                "landing pages, messaging angles, audiences, offers, CTAs, visual formats, "
                 "and brand-custom values. Rows include ROAS, spend, CTR, thumbstop, "
                 "and funnel_score when performance memory exists."
             ),

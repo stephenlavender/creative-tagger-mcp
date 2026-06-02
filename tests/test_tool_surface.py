@@ -164,7 +164,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("funnel_score", taxonomy_desc)
         self.assertIn("thumbstop", taxonomy_desc)
         self.assertIn("best hooks", prebuilt_desc)
-        self.assertIn("LP/format", prebuilt_desc)
+        self.assertIn("landing pages", prebuilt_desc)
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("reusable custom report", saved_desc)
         self.assertIn("video_p100", import_rows["description"])

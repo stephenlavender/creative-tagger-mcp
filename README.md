@@ -206,7 +206,7 @@ performance memory exists.
 ```
 
 ### `get_prebuilt_reports`
-Return ready-made Motion-style reports: best hooks, LP/format, messaging angles,
+Return ready-made Motion-style reports: best hooks, landing pages, messaging angles,
 audiences, offers, CTAs, visual formats, and brand-custom values.
 ```
 { "brand_name": "Acme", "report_id": "best_hooks", "limit": 8 }
