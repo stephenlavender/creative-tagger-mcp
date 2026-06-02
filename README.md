@@ -59,6 +59,19 @@ The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
 PyPI publisher for repository `stephenlavender/creative-tagger-mcp`, workflow
 `.github/workflows/publish.yml`, environment `pypi`, then push the version tag.
 
+Exact PyPI trusted publisher values:
+
+- PyPI project: `creative-tagger-mcp`
+- Publisher: GitHub
+- Owner: `stephenlavender`
+- Repository: `creative-tagger-mcp`
+- Workflow filename: `publish.yml`
+- Environment name: `pypi`
+
+If the workflow fails with `invalid-publisher`, PyPI does not have a trusted
+publisher matching those claims yet. Add the publisher above, then rerun the
+failed workflow or push the version tag again.
+
 Fallback path: add a GitHub Actions repository secret named `PYPI_API_TOKEN`
 containing a PyPI project token. The same workflow will use that token when it
 is present.
