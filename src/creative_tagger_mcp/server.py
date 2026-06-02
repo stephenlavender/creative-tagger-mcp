@@ -588,9 +588,12 @@ async def list_tools() -> list[Tool]:
             name="create_custom_report",
             description=(
                 "Create a custom performance report by selecting standard and/or "
-                "brand taxonomy dimensions, then ranking by ROAS, funnel_score, spend, "
-                "CTR, or CPA. Use this when the user asks for a custom Motion-style "
-                "view like founder x hook, offer x audience, or custom segments."
+                "brand taxonomy dimensions, then ranking the actual matched "
+                "dimension combinations by ROAS, funnel_score, spend, CTR, or CPA. "
+                "Use this when the user asks for a custom Motion-style view like "
+                "hook x landing_page x offer_type, founder x hook, offer x audience, "
+                "or custom segments. Rows can include `parts` and `values` so the "
+                "agent can explain the winning combination."
             ),
             inputSchema={
                 "type": "object",
@@ -601,7 +604,10 @@ async def list_tools() -> list[Tool]:
                     "dimensions": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Dimensions such as hook_type, audience, offer_type, founder",
+                        "description": (
+                            "Dimensions such as hook_type, landing_page, audience, "
+                            "offer_type, founder, product, or customer_segment"
+                        ),
                     },
                     "layer": {
                         "type": "string",
@@ -632,7 +638,8 @@ async def list_tools() -> list[Tool]:
             name="save_custom_report",
             description=(
                 "Save or update a reusable custom report definition for a brand. "
-                "Use this when the user wants the same Motion-style view available later."
+                "Use this when the user wants the same Motion-style combination "
+                "view available later, such as hook_type x landing_page x offer_type."
             ),
             inputSchema={
                 "type": "object",
@@ -644,7 +651,10 @@ async def list_tools() -> list[Tool]:
                     "dimensions": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Dimensions such as hook_type, audience, offer_type, founder",
+                        "description": (
+                            "Dimensions such as hook_type, landing_page, audience, "
+                            "offer_type, founder, product, or customer_segment"
+                        ),
                     },
                     "layer": {
                         "type": "string",

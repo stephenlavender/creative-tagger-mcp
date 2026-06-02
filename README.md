@@ -214,21 +214,25 @@ audiences, offers, CTAs, visual formats, and brand-custom values.
 
 ### `create_custom_report`
 Build a custom report from selected standard or brand taxonomy dimensions and
-rank it by ROAS, funnel score, spend, CTR, or CPA.
+rank the actual matched dimension combinations by ROAS, funnel score, spend,
+CTR, or CPA. Use this for Motion-style views like best hook x landing page x
+offer, founder x hook, audience x offer, or brand segment x product.
 ```
 {
   "brand_name": "Acme",
-  "dimensions": ["hook_type", "audience", "offer_type"],
-  "layer": "standard",
+  "dimensions": ["hook_type", "landing_page", "offer_type"],
+  "layer": "all",
   "metric": "roas"
 }
 ```
+Rows can include `parts` and `values`, so the agent can explain a winning
+combination instead of treating each tag independently.
 
 ### Saved custom reports
 Save reusable report definitions, list them for a brand, rerun them by id, or
 delete them when they are no longer needed.
 ```
-{ "brand_name": "Acme", "name": "Hook + Audience", "dimensions": ["hook_type", "audience"] }
+{ "brand_name": "Acme", "name": "Hook + LP + Offer", "dimensions": ["hook_type", "landing_page", "offer_type"] }
 { "brand_name": "Acme" }
 { "report_id": 7 }
 ```

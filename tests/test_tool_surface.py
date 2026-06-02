@@ -166,7 +166,16 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("best hooks", prebuilt_desc)
         self.assertIn("landing pages", prebuilt_desc)
         self.assertIn("custom performance report", custom_desc)
+        self.assertIn("dimension combinations", custom_desc)
+        self.assertIn("hook x landing_page x offer_type", custom_desc)
+        self.assertIn(
+            "landing_page",
+            tools["create_custom_report"]["inputSchema"]["properties"]["dimensions"][
+                "description"
+            ],
+        )
         self.assertIn("reusable custom report", saved_desc)
+        self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
 
 
