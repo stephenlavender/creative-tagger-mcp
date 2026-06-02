@@ -41,6 +41,8 @@ EXPECTED_TOOLS = {
     "import_meta_performance",
     "get_meta_performance_summary",
     "get_taxonomy_performance",
+    "get_prebuilt_reports",
+    "create_custom_report",
     "predict_creative",
     "get_demographics_performance",
     "generate_brand_taxonomy",
@@ -146,6 +148,8 @@ class ToolSurfaceTest(unittest.TestCase):
 
         summary_desc = tools["get_meta_performance_summary"]["description"]
         taxonomy_desc = tools["get_taxonomy_performance"]["description"]
+        prebuilt_desc = tools["get_prebuilt_reports"]["description"]
+        custom_desc = tools["create_custom_report"]["description"]
         import_rows = (
             tools["import_meta_performance"]["inputSchema"]["properties"]["rows"]
         )
@@ -154,6 +158,9 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("capture", summary_desc)
         self.assertIn("funnel_score", taxonomy_desc)
         self.assertIn("thumbstop", taxonomy_desc)
+        self.assertIn("best hooks", prebuilt_desc)
+        self.assertIn("LP/format", prebuilt_desc)
+        self.assertIn("custom performance report", custom_desc)
         self.assertIn("video_p100", import_rows["description"])
 
 

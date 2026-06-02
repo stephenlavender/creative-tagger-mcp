@@ -553,6 +553,72 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_prebuilt_reports",
+            description=(
+                "Return Motion-style prebuilt creative reports for a brand: best hooks, "
+                "LP/format, messaging angles, audiences, offers, CTAs, visual formats, "
+                "and brand-custom values. Rows include ROAS, spend, CTR, thumbstop, "
+                "and funnel_score when performance memory exists."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "report_id": {
+                        "type": "string",
+                        "description": (
+                            "Optional report filter, e.g. best_hooks, best_landing_pages, "
+                            "best_angles, best_audiences, best_offers"
+                        ),
+                    },
+                    "spend_threshold": {
+                        "type": "number",
+                        "default": 500,
+                        "description": "Spend floor before a row is treated as proven",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 8,
+                        "description": "Rows per report",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="create_custom_report",
+            description=(
+                "Create a custom performance report by selecting standard and/or "
+                "brand taxonomy dimensions, then ranking by ROAS, funnel_score, spend, "
+                "CTR, or CPA. Use this when the user asks for a custom Motion-style "
+                "view like founder x hook, offer x audience, or custom segments."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name", "dimensions"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "title": {"type": "string", "default": "Custom Report"},
+                    "dimensions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Dimensions such as hook_type, audience, offer_type, founder",
+                    },
+                    "layer": {
+                        "type": "string",
+                        "default": "standard",
+                        "description": "standard, brand, or all",
+                    },
+                    "metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": "roas, funnel_score, spend, ctr, cpa",
+                    },
+                    "spend_threshold": {"type": "number", "default": 500},
+                    "limit": {"type": "integer", "default": 12},
+                },
+            },
+        ),
+        Tool(
             name="predict_creative",
             description=(
                 "Pre-flight: predict how a creative will perform for a brand BEFORE it "
@@ -726,6 +792,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_meta_performance_summary(arguments)
         if name == "get_taxonomy_performance":
             return await _get_taxonomy_performance(arguments)
+        if name == "get_prebuilt_reports":
+            return await _get_prebuilt_reports(arguments)
+        if name == "create_custom_report":
+            return await _create_custom_report(arguments)
         if name == "predict_creative":
             return await _predict_creative(arguments)
         if name == "get_demographics_performance":
@@ -1190,6 +1260,50 @@ async def _get_taxonomy_performance(args: dict) -> list[TextContent]:
         resp = await client.get(
             f"{API_URL}/performance/by-taxonomy",
             params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "spend_threshold": args.get("spend_threshold", 500),
+        "limit": args.get("limit", 8),
+    }
+    if args.get("report_id"):
+        params["report_id"] = args["report_id"]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/reports/prebuilt",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _create_custom_report(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    dimensions = args.get("dimensions") or []
+    if not brand_name:
+        return _err("brand_name is required")
+    if not isinstance(dimensions, list) or not dimensions:
+        return _err("dimensions must be a non-empty list")
+    payload = {
+        "brand_name": brand_name,
+        "title": args.get("title") or "Custom Report",
+        "dimensions": dimensions,
+        "layer": args.get("layer", "standard"),
+        "metric": args.get("metric", "roas"),
+        "spend_threshold": args.get("spend_threshold", 500),
+        "limit": args.get("limit", 12),
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{API_URL}/reports/custom",
+            json=payload,
             headers=_headers(),
         )
         resp.raise_for_status()

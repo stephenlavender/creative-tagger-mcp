@@ -52,6 +52,8 @@ EXPECTED_TOOLS = {
     "import_meta_performance",
     "get_meta_performance_summary",
     "get_taxonomy_performance",
+    "get_prebuilt_reports",
+    "create_custom_report",
     "predict_creative",
     "get_demographics_performance",
     "generate_brand_taxonomy",

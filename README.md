@@ -205,6 +205,25 @@ performance memory exists.
 { "brand_name": "Acme", "dimension": "hook_type", "spend_threshold": 500 }
 ```
 
+### `get_prebuilt_reports`
+Return ready-made Motion-style reports: best hooks, LP/format, messaging angles,
+audiences, offers, CTAs, visual formats, and brand-custom values.
+```
+{ "brand_name": "Acme", "report_id": "best_hooks", "limit": 8 }
+```
+
+### `create_custom_report`
+Build a custom report from selected standard or brand taxonomy dimensions and
+rank it by ROAS, funnel score, spend, CTR, or CPA.
+```
+{
+  "brand_name": "Acme",
+  "dimensions": ["hook_type", "audience", "offer_type"],
+  "layer": "standard",
+  "metric": "roas"
+}
+```
+
 ### `predict_creative`
 Score a saved analysis or draft attributes before it spends, using the brand's
 own performance memory. Returns a fit score, per-tag ratings, and recommended
