@@ -41,6 +41,7 @@ EXPECTED_TOOLS = {
     "import_meta_performance",
     "get_meta_performance_summary",
     "get_taxonomy_performance",
+    "predict_creative",
     "get_demographics_performance",
     "generate_brand_taxonomy",
     "scan_competitor",
@@ -140,6 +141,21 @@ class ToolSurfaceTest(unittest.TestCase):
             },
         )
 
+    def test_performance_tools_describe_funnel_scores(self) -> None:
+        tools = _declared_tools()
+
+        summary_desc = tools["get_meta_performance_summary"]["description"]
+        taxonomy_desc = tools["get_taxonomy_performance"]["description"]
+        import_rows = (
+            tools["import_meta_performance"]["inputSchema"]["properties"]["rows"]
+        )
+
+        self.assertIn("funnel_score", summary_desc)
+        self.assertIn("capture", summary_desc)
+        self.assertIn("funnel_score", taxonomy_desc)
+        self.assertIn("thumbstop", taxonomy_desc)
+        self.assertIn("video_p100", import_rows["description"])
+
 
 def _declared_tool_names() -> set[str]:
     return set(_declared_tools())
@@ -156,14 +172,24 @@ def _declared_tools() -> dict[str, dict]:
             continue
         name = ""
         schema: dict = {}
+        description = ""
         for kw in node.keywords:
             if kw.arg == "name" and isinstance(kw.value, ast.Constant):
                 name = str(kw.value.value)
+            if kw.arg == "description":
+                description = _literal_string(kw.value)
             if kw.arg == "inputSchema":
                 schema = ast.literal_eval(kw.value)
         if name:
-            tools[name] = {"inputSchema": schema}
+            tools[name] = {"description": description, "inputSchema": schema}
     return tools
+
+
+def _literal_string(node: ast.AST) -> str:
+    value = ast.literal_eval(node)
+    if isinstance(value, str):
+        return value
+    return str(value)
 
 
 def _load_pure_helpers(wanted: set[str]) -> dict:

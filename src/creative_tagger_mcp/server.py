@@ -502,7 +502,12 @@ async def list_tools() -> list[Tool]:
                     "rows": {
                         "type": "array",
                         "items": {"type": "object"},
-                        "description": "Rows with ad_name/ad_id/spend/impressions/clicks/conversions/revenue/date fields.",
+                        "description": (
+                            "Rows with ad_name/ad_id/spend/impressions/clicks/"
+                            "conversions/revenue/date fields. Video metrics such as "
+                            "video_plays, video_p50, and video_p100 are used for "
+                            "thumbstop, retention, and funnel scoring."
+                        ),
                     },
                     "source": {"type": "string", "default": "meta_mcp"},
                 },
@@ -513,7 +518,8 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Read the saved Meta performance memory for a brand without triggering "
                 "a sync. Returns totals plus winners/losers by standard taxonomy and "
-                "brand-custom taxonomy values."
+                "brand-custom taxonomy values, including explainable funnel_score "
+                "signals for capture, hold, bring-to-site, and convert stages."
             ),
             inputSchema={
                 "type": "object",
@@ -527,7 +533,8 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Return tag-level performance with significance gating and coverage "
                 "gaps. Use this to find which taxonomy values scale, which are "
-                "unproven, and which standard values have never been tried."
+                "unproven, and which standard values have never been tried. Rows include "
+                "ROAS, CTR, thumbstop, and funnel_score when performance memory exists."
             ),
             inputSchema={
                 "type": "object",

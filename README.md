@@ -171,6 +171,8 @@ Use `preview_naming_template` to test a template before saving, and
 
 ### `get_meta_status` / `sync_meta_performance` / `import_meta_performance`
 Check, trigger, or import read-only Meta performance memory. No campaign creation, no budget edits.
+Rows can include video metrics (`video_plays`, `video_p50`, `video_p100`) so
+Creative Tagger can derive thumbstop, retention, and funnel scores.
 ```
 { "brand_name": "Acme", "date_preset": "last_30d" }
 ```
@@ -192,12 +194,23 @@ Read saved Meta performance memory without triggering a sync.
 { "brand_name": "Acme" }
 ```
 Returns account totals plus performance by standard taxonomy and brand-custom taxonomy.
+Each aggregate can include `funnel_score` and a `funnel` explanation object for
+capture -> hold -> bring-to-site -> convert diagnosis.
 
 ### `get_taxonomy_performance`
 Find which tags scale, which are unproven, and which standard taxonomy values have
-not been tested yet.
+not been tested yet. Rows include ROAS, CTR, thumbstop, and funnel scores when
+performance memory exists.
 ```
 { "brand_name": "Acme", "dimension": "hook_type", "spend_threshold": 500 }
+```
+
+### `predict_creative`
+Score a saved analysis or draft attributes before it spends, using the brand's
+own performance memory. Returns a fit score, per-tag ratings, and recommended
+swaps.
+```
+{ "brand_name": "Acme", "attributes": { "hook_type": "Question", "cta": "Shop Now" } }
 ```
 
 ### `get_demographics_performance`
