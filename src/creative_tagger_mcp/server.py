@@ -619,6 +619,71 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="list_custom_reports",
+            description="List saved custom report definitions for a brand.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                },
+            },
+        ),
+        Tool(
+            name="save_custom_report",
+            description=(
+                "Save or update a reusable custom report definition for a brand. "
+                "Use this when the user wants the same Motion-style view available later."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name", "name", "dimensions"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "name": {"type": "string", "description": "Saved report name"},
+                    "description": {"type": "string"},
+                    "dimensions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Dimensions such as hook_type, audience, offer_type, founder",
+                    },
+                    "layer": {
+                        "type": "string",
+                        "default": "standard",
+                        "description": "standard, brand, or all",
+                    },
+                    "metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": "roas, funnel_score, spend, ctr, cpa",
+                    },
+                    "spend_threshold": {"type": "number", "default": 500},
+                    "limit": {"type": "integer", "default": 12},
+                },
+            },
+        ),
+        Tool(
+            name="run_saved_custom_report",
+            description="Run a saved custom report definition by id.",
+            inputSchema={
+                "type": "object",
+                "required": ["report_id"],
+                "properties": {
+                    "report_id": {"type": "integer"},
+                },
+            },
+        ),
+        Tool(
+            name="delete_custom_report",
+            description="Delete a saved custom report definition by id.",
+            inputSchema={
+                "type": "object",
+                "required": ["report_id"],
+                "properties": {
+                    "report_id": {"type": "integer"},
+                },
+            },
+        ),
+        Tool(
             name="predict_creative",
             description=(
                 "Pre-flight: predict how a creative will perform for a brand BEFORE it "
@@ -796,6 +861,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_prebuilt_reports(arguments)
         if name == "create_custom_report":
             return await _create_custom_report(arguments)
+        if name == "list_custom_reports":
+            return await _list_custom_reports(arguments)
+        if name == "save_custom_report":
+            return await _save_custom_report(arguments)
+        if name == "run_saved_custom_report":
+            return await _run_saved_custom_report(arguments)
+        if name == "delete_custom_report":
+            return await _delete_saved_custom_report(arguments)
         if name == "predict_creative":
             return await _predict_creative(arguments)
         if name == "get_demographics_performance":
@@ -1304,6 +1377,75 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
         resp = await client.post(
             f"{API_URL}/reports/custom",
             json=payload,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _list_custom_reports(args: dict) -> list[TextContent]:
+    params = {"brand_name": args.get("brand_name", "")}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/reports/custom/saved",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _save_custom_report(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    name = args.get("name", "")
+    dimensions = args.get("dimensions") or []
+    if not brand_name:
+        return _err("brand_name is required")
+    if not name:
+        return _err("name is required")
+    if not isinstance(dimensions, list) or not dimensions:
+        return _err("dimensions must be a non-empty list")
+    payload = {
+        "brand_name": brand_name,
+        "name": name,
+        "title": name,
+        "description": args.get("description", ""),
+        "dimensions": dimensions,
+        "layer": args.get("layer", "standard"),
+        "metric": args.get("metric", "roas"),
+        "spend_threshold": args.get("spend_threshold", 500),
+        "limit": args.get("limit", 12),
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{API_URL}/reports/custom/saved",
+            json=payload,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _run_saved_custom_report(args: dict) -> list[TextContent]:
+    report_id = args.get("report_id")
+    if not report_id:
+        return _err("report_id is required")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/reports/custom/saved/{report_id}/run",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
+    report_id = args.get("report_id")
+    if not report_id:
+        return _err("report_id is required")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.delete(
+            f"{API_URL}/reports/custom/saved/{report_id}",
             headers=_headers(),
         )
         resp.raise_for_status()

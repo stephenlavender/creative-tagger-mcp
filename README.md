@@ -224,6 +224,17 @@ rank it by ROAS, funnel score, spend, CTR, or CPA.
 }
 ```
 
+### Saved custom reports
+Save reusable report definitions, list them for a brand, rerun them by id, or
+delete them when they are no longer needed.
+```
+{ "brand_name": "Acme", "name": "Hook + Audience", "dimensions": ["hook_type", "audience"] }
+{ "brand_name": "Acme" }
+{ "report_id": 7 }
+```
+Tools: `save_custom_report`, `list_custom_reports`, `run_saved_custom_report`,
+`delete_custom_report`.
+
 ### `predict_creative`
 Score a saved analysis or draft attributes before it spends, using the brand's
 own performance memory. Returns a fit score, per-tag ratings, and recommended
