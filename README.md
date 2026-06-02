@@ -43,6 +43,35 @@ The smoke test installs the wheel into a temporary virtualenv, verifies the
 `creative-tagger-mcp` console entry point, checks the package version, and
 confirms the V1 tool surface is present from the installed artifact.
 
+## Publishing to PyPI
+
+The release workflow publishes from GitHub Actions after it builds the package,
+runs `scripts/smoke_release.py`, and passes `twine check`.
+
+Recommended path:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
+PyPI publisher for repository `stephenlavender/creative-tagger-mcp`, workflow
+`.github/workflows/publish.yml`, environment `pypi`, then push the version tag.
+
+Fallback path: add a GitHub Actions repository secret named `PYPI_API_TOKEN`
+containing a PyPI project token. The same workflow will use that token when it
+is present.
+
+Local fallback:
+
+```bash
+python -m build
+python scripts/smoke_release.py
+python -m twine check dist/*
+python -m twine upload dist/*
+```
+
 ## Add to Claude Desktop
 
 `~/Library/Application Support/Claude/claude_desktop_config.json`:

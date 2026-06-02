@@ -72,6 +72,17 @@ class ToolSurfaceTest(unittest.TestCase):
         init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
         self.assertIn('__version__ = "0.2.0"', init_file.read_text())
 
+    def test_publish_workflow_verifies_release_before_upload(self) -> None:
+        workflow = ROOT / ".github" / "workflows" / "publish.yml"
+        source = workflow.read_text()
+
+        self.assertIn("python -m build", source)
+        self.assertIn("python scripts/smoke_release.py", source)
+        self.assertIn("python -m twine check dist/*", source)
+        self.assertIn("pypa/gh-action-pypi-publish@release/v1", source)
+        self.assertIn("id-token: write", source)
+        self.assertIn("PYPI_API_TOKEN", source)
+
     def test_generate_naming_matches_v1_api_shape(self) -> None:
         namespace = _load_pure_helpers({"_generate_naming", "_sanitize", "_ratio", "_join"})
 
