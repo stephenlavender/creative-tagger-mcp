@@ -50,10 +50,10 @@ EXPECTED_TOOLS = {
     "preview_naming_template",
     "get_meta_status",
     "sync_meta_performance",
-    "import_meta_performance",
     "get_meta_performance_summary",
     "get_taxonomy_performance",
     "get_prebuilt_reports",
+    "get_creative_strategy_report",
     "create_custom_report",
     "list_custom_reports",
     "save_custom_report",
@@ -63,9 +63,9 @@ EXPECTED_TOOLS = {
     "get_demographics_performance",
     "generate_brand_taxonomy",
     "scan_competitor",
-    "import_competitor_ads",
     "generate_naming",
 }
+INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
 
 
 def main() -> int:
@@ -176,6 +176,8 @@ assert dist_version == {expected_version!r}
 assert len(entry_points) == 1
 assert entry_points[0].value == "creative_tagger_mcp.server:main"
 assert tool_names == expected_tools
+internal_backfill_tools = {sorted(INTERNAL_BACKFILL_TOOLS)!r}
+assert not (set(internal_backfill_tools) & set(tool_names))
 assert server.API_URL == "https://api.creativetagger.ai"
 
 print(json.dumps({{

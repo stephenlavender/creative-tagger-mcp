@@ -28,6 +28,7 @@ from mcp.types import TextContent, Tool
 
 API_URL = os.environ.get("CREATIVE_TAGGER_URL", "https://api.creativetagger.ai")
 API_KEY = os.environ.get("CREATIVE_TAGGER_API_KEY", "")
+INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
 
 server = Server("creative-tagger")
 
@@ -55,12 +56,22 @@ def _err(msg: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Error: {msg}")]
 
 
+def _is_internal_backfill_enabled() -> bool:
+    return os.environ.get("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", "") == "1"
+
+
+def _visible_tools(tools: list[Tool]) -> list[Tool]:
+    if _is_internal_backfill_enabled():
+        return tools
+    return [tool for tool in tools if tool.name not in INTERNAL_BACKFILL_TOOLS]
+
+
 # ---------- Tools ----------
 
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    return [
+    return _visible_tools([
         Tool(
             name="analyze_creative",
             description=(
@@ -489,10 +500,10 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="import_meta_performance",
             description=(
-                "Import Meta-style performance rows gathered by the user's own Meta "
-                "MCP/CLI or Ads Manager export. Use this when native Creative Tagger "
-                "Meta OAuth is unavailable; it stores performance memory without "
-                "creating campaigns or editing budgets."
+                "Import Meta-style performance rows for internal backfills or "
+                "controlled migrations. The launch customer flow should use native "
+                "Creative Tagger Meta OAuth plus sync_meta_performance. Does not "
+                "create campaigns or edit budgets."
             ),
             inputSchema={
                 "type": "object",
@@ -581,6 +592,57 @@ async def list_tools() -> list[Tool]:
                         "default": 8,
                         "description": "Rows per report",
                     },
+                },
+            },
+        ),
+        Tool(
+            name="get_creative_strategy_report",
+            description=(
+                "Return the strategist matrix for deciding what to test next on Meta. "
+                "Defaults to messaging_angle rows by ad_type columns, with text and "
+                "color-coded states for next tests, live learning, winners, losers, "
+                "fatigue, and gaps. Includes the decision queue, report table, and "
+                "agent_context payload so an LLM can brief next tests from the same "
+                "source of truth as the Creative Tagger UI. Supports CTR, thumbstop, "
+                "hook, hold, video milestone, CPA, CVR, ROAS, revenue, spend, and "
+                "funnel metrics."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "report_template": {
+                        "type": "string",
+                        "default": "next-tests",
+                        "description": "next-tests, creative-winners, fatigue-watch, etc.",
+                    },
+                    "rows": {
+                        "type": "string",
+                        "default": "messaging_angle",
+                        "description": "Matrix row dimension, e.g. messaging_angle, hook, persona",
+                    },
+                    "columns": {
+                        "type": "string",
+                        "default": "ad_type",
+                        "description": "Matrix column dimension, e.g. ad_type, format, funnel_stage",
+                    },
+                    "status_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": "all, next, winner, learning, fatigued, loser, untested",
+                    },
+                    "metrics": {
+                        "type": "string",
+                        "default": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
+                        "description": (
+                            "Comma-separated metrics to show in each cell, e.g. spend,ctr,"
+                            "thumbstop_rate,hook_rate,hold_rate,cpa"
+                        ),
+                    },
+                    "cpa_target": {"type": "number"},
+                    "minimum_spend": {"type": "number"},
+                    "learning_spend": {"type": "number"},
+                    "limit": {"type": "integer", "default": 10},
                 },
             },
         ),
@@ -782,10 +844,10 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="import_competitor_ads",
             description=(
-                "Import competitor Meta Ad Library rows gathered by the user's own "
-                "browser, CSV export, CLI, or MCP/agent workflow. Use this when "
-                "Creative Tagger's native Meta Ad Library token/app approval is not "
-                "available. Returns normalized ads, optional joined analyses, and the "
+                "Import normalized competitor Meta Ad Library rows for internal "
+                "backfills or controlled migrations. The launch customer flow should "
+                "use native scan_competitor once Meta Ad Library access is approved. "
+                "Returns normalized ads, optional joined analyses, and the "
                 "same aggregate strategy breakdown as scan_competitor."
             ),
             inputSchema={
@@ -853,12 +915,18 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
-    ]
+    ])
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     try:
+        if name in INTERNAL_BACKFILL_TOOLS and not _is_internal_backfill_enabled():
+            return _err(
+                "Internal backfill tools are disabled. Connect Meta through "
+                "Creative Tagger OAuth and use sync_meta_performance or "
+                "scan_competitor for launch customer workflows."
+            )
         if name == "analyze_creative":
             return await _analyze_creative(arguments)
         if name == "get_taxonomy":
@@ -909,6 +977,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_taxonomy_performance(arguments)
         if name == "get_prebuilt_reports":
             return await _get_prebuilt_reports(arguments)
+        if name == "get_creative_strategy_report":
+            return await _get_creative_strategy_report(arguments)
         if name == "create_custom_report":
             return await _create_custom_report(arguments)
         if name == "list_custom_reports":
@@ -1402,6 +1472,29 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/reports/prebuilt",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "report_template": args.get("report_template", "next-tests"),
+        "rows": args.get("rows", "messaging_angle"),
+        "columns": args.get("columns", "ad_type"),
+        "status_focus": args.get("status_focus", "all"),
+        "metrics": args.get("metrics", "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"),
+        "limit": args.get("limit", 10),
+    }
+    for key in ("cpa_target", "minimum_spend", "learning_spend"):
+        if args.get(key) is not None:
+            params[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/reports/creative-strategy",
             params=params,
             headers=_headers(),
         )

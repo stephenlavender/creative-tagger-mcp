@@ -9,7 +9,7 @@ Your AI of choice gets:
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library, or import rows gathered by the user's own browser/CSV/MCP workflow while app approval is pending
+- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
 
 ## Quick Start
 
@@ -211,24 +211,35 @@ save_naming_template: {
 Use `preview_naming_template` to test a template before saving, and
 `delete_naming_template` to remove one.
 
-### `get_meta_status` / `sync_meta_performance` / `import_meta_performance`
-Check, trigger, or import read-only Meta performance memory. No campaign creation, no budget edits.
-Rows can include video metrics (`video_plays`, `video_p50`, `video_p100`) so
-Creative Tagger can derive thumbstop, retention, and funnel scores.
+### `get_meta_status` / `sync_meta_performance`
+Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
+Creative Tagger must have an approved native Meta OAuth connection before
+customer accounts can sync Meta performance.
 ```
 { "brand_name": "Acme", "date_preset": "last_30d" }
 ```
 
-When a user connects Meta through their own Meta MCP/CLI instead of Creative
-Tagger's native OAuth, use `import_meta_performance` to hand rows back to
-Creative Tagger:
+### `get_creative_strategy_report`
+Pull the same strategy matrix shown in Creative Tagger Reports. Defaults to
+messaging angles by ad types, with states for next tests, live learning,
+winners, losers, fatigue, and gaps. Returns the decision queue plus an
+`agent_context` payload that can be handed directly to an LLM for strategy work.
+Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
+milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score.
+
 ```
 {
   "brand_name": "Acme",
-  "source": "meta_mcp",
-  "rows": [{ "ad_name": "ACME_Static_Hook_V1", "spend": 100, "impressions": 5000 }]
+  "report_template": "next-tests",
+  "rows": "messaging_angle",
+  "columns": "ad_type",
+  "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"
 }
 ```
+
+Internal migration/backfill tools are hidden from the default published MCP
+surface. They require `CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS=1` and should not
+be used in customer flows or to avoid Meta approval.
 
 ### `get_meta_performance_summary`
 Read saved Meta performance memory without triggering a sync.
@@ -308,28 +319,9 @@ Classify a competitor's Meta Ad Library ads and get strategy breakdown.
 { "page_name": "Hims & Hers", "limit": 25 }
 ```
 
-### `import_competitor_ads`
-Import competitor Meta Ad Library rows gathered outside Creative Tagger. Use
-this when the user's own browser, CSV export, CLI, or Meta MCP can access the
-rows before Creative Tagger's native Meta Ad Library token/app approval is
-available.
-```
-{
-  "competitor_name": "Rival Brand",
-  "ads": [
-    {
-      "ad_id": "manual-1",
-      "page_name": "Rival Brand",
-      "primary_text": "Founder story import hook",
-      "headline": "Starter kit",
-      "platforms": "instagram",
-      "spend": "$100 - $499"
-    }
-  ]
-}
-```
-Returns normalized ads, optional joined analyses, and the same aggregate
-strategy breakdown as `scan_competitor`.
+Internal competitor-row backfill is also hidden from the default published MCP
+surface. Customer-facing competitor intelligence should use `scan_competitor`
+after native Meta Ad Library access is approved.
 
 ### `generate_naming`
 Build naming strings from already-classified attributes (rarely needed — `analyze_creative` already includes naming).
