@@ -725,13 +725,34 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_demographics_performance",
             description=(
-                "Return saved age x gender performance memory with opportunity and "
-                "waste flags. Useful for audience strategy and Advantage+ diagnostics."
+                "Return saved demographics performance memory with opportunity and "
+                "waste flags. Supports age, gender, or age x gender views across a "
+                "specific Meta account and date window for audience strategy and "
+                "Advantage+ diagnostics."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "account_id": {
+                        "type": "string",
+                        "description": "Optional Meta account id when the brand has multiple ad accounts",
+                    },
+                    "date_preset": {
+                        "type": "string",
+                        "default": "last_30d",
+                        "description": "Meta date preset such as last_7d, last_30d, or maximum",
+                    },
+                    "axis": {
+                        "type": "string",
+                        "default": "age_gender",
+                        "description": "Demographic breakdown to return: age, gender, or age_gender",
+                    },
+                    "spend_threshold": {
+                        "type": "number",
+                        "default": 0,
+                        "description": "Optional spend floor before a demographic row is included",
+                    },
                 },
             },
         ),
@@ -1505,7 +1526,7 @@ async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
 
 
 async def _get_demographics_performance(args: dict) -> list[TextContent]:
-    params = {"brand_name": args.get("brand_name", "")}
+    params = _demographics_params(args)
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/performance/demographics",
@@ -1514,6 +1535,19 @@ async def _get_demographics_performance(args: dict) -> list[TextContent]:
         )
         resp.raise_for_status()
         return _text(resp.json())
+
+
+def _demographics_params(args: dict) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "last_30d"),
+        "axis": args.get("axis", "age_gender"),
+    }
+    if args.get("account_id"):
+        params["account_id"] = args["account_id"]
+    if args.get("spend_threshold") is not None:
+        params["spend_threshold"] = args["spend_threshold"]
+    return params
 
 
 async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:

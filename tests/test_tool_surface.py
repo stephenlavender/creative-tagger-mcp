@@ -167,6 +167,43 @@ class ToolSurfaceTest(unittest.TestCase):
             },
         )
 
+    def test_demographics_tool_supports_axis_and_date_filters(self) -> None:
+        tools = _declared_tools()
+        demographics = tools["get_demographics_performance"]
+        props = demographics["inputSchema"]["properties"]
+
+        self.assertIn("demographics performance memory", demographics["description"])
+        self.assertIn("age x gender views", demographics["description"])
+        self.assertEqual(props["date_preset"]["default"], "last_30d")
+        self.assertEqual(props["axis"]["default"], "age_gender")
+        self.assertIn("age, gender, or age_gender", props["axis"]["description"])
+        self.assertIn("account_id", props)
+        self.assertIn("spend_threshold", props)
+
+    def test_demographics_params_match_api_shape(self) -> None:
+        namespace = _load_pure_helpers({"_demographics_params"})
+
+        params = namespace["_demographics_params"](
+            {
+                "brand_name": "Creative Tagger",
+                "account_id": "act_123",
+                "date_preset": "last_7d",
+                "axis": "gender",
+                "spend_threshold": 250,
+            }
+        )
+
+        self.assertEqual(
+            params,
+            {
+                "brand_name": "Creative Tagger",
+                "account_id": "act_123",
+                "date_preset": "last_7d",
+                "axis": "gender",
+                "spend_threshold": 250,
+            },
+        )
+
     def test_performance_tools_describe_funnel_scores(self) -> None:
         tools = _declared_tools()
 

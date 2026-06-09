@@ -290,9 +290,13 @@ swaps.
 ```
 
 ### `get_demographics_performance`
-Read age x gender performance memory with opportunity and waste flags.
+Read demographics performance memory with opportunity and waste flags. Query the
+combined age x gender matrix, or isolate the `age` or `gender` axis for a
+specific account and time window.
 ```
 { "brand_name": "Acme" }
+{ "brand_name": "Acme", "axis": "gender", "date_preset": "last_7d" }
+{ "brand_name": "Acme", "account_id": "act_123", "axis": "age", "spend_threshold": 250 }
 ```
 
 ### `generate_brand_taxonomy`
