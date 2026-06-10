@@ -7,6 +7,7 @@ workspace before the optional MCP runtime dependency is installed.
 from __future__ import annotations
 
 import ast
+from datetime import date
 import json
 from types import SimpleNamespace
 import unittest
@@ -214,12 +215,49 @@ class ToolSurfaceTest(unittest.TestCase):
         props = demographics["inputSchema"]["properties"]
         source = SERVER.read_text()
 
-        self.assertIn("start/end date windows", demographics["description"])
+        self.assertIn("inclusive start/end date windows", demographics["description"])
+        self.assertEqual(demographics["inputSchema"]["required"], ["brand_name"])
         self.assertIn("start_date", props)
         self.assertIn("end_date", props)
+        self.assertEqual(props["start_date"]["format"], "date")
+        self.assertEqual(props["end_date"]["format"], "date")
         self.assertIn("YYYY-MM-DD", props["start_date"]["description"])
-        self.assertIn('params["start_date"] = args["start_date"]', source)
-        self.assertIn('params["end_date"] = args["end_date"]', source)
+        self.assertIn("Brand/workspace name", props["brand_name"]["description"])
+        self.assertIn("_validated_date_window(args)", source)
+
+    def test_validated_date_window_enforces_iso_dates_and_order(self) -> None:
+        namespace = _load_pure_helpers({"_validated_date_window"})
+        validated = namespace["_validated_date_window"]
+
+        self.assertEqual(
+            validated(
+                {
+                    "brand_name": " Acme ",
+                    "start_date": "2026-05-01",
+                    "end_date": "2026-05-31",
+                }
+            ),
+            {
+                "brand_name": "Acme",
+                "start_date": "2026-05-01",
+                "end_date": "2026-05-31",
+            },
+        )
+
+        with self.assertRaisesRegex(ValueError, "brand_name is required"):
+            validated({"brand_name": " "})
+
+        with self.assertRaisesRegex(ValueError, "start_date must be a YYYY-MM-DD string"):
+            validated({"brand_name": "Acme", "start_date": "2026/05/01"})
+
+        with self.assertRaisesRegex(ValueError, "start_date must be on or before end_date"):
+            validated(
+                {
+                    "brand_name": "Acme",
+                    "start_date": "2026-06-01",
+                    "end_date": "2026-05-01",
+                }
+            )
 
 
 def _declared_tool_names() -> set[str]:
@@ -267,6 +305,7 @@ def _load_pure_helpers(wanted: set[str]) -> dict:
     ast.fix_missing_locations(module)
 
     namespace = {
+        "date": date,
         "json": json,
         "_text": lambda payload: [SimpleNamespace(text=json.dumps(payload, indent=2))],
     }

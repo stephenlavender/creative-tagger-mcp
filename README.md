@@ -295,7 +295,8 @@ Read age x gender performance memory with opportunity and waste flags.
 { "brand_name": "Acme" }
 { "brand_name": "Acme", "start_date": "2026-05-01", "end_date": "2026-05-31" }
 ```
-Use the optional date window when you want a specific month or test period.
+Use the optional inclusive date window when you want a specific month or test
+period.
 
 ### `generate_brand_taxonomy`
 Generate brand-specific messaging themes and intended audiences from the analyzed
