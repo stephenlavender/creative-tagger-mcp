@@ -18,6 +18,7 @@ Usage:
 
 import json
 import os
+import csv
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -492,11 +493,11 @@ async def list_tools() -> list[Tool]:
                 "Import Meta-style performance rows gathered by the user's own Meta "
                 "MCP/CLI or Ads Manager export. Use this when native Creative Tagger "
                 "Meta OAuth is unavailable; it stores performance memory without "
-                "creating campaigns or editing budgets."
+                "creating campaigns or editing budgets. Accepts either inline rows "
+                "or a local CSV/JSON/JSONL export path."
             ),
             inputSchema={
                 "type": "object",
-                "required": ["rows"],
                 "properties": {
                     "brand_name": {"type": "string"},
                     "rows": {
@@ -509,8 +510,20 @@ async def list_tools() -> list[Tool]:
                             "thumbstop, retention, and funnel scoring."
                         ),
                     },
+                    "file_path": {
+                        "type": "string",
+                        "description": (
+                            "Optional local CSV, JSON, or JSONL file containing Meta-style "
+                            "performance rows. Use this for Ads Manager exports or rows "
+                            "saved from another MCP/CLI."
+                        ),
+                    },
                     "source": {"type": "string", "default": "meta_mcp"},
                 },
+                "oneOf": [
+                    {"required": ["rows"]},
+                    {"required": ["file_path"]},
+                ],
             },
         ),
         Tool(
@@ -1331,9 +1344,10 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
 
 
 async def _import_meta_performance(args: dict) -> list[TextContent]:
-    rows = args.get("rows") or []
-    if not isinstance(rows, list) or not rows:
-        return _err("rows must be a non-empty list of Meta performance objects")
+    try:
+        rows = _coerce_rows_input(args, key="rows", file_key="file_path")
+    except ValueError as exc:
+        return _err(str(exc))
     body = {
         "brand_name": args.get("brand_name", ""),
         "rows": rows,
@@ -1569,6 +1583,53 @@ async def _import_competitor_ads(args: dict) -> list[TextContent]:
         )
         resp.raise_for_status()
         return _text(resp.json())
+
+
+def _coerce_rows_input(args: dict, key: str, file_key: str) -> list[dict[str, Any]]:
+    rows = args.get(key)
+    file_path = args.get(file_key)
+    if rows and file_path:
+        raise ValueError(f"Provide either {key} or {file_key}, not both")
+    if rows is not None:
+        if not isinstance(rows, list) or not rows:
+            raise ValueError(f"{key} must be a non-empty list of objects")
+        if not all(isinstance(row, dict) for row in rows):
+            raise ValueError(f"{key} must contain only objects")
+        return rows
+    if not file_path:
+        raise ValueError(f"{key} or {file_key} is required")
+    return _load_rows_file(file_path)
+
+
+def _load_rows_file(file_path: str) -> list[dict[str, Any]]:
+    path = Path(file_path).expanduser()
+    if not path.is_file():
+        raise ValueError(f"file not found: {file_path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            rows = list(csv.DictReader(handle))
+    elif suffix == ".json":
+        with path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if isinstance(payload, list):
+            rows = payload
+        elif isinstance(payload, dict) and isinstance(payload.get("rows"), list):
+            rows = payload["rows"]
+        else:
+            raise ValueError("JSON import must be a list or an object with a rows list")
+    elif suffix == ".jsonl":
+        with path.open(encoding="utf-8") as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+    else:
+        raise ValueError("file_path must end in .csv, .json, or .jsonl")
+
+    if not rows:
+        raise ValueError("import file contained no rows")
+    if not all(isinstance(row, dict) for row in rows):
+        raise ValueError("import file must contain only object rows")
+    return rows
 
 
 def _generate_naming(args: dict) -> list[TextContent]:

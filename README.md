@@ -230,6 +230,16 @@ Creative Tagger:
 }
 ```
 
+Or point the tool at a local export file:
+```
+{
+  "brand_name": "Acme",
+  "source": "ads_manager_csv",
+  "file_path": "/absolute/path/meta-export.csv"
+}
+```
+Supported formats: `.csv`, `.json`, and `.jsonl`.
+
 ### `get_meta_performance_summary`
 Read saved Meta performance memory without triggering a sync.
 ```

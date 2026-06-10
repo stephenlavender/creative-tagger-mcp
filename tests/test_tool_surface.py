@@ -7,10 +7,13 @@ workspace before the optional MCP runtime dependency is installed.
 from __future__ import annotations
 
 import ast
+import csv
 import json
-from types import SimpleNamespace
+import os
 import unittest
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -167,6 +170,54 @@ class ToolSurfaceTest(unittest.TestCase):
             },
         )
 
+    def test_import_meta_performance_accepts_file_path(self) -> None:
+        tools = _declared_tools()
+        import_tool = tools["import_meta_performance"]
+        props = import_tool["inputSchema"]["properties"]
+
+        self.assertIn("file_path", props)
+        self.assertIn({"required": ["file_path"]}, import_tool["inputSchema"]["oneOf"])
+        self.assertIn("CSV, JSON, or JSONL", props["file_path"]["description"])
+
+    def test_load_rows_file_supports_csv_json_and_jsonl(self) -> None:
+        namespace = _load_pure_helpers({"_load_rows_file"})
+
+        with NamedTemporaryFile("w", suffix=".csv", encoding="utf-8", delete=False) as handle:
+            writer = csv.DictWriter(handle, fieldnames=["ad_name", "spend"])
+            writer.writeheader()
+            writer.writerow({"ad_name": "Creative A", "spend": "10"})
+            csv_path = handle.name
+
+        with NamedTemporaryFile("w", suffix=".json", encoding="utf-8", delete=False) as handle:
+            json.dump({"rows": [{"ad_name": "Creative B", "spend": 11}]}, handle)
+            json_path = handle.name
+
+        with NamedTemporaryFile("w", suffix=".jsonl", encoding="utf-8", delete=False) as handle:
+            handle.write('{"ad_name":"Creative C","spend":12}\n')
+            jsonl_path = handle.name
+
+        try:
+            self.assertEqual(namespace["_load_rows_file"](csv_path), [{"ad_name": "Creative A", "spend": "10"}])
+            self.assertEqual(namespace["_load_rows_file"](json_path), [{"ad_name": "Creative B", "spend": 11}])
+            self.assertEqual(namespace["_load_rows_file"](jsonl_path), [{"ad_name": "Creative C", "spend": 12}])
+        finally:
+            os.unlink(csv_path)
+            os.unlink(json_path)
+            os.unlink(jsonl_path)
+
+    def test_coerce_rows_input_rejects_ambiguous_or_invalid_inputs(self) -> None:
+        namespace = _load_pure_helpers({"_coerce_rows_input", "_load_rows_file"})
+
+        with self.assertRaisesRegex(ValueError, "either rows or file_path"):
+            namespace["_coerce_rows_input"](
+                {"rows": [{"ad_name": "Creative A"}], "file_path": "/tmp/export.json"},
+                key="rows",
+                file_key="file_path",
+            )
+
+        with self.assertRaisesRegex(ValueError, "rows or file_path is required"):
+            namespace["_coerce_rows_input"]({}, key="rows", file_key="file_path")
+
     def test_performance_tools_describe_funnel_scores(self) -> None:
         tools = _declared_tools()
 
@@ -254,7 +305,9 @@ def _load_pure_helpers(wanted: set[str]) -> dict:
     ast.fix_missing_locations(module)
 
     namespace = {
+        "csv": csv,
         "json": json,
+        "Path": Path,
         "_text": lambda payload: [SimpleNamespace(text=json.dumps(payload, indent=2))],
     }
     exec(compile(module, str(SERVER), "exec"), namespace)
