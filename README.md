@@ -290,9 +290,11 @@ swaps.
 ```
 
 ### `get_demographics_performance`
-Read age x gender performance memory with opportunity and waste flags.
+Read age x gender performance memory with opportunity and waste flags. Set
+`axis` to reshape the saved matrix into `age`, `gender`, or the default
+`age_gender` view directly in MCP.
 ```
-{ "brand_name": "Acme" }
+{ "brand_name": "Acme", "axis": "gender" }
 ```
 
 ### `generate_brand_taxonomy`

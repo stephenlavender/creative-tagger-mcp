@@ -208,6 +208,74 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
 
+    def test_demographics_tool_declares_axis_reshape(self) -> None:
+        tools = _declared_tools()
+        demographics = tools["get_demographics_performance"]
+        axis = demographics["inputSchema"]["properties"]["axis"]
+
+        self.assertIn("age-only", demographics["description"])
+        self.assertEqual(axis["default"], "age_gender")
+        self.assertIn("age_gender, age, or gender", axis["description"])
+
+    def test_demographics_axis_aggregates_rows_locally(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_shape_demographics_payload",
+                "_normalize_demographics_axis",
+                "_extract_demographics_rows",
+                "_aggregate_demographics_rows",
+                "_demographics_group_key",
+                "_initial_demographics_group",
+                "_demographics_age_value",
+                "_demographics_gender_value",
+                "_coerce_number",
+                "_merge_unique",
+            }
+        )
+
+        payload = {
+            "rows": [
+                {
+                    "age": "18-24",
+                    "gender": "female",
+                    "spend": 100,
+                    "impressions": 1000,
+                    "clicks": 50,
+                    "purchases": 4,
+                    "revenue": 300,
+                    "opportunity_flags": ["scale"],
+                },
+                {
+                    "age_range": "18-24",
+                    "gender": "male",
+                    "spend": "60",
+                    "impressions": "500",
+                    "clicks": 20,
+                    "conversions": 2,
+                    "revenue": 90,
+                    "waste_flags": ["low_roas"],
+                },
+            ]
+        }
+
+        age_view = namespace["_shape_demographics_payload"](payload, "age")
+        self.assertEqual(age_view["axis"], "age")
+        self.assertEqual(age_view["row_count"], 1)
+        self.assertEqual(age_view["rows"][0]["age"], "18-24")
+        self.assertEqual(age_view["rows"][0]["spend"], 160.0)
+        self.assertEqual(age_view["rows"][0]["impressions"], 1500.0)
+        self.assertEqual(age_view["rows"][0]["revenue"], 390.0)
+        self.assertEqual(age_view["rows"][0]["ctr"], 0.0467)
+        self.assertEqual(age_view["rows"][0]["roas"], 2.4375)
+        self.assertEqual(age_view["rows"][0]["cpa"], 26.6667)
+        self.assertEqual(age_view["rows"][0]["opportunity_flags"], ["scale"])
+        self.assertEqual(age_view["rows"][0]["waste_flags"], ["low_roas"])
+
+        gender_view = namespace["_shape_demographics_payload"](payload, "gender")
+        self.assertEqual(gender_view["row_count"], 2)
+        self.assertEqual(gender_view["rows"][0]["gender"], "female")
+        self.assertEqual(gender_view["rows"][1]["gender"], "male")
+
 
 def _declared_tool_names() -> set[str]:
     return set(_declared_tools())

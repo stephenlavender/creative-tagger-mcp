@@ -726,12 +726,18 @@ async def list_tools() -> list[Tool]:
             name="get_demographics_performance",
             description=(
                 "Return saved age x gender performance memory with opportunity and "
-                "waste flags. Useful for audience strategy and Advantage+ diagnostics."
+                "waste flags. Optionally reshape it to age-only, gender-only, or the "
+                "full age x gender axis for audience strategy and Advantage+ diagnostics."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "axis": {
+                        "type": "string",
+                        "default": "age_gender",
+                        "description": "Reshape rows by age_gender, age, or gender.",
+                    },
                 },
             },
         ),
@@ -1513,7 +1519,9 @@ async def _get_demographics_performance(args: dict) -> list[TextContent]:
             headers=_headers(),
         )
         resp.raise_for_status()
-        return _text(resp.json())
+        payload = resp.json()
+        axis = str(args.get("axis") or "age_gender")
+        return _text(_shape_demographics_payload(payload, axis))
 
 
 async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
@@ -1653,6 +1661,161 @@ def _generate_naming(args: dict) -> list[TextContent]:
             },
         }
     )
+
+
+def _shape_demographics_payload(payload: object, axis: object) -> object:
+    axis_value = _normalize_demographics_axis(axis)
+    if not isinstance(payload, dict) or axis_value == "age_gender":
+        return payload
+
+    rows = _extract_demographics_rows(payload)
+    if not rows:
+        return payload
+
+    reshaped = _aggregate_demographics_rows(rows, axis_value)
+    if not reshaped:
+        return payload
+
+    result = dict(payload)
+    result["axis"] = axis_value
+    result["rows"] = reshaped
+    result["row_count"] = len(reshaped)
+    result["source_axis"] = "age_gender"
+    return result
+
+
+def _normalize_demographics_axis(axis: object) -> str:
+    value = str(axis or "age_gender").strip().lower().replace("-", "_")
+    if value in {"age", "gender", "age_gender"}:
+        return value
+    return "age_gender"
+
+
+def _extract_demographics_rows(payload: dict) -> list[dict[str, object]]:
+    for key in ("rows", "breakdown", "data", "results"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [row for row in value if isinstance(row, dict)]
+    return []
+
+
+def _aggregate_demographics_rows(
+    rows: list[dict[str, object]], axis: str
+) -> list[dict[str, object]]:
+    groups: dict[tuple[str, ...], dict[str, object]] = {}
+    for row in rows:
+        age = _demographics_age_value(row)
+        gender = _demographics_gender_value(row)
+        key = _demographics_group_key(axis, age, gender)
+        if key is None:
+            continue
+
+        group = groups.setdefault(key, _initial_demographics_group(axis, age, gender))
+        group["row_count"] = int(group.get("row_count", 0)) + 1
+        for field in ("spend", "impressions", "clicks", "purchases", "revenue", "conversions"):
+            numeric = _coerce_number(row.get(field))
+            if numeric is not None:
+                group[field] = group.get(field, 0) + numeric
+        if _coerce_number(row.get("purchases")) is None:
+            conversions = _coerce_number(row.get("conversions"))
+            if conversions is not None:
+                group["purchases"] = group.get("purchases", 0) + conversions
+
+        opportunities = row.get("opportunity_flags")
+        if isinstance(opportunities, list):
+            _merge_unique(group.setdefault("opportunity_flags", []), opportunities)
+        waste = row.get("waste_flags")
+        if isinstance(waste, list):
+            _merge_unique(group.setdefault("waste_flags", []), waste)
+
+    aggregated = list(groups.values())
+    for row in aggregated:
+        spend = _coerce_number(row.get("spend")) or 0
+        revenue = _coerce_number(row.get("revenue")) or 0
+        impressions = _coerce_number(row.get("impressions")) or 0
+        clicks = _coerce_number(row.get("clicks")) or 0
+        purchases = _coerce_number(row.get("purchases"))
+        if purchases is None:
+            purchases = _coerce_number(row.get("conversions")) or 0
+        row["ctr"] = round(clicks / impressions, 4) if impressions else None
+        row["roas"] = round(revenue / spend, 4) if spend else None
+        row["cpa"] = round(spend / purchases, 4) if purchases else None
+
+    return sorted(
+        aggregated,
+        key=lambda row: (_coerce_number(row.get("spend")) or 0, str(row.get(axis, ""))),
+        reverse=True,
+    )
+
+
+def _demographics_group_key(axis: str, age: str, gender: str) -> tuple[str, ...] | None:
+    if axis == "age" and age:
+        return (age,)
+    if axis == "gender" and gender:
+        return (gender,)
+    if axis == "age_gender" and (age or gender):
+        return (age, gender)
+    return None
+
+
+def _initial_demographics_group(axis: str, age: str, gender: str) -> dict[str, object]:
+    if axis == "age":
+        return {"age": age, "axis": axis, "opportunity_flags": [], "waste_flags": []}
+    if axis == "gender":
+        return {
+            "gender": gender,
+            "axis": axis,
+            "opportunity_flags": [],
+            "waste_flags": [],
+        }
+    return {
+        "age": age,
+        "gender": gender,
+        "axis": axis,
+        "opportunity_flags": [],
+        "waste_flags": [],
+    }
+
+
+def _demographics_age_value(row: dict[str, object]) -> str:
+    for key in ("age", "age_range", "age_bucket"):
+        value = row.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _demographics_gender_value(row: dict[str, object]) -> str:
+    value = row.get("gender")
+    if value is not None and str(value).strip():
+        return str(value).strip()
+    return ""
+
+
+def _coerce_number(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip().replace(",", "")
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return None
+    return None
+
+
+def _merge_unique(target: list[object], values: list[object]) -> None:
+    seen = {json.dumps(item, sort_keys=True, default=str) for item in target}
+    for value in values:
+        marker = json.dumps(value, sort_keys=True, default=str)
+        if marker in seen:
+            continue
+        target.append(value)
+        seen.add(marker)
 
 
 def _sanitize(value: object) -> str:
