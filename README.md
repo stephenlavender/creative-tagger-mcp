@@ -290,9 +290,13 @@ swaps.
 ```
 
 ### `get_demographics_performance`
-Read age x gender performance memory with opportunity and waste flags.
+Read age x gender performance memory with opportunity and waste flags. The MCP
+can also reshape the saved matrix locally into age rollups, gender rollups, or
+flag-only slices without requiring extra dashboard logic.
 ```
 { "brand_name": "Acme" }
+{ "brand_name": "Acme", "view": "age", "spend_threshold": 100 }
+{ "brand_name": "Acme", "view": "opportunities" }
 ```
 
 ### `generate_brand_taxonomy`

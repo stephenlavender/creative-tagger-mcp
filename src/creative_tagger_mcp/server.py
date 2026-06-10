@@ -726,12 +726,29 @@ async def list_tools() -> list[Tool]:
             name="get_demographics_performance",
             description=(
                 "Return saved age x gender performance memory with opportunity and "
-                "waste flags. Useful for audience strategy and Advantage+ diagnostics."
+                "waste flags. Supports local MCP-side views so agents can ask for the "
+                "raw matrix, age rollups, gender rollups, or just opportunity/waste "
+                "segments without requiring extra dashboard shaping."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "view": {
+                        "type": "string",
+                        "default": "raw",
+                        "description": (
+                            "Optional local view: raw, matrix, age, gender, "
+                            "opportunities, or waste."
+                        ),
+                    },
+                    "spend_threshold": {
+                        "type": "number",
+                        "description": (
+                            "Optional local filter applied after fetch. Keeps rows with "
+                            "spend >= threshold before building the requested view."
+                        ),
+                    },
                 },
             },
         ),
@@ -1513,7 +1530,13 @@ async def _get_demographics_performance(args: dict) -> list[TextContent]:
             headers=_headers(),
         )
         resp.raise_for_status()
-        return _text(resp.json())
+        return _text(
+            _shape_demographics_payload(
+                resp.json(),
+                view=args.get("view", "raw"),
+                spend_threshold=args.get("spend_threshold"),
+            )
+        )
 
 
 async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
@@ -1653,6 +1676,165 @@ def _generate_naming(args: dict) -> list[TextContent]:
             },
         }
     )
+
+
+def _shape_demographics_payload(
+    payload: Any, view: str = "raw", spend_threshold: Any | None = None
+) -> Any:
+    normalized_view = str(view or "raw").lower()
+    rows = _normalize_demographic_rows(payload)
+    threshold = _coerce_number(spend_threshold)
+    if threshold is not None:
+        rows = [
+            row for row in rows if _coerce_number(row.get("spend"), default=0.0) >= threshold
+        ]
+
+    if normalized_view == "raw" and threshold is None:
+        return payload
+    if normalized_view in {"raw", "matrix"}:
+        return {
+            "view": normalized_view,
+            "row_count": len(rows),
+            "rows": sorted(rows, key=_demographic_sort_key, reverse=True),
+        }
+    if normalized_view == "age":
+        return _demographic_axis_view(rows, "age")
+    if normalized_view == "gender":
+        return _demographic_axis_view(rows, "gender")
+    if normalized_view == "opportunities":
+        filtered = [row for row in rows if _has_flag(row, "opportunity")]
+        return {
+            "view": normalized_view,
+            "row_count": len(filtered),
+            "rows": sorted(filtered, key=_demographic_sort_key, reverse=True),
+        }
+    if normalized_view == "waste":
+        filtered = [row for row in rows if _has_flag(row, "waste")]
+        return {
+            "view": normalized_view,
+            "row_count": len(filtered),
+            "rows": sorted(filtered, key=_demographic_sort_key, reverse=True),
+        }
+
+    return {
+        "view": normalized_view,
+        "error": "Unknown demographics view",
+        "supported_views": ["raw", "matrix", "age", "gender", "opportunities", "waste"],
+    }
+
+
+def _normalize_demographic_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if not isinstance(payload, dict):
+        return []
+
+    for key in ("rows", "data", "results", "demographics", "age_gender"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [row for row in value if isinstance(row, dict)]
+
+    if "age" in payload or "gender" in payload:
+        return [payload]
+    return []
+
+
+def _demographic_axis_view(rows: list[dict[str, Any]], axis: str) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        key = str(row.get(axis) or "unknown")
+        grouped.setdefault(key, []).append(row)
+
+    segments = []
+    for segment, segment_rows in grouped.items():
+        summary = _summarize_demographic_group(segment_rows)
+        summary[axis] = segment
+        segments.append(summary)
+
+    return {
+        "view": axis,
+        "row_count": len(rows),
+        "segments": sorted(segments, key=_demographic_sort_key, reverse=True),
+    }
+
+
+def _summarize_demographic_group(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    totals: dict[str, float] = {}
+    for row in rows:
+        for key, value in row.items():
+            if isinstance(value, bool):
+                continue
+            number = _coerce_number(value)
+            if number is None:
+                continue
+            totals[key] = totals.get(key, 0.0) + number
+
+    spend = totals.get("spend")
+    impressions = totals.get("impressions")
+    clicks = totals.get("clicks")
+    purchases = totals.get("purchases")
+    revenue = totals.get("revenue")
+
+    derived: dict[str, float] = {}
+    if impressions and clicks is not None:
+        derived["ctr"] = round((clicks / impressions) * 100, 4)
+    if impressions and spend is not None:
+        derived["cpm"] = round((spend / impressions) * 1000, 4)
+    if clicks and spend is not None:
+        derived["cpc"] = round(spend / clicks, 4)
+    if purchases and spend is not None:
+        derived["cpa"] = round(spend / purchases, 4)
+    if spend and revenue is not None:
+        derived["roas"] = round(revenue / spend, 4)
+
+    summary: dict[str, Any] = {
+        "row_count": len(rows),
+        "opportunity_rows": sum(1 for row in rows if _has_flag(row, "opportunity")),
+        "waste_rows": sum(1 for row in rows if _has_flag(row, "waste")),
+    }
+    if totals:
+        summary["totals"] = totals
+    if derived:
+        summary["derived_metrics"] = derived
+    return summary
+
+
+def _demographic_sort_key(item: dict[str, Any]) -> tuple[float, float]:
+    totals = item.get("totals") if isinstance(item.get("totals"), dict) else item
+    spend = _coerce_number(totals.get("spend"), default=0.0)
+    impressions = _coerce_number(totals.get("impressions"), default=0.0)
+    return spend, impressions
+
+
+def _has_flag(row: dict[str, Any], kind: str) -> bool:
+    truthy_values = {"true", "yes", "1", kind}
+    for key in (kind, f"is_{kind}", f"{kind}_flag", f"{kind}_status"):
+        value = row.get(key)
+        if isinstance(value, bool):
+            if value:
+                return True
+            continue
+        if isinstance(value, str) and value.strip().lower() in truthy_values:
+            return True
+    return False
+
+
+def _coerce_number(value: Any, default: float | None = None) -> float | None:
+    if value is None or isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        cleaned = value.strip().replace(",", "")
+        if cleaned.startswith("$"):
+            cleaned = cleaned[1:]
+        if cleaned.endswith("%"):
+            cleaned = cleaned[:-1]
+        try:
+            return float(cleaned)
+        except ValueError:
+            return default
+    return default
 
 
 def _sanitize(value: object) -> str:

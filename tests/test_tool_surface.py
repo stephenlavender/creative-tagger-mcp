@@ -175,6 +175,8 @@ class ToolSurfaceTest(unittest.TestCase):
         prebuilt_desc = tools["get_prebuilt_reports"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
+        demographics_desc = tools["get_demographics_performance"]["description"]
+        demographics_props = tools["get_demographics_performance"]["inputSchema"]["properties"]
         import_rows = (
             tools["import_meta_performance"]["inputSchema"]["properties"]["rows"]
         )
@@ -197,6 +199,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("reusable custom report", saved_desc)
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
+        self.assertIn("age rollups", demographics_desc)
+        self.assertIn("gender rollups", demographics_desc)
+        self.assertIn("view", demographics_props)
+        self.assertIn("spend_threshold", demographics_props)
 
     def test_competitor_import_tool_documents_approval_workaround(self) -> None:
         tools = _declared_tools()
@@ -207,6 +213,65 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("ads", import_tool["inputSchema"]["required"])
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
+
+    def test_demographics_views_shape_rows_locally(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_shape_demographics_payload",
+                "_normalize_demographic_rows",
+                "_demographic_axis_view",
+                "_summarize_demographic_group",
+                "_demographic_sort_key",
+                "_has_flag",
+                "_coerce_number",
+            }
+        )
+
+        payload = {
+            "rows": [
+                {
+                    "age": "18-24",
+                    "gender": "female",
+                    "spend": 125,
+                    "impressions": 10000,
+                    "clicks": 120,
+                    "purchases": 10,
+                    "revenue": 600,
+                    "is_opportunity": True,
+                },
+                {
+                    "age": "18-24",
+                    "gender": "male",
+                    "spend": 75,
+                    "impressions": 5000,
+                    "clicks": 40,
+                    "purchases": 2,
+                    "revenue": 120,
+                    "waste": True,
+                },
+                {
+                    "age": "25-34",
+                    "gender": "female",
+                    "spend": 40,
+                    "impressions": 2500,
+                    "clicks": 20,
+                    "purchases": 1,
+                    "revenue": 50,
+                },
+            ]
+        }
+
+        age_view = namespace["_shape_demographics_payload"](payload, view="age", spend_threshold=50)
+        opportunities = namespace["_shape_demographics_payload"](payload, view="opportunities")
+
+        self.assertEqual(age_view["view"], "age")
+        self.assertEqual(age_view["row_count"], 2)
+        self.assertEqual(age_view["segments"][0]["age"], "18-24")
+        self.assertEqual(age_view["segments"][0]["totals"]["spend"], 200.0)
+        self.assertEqual(age_view["segments"][0]["opportunity_rows"], 1)
+        self.assertEqual(age_view["segments"][0]["waste_rows"], 1)
+        self.assertEqual(opportunities["row_count"], 1)
+        self.assertEqual(opportunities["rows"][0]["gender"], "female")
 
 
 def _declared_tool_names() -> set[str]:
