@@ -40,6 +40,7 @@ EXPECTED_TOOLS = {
     "sync_meta_performance",
     "import_meta_performance",
     "get_meta_performance_summary",
+    "get_meta_timeseries",
     "get_taxonomy_performance",
     "get_prebuilt_reports",
     "create_custom_report",
@@ -171,6 +172,7 @@ class ToolSurfaceTest(unittest.TestCase):
         tools = _declared_tools()
 
         summary_desc = tools["get_meta_performance_summary"]["description"]
+        timeseries = tools["get_meta_timeseries"]
         taxonomy_desc = tools["get_taxonomy_performance"]["description"]
         prebuilt_desc = tools["get_prebuilt_reports"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
@@ -181,6 +183,14 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertIn("funnel_score", summary_desc)
         self.assertIn("capture", summary_desc)
+        self.assertIn("fatigue", timeseries["description"])
+        self.assertIn("dashboard-ready", timeseries["description"])
+        self.assertEqual(
+            timeseries["inputSchema"]["properties"]["interval"]["default"], "day"
+        )
+        self.assertEqual(
+            timeseries["inputSchema"]["properties"]["breakdown"]["default"], "account"
+        )
         self.assertIn("funnel_score", taxonomy_desc)
         self.assertIn("thumbstop", taxonomy_desc)
         self.assertIn("best hooks", prebuilt_desc)

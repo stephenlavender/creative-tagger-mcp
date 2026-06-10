@@ -8,6 +8,7 @@ Your AI of choice gets:
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
+- **Time-series reporting** — inspect saved Meta performance trends, fatigue, and dashboard-ready daily/weekly breakdowns
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
 - **Competitive intelligence** — scan a competitor's Meta Ad Library, or import rows gathered by the user's own browser/CSV/MCP workflow while app approval is pending
 
@@ -238,6 +239,19 @@ Read saved Meta performance memory without triggering a sync.
 Returns account totals plus performance by standard taxonomy and brand-custom taxonomy.
 Each aggregate can include `funnel_score` and a `funnel` explanation object for
 capture -> hold -> bring-to-site -> convert diagnosis.
+
+### `get_meta_timeseries`
+Read saved Meta performance memory as a daily or weekly time series for trend
+and fatigue analysis, without triggering a sync.
+```
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30d",
+  "interval": "day",
+  "breakdown": "hook_type"
+}
+```
+Rows can include spend, revenue, ROAS, CTR, CPA, and `funnel_score` over time.
 
 ### `get_taxonomy_performance`
 Find which tags scale, which are unproven, and which standard taxonomy values have

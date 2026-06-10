@@ -529,6 +529,45 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_meta_timeseries",
+            description=(
+                "Return saved Meta performance as a daily or weekly time series so "
+                "the agent can inspect spend, revenue, ROAS, CTR, CPA, funnel_score, "
+                "and fatigue trends over time. Use this for trend diagnosis and "
+                "dashboard-ready sparkline/table views without triggering a sync."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {"type": "string", "default": "last_30d"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lower bound",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD upper bound",
+                    },
+                    "interval": {
+                        "type": "string",
+                        "default": "day",
+                        "description": "day or week",
+                    },
+                    "breakdown": {
+                        "type": "string",
+                        "default": "account",
+                        "description": (
+                            "account, campaign, adset, ad, creative, hook_type, "
+                            "messaging_angle, creative_type, landing_page, audience, "
+                            "offer_type, or cta"
+                        ),
+                    },
+                    "limit": {"type": "integer", "default": 100},
+                },
+            },
+        ),
+        Tool(
             name="get_taxonomy_performance",
             description=(
                 "Return tag-level performance with significance gating and coverage "
@@ -905,6 +944,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _import_meta_performance(arguments)
         if name == "get_meta_performance_summary":
             return await _get_meta_performance_summary(arguments)
+        if name == "get_meta_timeseries":
+            return await _get_meta_timeseries(arguments)
         if name == "get_taxonomy_performance":
             return await _get_taxonomy_performance(arguments)
         if name == "get_prebuilt_reports":
@@ -1350,6 +1391,28 @@ async def _get_meta_performance_summary(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/meta/performance/summary",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_meta_timeseries(args: dict) -> list[TextContent]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "last_30d"),
+        "interval": args.get("interval", "day"),
+        "breakdown": args.get("breakdown", "account"),
+        "limit": args.get("limit", 100),
+    }
+    if args.get("start_date"):
+        params["start_date"] = args["start_date"]
+    if args.get("end_date"):
+        params["end_date"] = args["end_date"]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/meta/performance/timeseries",
             params=params,
             headers=_headers(),
         )
