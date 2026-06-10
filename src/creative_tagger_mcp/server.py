@@ -1253,7 +1253,10 @@ async def _delete_brand_entity(args: dict) -> list[TextContent]:
 
 async def _get_naming_variables(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(f"{API_URL}/auth/naming/variables")
+        resp = await client.get(
+            f"{API_URL}/auth/naming/variables",
+            params=_auth_params(),
+        )
         resp.raise_for_status()
         return _text(resp.json())
 
@@ -1304,7 +1307,11 @@ async def _preview_naming_template(args: dict) -> list[TextContent]:
         "separator": args.get("separator", "_"),
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(f"{API_URL}/auth/naming/preview", json=body)
+        resp = await client.post(
+            f"{API_URL}/auth/naming/preview",
+            params=_auth_params(),
+            json=body,
+        )
         resp.raise_for_status()
         return _text(resp.json())
 

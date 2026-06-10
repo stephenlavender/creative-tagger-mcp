@@ -208,6 +208,25 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
 
+    def test_naming_endpoints_use_query_param_auth(self) -> None:
+        source = SERVER.read_text()
+
+        self.assertIn(
+            'resp = await client.get(\n'
+            '            f"{API_URL}/auth/naming/variables",\n'
+            '            params=_auth_params(),\n'
+            '        )',
+            source,
+        )
+        self.assertIn(
+            'resp = await client.post(\n'
+            '            f"{API_URL}/auth/naming/preview",\n'
+            '            params=_auth_params(),\n'
+            '            json=body,\n'
+            '        )',
+            source,
+        )
+
 
 def _declared_tool_names() -> set[str]:
     return set(_declared_tools())
