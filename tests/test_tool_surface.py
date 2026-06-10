@@ -208,6 +208,19 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
 
+    def test_demographics_tool_supports_date_windows(self) -> None:
+        tools = _declared_tools()
+        demographics = tools["get_demographics_performance"]
+        props = demographics["inputSchema"]["properties"]
+        source = SERVER.read_text()
+
+        self.assertIn("start/end date windows", demographics["description"])
+        self.assertIn("start_date", props)
+        self.assertIn("end_date", props)
+        self.assertIn("YYYY-MM-DD", props["start_date"]["description"])
+        self.assertIn('params["start_date"] = args["start_date"]', source)
+        self.assertIn('params["end_date"] = args["end_date"]', source)
+
 
 def _declared_tool_names() -> set[str]:
     return set(_declared_tools())
