@@ -229,6 +229,9 @@ Creative Tagger:
   "rows": [{ "ad_name": "ACME_Static_Hook_V1", "spend": 100, "impressions": 5000 }]
 }
 ```
+The MCP also normalizes common Ads Manager export aliases before upload, so
+rows like `amount_spent`, `inline_link_clicks`, `purchase_value`,
+`thruplays`, and `date_start` can be passed through directly.
 
 ### `get_meta_performance_summary`
 Read saved Meta performance memory without triggering a sync.

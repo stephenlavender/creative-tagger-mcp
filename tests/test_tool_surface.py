@@ -188,6 +188,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)
+        self.assertIn("amount_spent", tools["import_meta_performance"]["description"])
         self.assertIn(
             "landing_page",
             tools["create_custom_report"]["inputSchema"]["properties"]["dimensions"][
@@ -197,6 +198,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("reusable custom report", saved_desc)
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
+        self.assertIn("amount_spent", import_rows["description"])
+        self.assertIn("thruplays", import_rows["description"])
 
     def test_competitor_import_tool_documents_approval_workaround(self) -> None:
         tools = _declared_tools()
@@ -207,6 +210,72 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("ads", import_tool["inputSchema"]["required"])
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
+
+    def test_meta_import_normalizes_ads_manager_aliases(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_normalize_meta_import_rows",
+                "_normalize_meta_import_row",
+                "_first_present_value",
+                "_coerce_meta_value",
+            }
+        )
+
+        normalized = namespace["_normalize_meta_import_rows"](
+            [
+                {
+                    "creative_name": "Founder Hook V1",
+                    "id": "123",
+                    "amount_spent": "$1,234.50",
+                    "impressions": "45000",
+                    "inline_link_clicks": "321",
+                    "purchase_value": "9876.54",
+                    "thruplays": "777",
+                    "video_play_actions_at_50": "222",
+                    "video_completions": "111",
+                    "date_start": "2026-06-01",
+                }
+            ]
+        )
+
+        self.assertEqual(
+            normalized,
+            [
+                {
+                    "creative_name": "Founder Hook V1",
+                    "id": "123",
+                    "amount_spent": "$1,234.50",
+                    "impressions": 45000,
+                    "inline_link_clicks": "321",
+                    "purchase_value": "9876.54",
+                    "thruplays": "777",
+                    "video_play_actions_at_50": "222",
+                    "video_completions": "111",
+                    "date_start": "2026-06-01",
+                    "ad_name": "Founder Hook V1",
+                    "ad_id": "123",
+                    "date": "2026-06-01",
+                    "spend": 1234.5,
+                    "clicks": 321,
+                    "revenue": 9876.54,
+                    "video_plays": 777,
+                    "video_p50": 222,
+                    "video_p100": 111,
+                }
+            ],
+        )
+
+    def test_meta_import_rejects_non_object_rows(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_normalize_meta_import_rows",
+                "_normalize_meta_import_row",
+                "_first_present_value",
+                "_coerce_meta_value",
+            }
+        )
+
+        self.assertIsNone(namespace["_normalize_meta_import_rows"]([{"ad_name": "ok"}, 3]))
 
 
 def _declared_tool_names() -> set[str]:

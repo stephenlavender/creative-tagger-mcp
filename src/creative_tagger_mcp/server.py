@@ -492,7 +492,10 @@ async def list_tools() -> list[Tool]:
                 "Import Meta-style performance rows gathered by the user's own Meta "
                 "MCP/CLI or Ads Manager export. Use this when native Creative Tagger "
                 "Meta OAuth is unavailable; it stores performance memory without "
-                "creating campaigns or editing budgets."
+                "creating campaigns or editing budgets. The MCP normalizes common "
+                "Ads Manager export aliases like amount_spent, purchase_value, "
+                "inline_link_clicks, and thruplays into the API's canonical fields "
+                "before upload."
             ),
             inputSchema={
                 "type": "object",
@@ -506,7 +509,10 @@ async def list_tools() -> list[Tool]:
                             "Rows with ad_name/ad_id/spend/impressions/clicks/"
                             "conversions/revenue/date fields. Video metrics such as "
                             "video_plays, video_p50, and video_p100 are used for "
-                            "thumbstop, retention, and funnel scoring."
+                            "thumbstop, retention, and funnel scoring. Also accepts "
+                            "common export aliases such as amount_spent, "
+                            "inline_link_clicks, purchase_value, thruplays, "
+                            "and date_start."
                         ),
                     },
                     "source": {"type": "string", "default": "meta_mcp"},
@@ -1334,9 +1340,12 @@ async def _import_meta_performance(args: dict) -> list[TextContent]:
     rows = args.get("rows") or []
     if not isinstance(rows, list) or not rows:
         return _err("rows must be a non-empty list of Meta performance objects")
+    normalized_rows = _normalize_meta_import_rows(rows)
+    if normalized_rows is None:
+        return _err("each row must be a Meta performance object")
     body = {
         "brand_name": args.get("brand_name", ""),
-        "rows": rows,
+        "rows": normalized_rows,
         "source": args.get("source", "meta_mcp"),
     }
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -1569,6 +1578,71 @@ async def _import_competitor_ads(args: dict) -> list[TextContent]:
         )
         resp.raise_for_status()
         return _text(resp.json())
+
+
+def _normalize_meta_import_rows(rows: list[object]) -> list[dict[str, object]] | None:
+    normalized: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return None
+        normalized.append(_normalize_meta_import_row(row))
+    return normalized
+
+
+def _normalize_meta_import_row(row: dict[str, object]) -> dict[str, object]:
+    normalized = dict(row)
+    aliases = {
+        "ad_name": ("ad_name", "creative_name", "name", "ad"),
+        "ad_id": ("ad_id", "id"),
+        "date": ("date", "day", "date_start"),
+        "spend": ("spend", "amount_spent"),
+        "impressions": ("impressions",),
+        "clicks": ("clicks", "inline_link_clicks", "link_clicks"),
+        "conversions": ("conversions", "purchases", "results"),
+        "revenue": ("revenue", "purchase_value", "conversion_value", "value"),
+        "video_plays": ("video_plays", "thruplays", "plays"),
+        "video_p50": ("video_p50", "video_play_actions_at_50", "video_50_watched_actions"),
+        "video_p100": (
+            "video_p100",
+            "video_play_actions_at_100",
+            "video_100_watched_actions",
+            "video_completions",
+        ),
+    }
+    for target, candidates in aliases.items():
+        value = _first_present_value(row, candidates)
+        if value is None:
+            continue
+        normalized[target] = _coerce_meta_value(target, value)
+    return normalized
+
+
+def _first_present_value(row: dict[str, object], candidates: tuple[str, ...]) -> object | None:
+    for key in candidates:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _coerce_meta_value(field: str, value: object) -> object:
+    if field in {"ad_name", "ad_id", "date"}:
+        return str(value).strip()
+    if isinstance(value, str):
+        cleaned = (
+            value.strip()
+            .replace(",", "")
+            .replace("$", "")
+            .replace("%", "")
+        )
+        if not cleaned:
+            return ""
+        try:
+            number = float(cleaned)
+        except ValueError:
+            return value
+        return int(number) if number.is_integer() else number
+    return value
 
 
 def _generate_naming(args: dict) -> list[TextContent]:
