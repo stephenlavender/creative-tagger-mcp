@@ -198,6 +198,31 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
 
+    def test_saved_custom_report_tools_accept_name_lookup(self) -> None:
+        tools = _declared_tools()
+
+        run_tool = tools["run_saved_custom_report"]
+        delete_tool = tools["delete_custom_report"]
+
+        self.assertIn("brand_name + name", run_tool["description"])
+        self.assertIn("brand_name + name", delete_tool["description"])
+        self.assertIn({"required": ["report_id"]}, run_tool["inputSchema"]["oneOf"])
+        self.assertIn(
+            {"required": ["brand_name", "name"]},
+            run_tool["inputSchema"]["oneOf"],
+        )
+        self.assertIn({"required": ["report_id"]}, delete_tool["inputSchema"]["oneOf"])
+        self.assertIn(
+            {"required": ["brand_name", "name"]},
+            delete_tool["inputSchema"]["oneOf"],
+        )
+
+    def test_saved_custom_report_resolution_is_documented(self) -> None:
+        readme = (ROOT / "README.md").read_text()
+
+        self.assertIn("also accept `brand_name` + `name`", readme)
+        self.assertIn('{ "brand_name": "Acme", "name": "Hook + LP + Offer" }', readme)
+
     def test_competitor_import_tool_documents_approval_workaround(self) -> None:
         tools = _declared_tools()
         import_tool = tools["import_competitor_ads"]

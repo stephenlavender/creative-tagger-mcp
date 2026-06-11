@@ -272,11 +272,14 @@ combination instead of treating each tag independently.
 
 ### Saved custom reports
 Save reusable report definitions, list them for a brand, rerun them by id, or
-delete them when they are no longer needed.
+delete them when they are no longer needed. `run_saved_custom_report` and
+`delete_custom_report` also accept `brand_name` + `name`, so the agent does not
+have to look up numeric ids first.
 ```
 { "brand_name": "Acme", "name": "Hook + LP + Offer", "dimensions": ["hook_type", "landing_page", "offer_type"] }
 { "brand_name": "Acme" }
 { "report_id": 7 }
+{ "brand_name": "Acme", "name": "Hook + LP + Offer" }
 ```
 Tools: `save_custom_report`, `list_custom_reports`, `run_saved_custom_report`,
 `delete_custom_report`.
