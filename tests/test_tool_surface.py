@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import json
+import tempfile
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -175,9 +176,8 @@ class ToolSurfaceTest(unittest.TestCase):
         prebuilt_desc = tools["get_prebuilt_reports"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
-        import_rows = (
-            tools["import_meta_performance"]["inputSchema"]["properties"]["rows"]
-        )
+        import_tool = tools["import_meta_performance"]
+        import_rows = import_tool["inputSchema"]["properties"]["rows"]
 
         self.assertIn("funnel_score", summary_desc)
         self.assertIn("capture", summary_desc)
@@ -197,6 +197,34 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("reusable custom report", saved_desc)
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
+        self.assertIn("file_path", import_tool["inputSchema"]["properties"])
+        self.assertIn({"required": ["file_path"]}, import_tool["inputSchema"]["oneOf"])
+
+    def test_meta_import_file_rows_load_from_csv_and_json(self) -> None:
+        namespace = _load_pure_helpers(
+            {"_coerce_row_objects", "_load_rows_from_file_path", "_resolve_import_rows"}
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "meta.csv"
+            csv_path.write_text(
+                "ad_name,spend,impressions\nCreative A,12.5,1000\n",
+                encoding="utf-8",
+            )
+            json_path = Path(tmpdir) / "meta.json"
+            json_path.write_text(
+                json.dumps({"rows": [{"ad_name": "Creative B", "spend": 20}]}),
+                encoding="utf-8",
+            )
+
+            csv_rows = namespace["_load_rows_from_file_path"](str(csv_path))
+            json_rows = namespace["_resolve_import_rows"]({"file_path": str(json_path)})
+
+        self.assertEqual(
+            csv_rows,
+            [{"ad_name": "Creative A", "spend": "12.5", "impressions": "1000"}],
+        )
+        self.assertEqual(json_rows, [{"ad_name": "Creative B", "spend": 20}])
 
     def test_competitor_import_tool_documents_approval_workaround(self) -> None:
         tools = _declared_tools()
@@ -254,7 +282,9 @@ def _load_pure_helpers(wanted: set[str]) -> dict:
     ast.fix_missing_locations(module)
 
     namespace = {
+        "csv": __import__("csv"),
         "json": json,
+        "Path": Path,
         "_text": lambda payload: [SimpleNamespace(text=json.dumps(payload, indent=2))],
     }
     exec(compile(module, str(SERVER), "exec"), namespace)

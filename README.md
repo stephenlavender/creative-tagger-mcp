@@ -230,6 +230,16 @@ Creative Tagger:
 }
 ```
 
+For Ads Manager exports or agent-generated files, `import_meta_performance`
+also accepts a local CSV, JSON, or JSONL file path:
+```
+{
+  "brand_name": "Acme",
+  "source": "ads_manager_export",
+  "file_path": "./exports/meta-last-30d.csv"
+}
+```
+
 ### `get_meta_performance_summary`
 Read saved Meta performance memory without triggering a sync.
 ```

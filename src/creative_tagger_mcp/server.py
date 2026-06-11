@@ -16,6 +16,7 @@ Usage:
     CREATIVE_TAGGER_API_KEY=ct_xxx creative-tagger-mcp
 """
 
+import csv
 import json
 import os
 from pathlib import Path
@@ -496,7 +497,6 @@ async def list_tools() -> list[Tool]:
             ),
             inputSchema={
                 "type": "object",
-                "required": ["rows"],
                 "properties": {
                     "brand_name": {"type": "string"},
                     "rows": {
@@ -509,8 +509,20 @@ async def list_tools() -> list[Tool]:
                             "thumbstop, retention, and funnel scoring."
                         ),
                     },
+                    "file_path": {
+                        "type": "string",
+                        "description": (
+                            "Local CSV, JSON, or JSONL file containing Meta-style "
+                            "performance rows. JSON files can be a top-level array or "
+                            "an object with rows/data/items."
+                        ),
+                    },
                     "source": {"type": "string", "default": "meta_mcp"},
                 },
+                "oneOf": [
+                    {"required": ["rows"]},
+                    {"required": ["file_path"]},
+                ],
             },
         ),
         Tool(
@@ -1331,9 +1343,10 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
 
 
 async def _import_meta_performance(args: dict) -> list[TextContent]:
-    rows = args.get("rows") or []
-    if not isinstance(rows, list) or not rows:
-        return _err("rows must be a non-empty list of Meta performance objects")
+    try:
+        rows = _resolve_import_rows(args)
+    except ValueError as exc:
+        return _err(str(exc))
     body = {
         "brand_name": args.get("brand_name", ""),
         "rows": rows,
@@ -1343,6 +1356,70 @@ async def _import_meta_performance(args: dict) -> list[TextContent]:
         resp = await client.post(f"{API_URL}/meta/import", json=body, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
+
+
+def _resolve_import_rows(args: dict) -> list[dict[str, Any]]:
+    rows = args.get("rows")
+    file_path = args.get("file_path")
+    resolved_rows: list[dict[str, Any]] = []
+    if rows is not None:
+        resolved_rows.extend(_coerce_row_objects(rows, "rows"))
+    if file_path:
+        resolved_rows.extend(_load_rows_from_file_path(file_path))
+    if not resolved_rows:
+        raise ValueError(
+            "Provide rows or file_path with at least one Meta performance row"
+        )
+    return resolved_rows
+
+
+def _coerce_row_objects(value: object, field_name: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{field_name} must be a non-empty list of row objects")
+    invalid = next((row for row in value if not isinstance(row, dict)), None)
+    if invalid is not None:
+        raise ValueError(f"{field_name} must contain only object rows")
+    return [dict(row) for row in value]
+
+
+def _load_rows_from_file_path(file_path: str) -> list[dict[str, Any]]:
+    path = Path(file_path).expanduser().resolve()
+    if not path.exists():
+        raise ValueError(f"File not found: {file_path}")
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            rows = [dict(row) for row in csv.DictReader(handle)]
+    elif suffix == ".jsonl":
+        with path.open(encoding="utf-8") as handle:
+            rows = [
+                json.loads(line)
+                for line in handle
+                if line.strip()
+            ]
+    elif suffix == ".json":
+        with path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if isinstance(payload, list):
+            rows = payload
+        elif isinstance(payload, dict):
+            rows = next(
+                (
+                    payload[key]
+                    for key in ("rows", "data", "items")
+                    if isinstance(payload.get(key), list)
+                ),
+                None,
+            )
+            if rows is None:
+                raise ValueError(
+                    "JSON file must be an array or contain rows/data/items"
+                )
+        else:
+            raise ValueError("JSON file must contain row objects")
+    else:
+        raise ValueError("file_path must end in .csv, .json, or .jsonl")
+    return _coerce_row_objects(rows, f"file_path ({path.name})")
 
 
 async def _get_meta_performance_summary(args: dict) -> list[TextContent]:
