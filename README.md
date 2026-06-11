@@ -290,9 +290,10 @@ swaps.
 ```
 
 ### `get_demographics_performance`
-Read age x gender performance memory with opportunity and waste flags.
+Read demographics performance memory with opportunity and waste flags. Supports
+`age_gender`, `age`, or `gender` views.
 ```
-{ "brand_name": "Acme" }
+{ "brand_name": "Acme", "axis": "age_gender" }
 ```
 
 ### `generate_brand_taxonomy`

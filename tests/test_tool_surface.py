@@ -208,6 +208,30 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
 
+    def test_demographics_tool_supports_axis_filters(self) -> None:
+        tools = _declared_tools()
+        demographics = tools["get_demographics_performance"]
+        props = demographics["inputSchema"]["properties"]
+
+        self.assertIn("age x gender", demographics["description"])
+        self.assertIn("age-only", demographics["description"])
+        self.assertIn("gender-only", demographics["description"])
+        self.assertIn("axis", props)
+        self.assertEqual(props["axis"]["default"], "age_gender")
+        self.assertIn("age_gender, age, or gender", props["axis"]["description"])
+
+    def test_demographics_params_include_axis_only_when_requested(self) -> None:
+        namespace = _load_pure_helpers({"_demographics_params"})
+
+        self.assertEqual(
+            namespace["_demographics_params"]({"brand_name": "Acme", "axis": "gender"}),
+            {"brand_name": "Acme", "axis": "gender"},
+        )
+        self.assertEqual(
+            namespace["_demographics_params"]({"brand_name": "Acme"}),
+            {"brand_name": "Acme"},
+        )
+
 
 def _declared_tool_names() -> set[str]:
     return set(_declared_tools())
