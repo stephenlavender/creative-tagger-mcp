@@ -18,6 +18,7 @@ Usage:
 
 import json
 import os
+from datetime import date
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -53,6 +54,36 @@ def _text(payload: Any) -> list[TextContent]:
 
 def _err(msg: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Error: {msg}")]
+
+
+def _validated_date_window(args: dict[str, Any]) -> dict[str, str]:
+    brand_name = str(args.get("brand_name", "")).strip()
+    if not brand_name:
+        raise ValueError("brand_name is required")
+
+    params = {"brand_name": brand_name}
+    for field in ("start_date", "end_date"):
+        raw_value = args.get(field)
+        if raw_value in (None, ""):
+            continue
+        if not isinstance(raw_value, str):
+            raise ValueError(f"{field} must be a YYYY-MM-DD string")
+        try:
+            normalized = date.fromisoformat(raw_value).isoformat()
+        except ValueError as exc:
+            raise ValueError(f"{field} must be a YYYY-MM-DD string") from exc
+        if normalized != raw_value:
+            raise ValueError(f"{field} must be a YYYY-MM-DD string")
+        params[field] = normalized
+
+    if (
+        "start_date" in params
+        and "end_date" in params
+        and params["start_date"] > params["end_date"]
+    ):
+        raise ValueError("start_date must be on or before end_date")
+
+    return params
 
 
 # ---------- Tools ----------
@@ -726,12 +757,32 @@ async def list_tools() -> list[Tool]:
             name="get_demographics_performance",
             description=(
                 "Return saved age x gender performance memory with opportunity and "
-                "waste flags. Useful for audience strategy and Advantage+ diagnostics."
+                "waste flags. Useful for audience strategy and Advantage+ diagnostics, "
+                "including optional inclusive start/end date windows for a focused "
+                "lookback or test period."
             ),
             inputSchema={
                 "type": "object",
+                "required": ["brand_name"],
                 "properties": {
-                    "brand_name": {"type": "string"},
+                    "brand_name": {
+                        "type": "string",
+                        "description": "Brand/workspace name whose demographics memory to read",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": (
+                            "Optional inclusive lookback start date in YYYY-MM-DD format"
+                        ),
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": (
+                            "Optional inclusive lookback end date in YYYY-MM-DD format"
+                        ),
+                    },
                 },
             },
         ),
@@ -1505,7 +1556,10 @@ async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
 
 
 async def _get_demographics_performance(args: dict) -> list[TextContent]:
-    params = {"brand_name": args.get("brand_name", "")}
+    try:
+        params = _validated_date_window(args)
+    except ValueError as exc:
+        return _err(str(exc))
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/performance/demographics",
