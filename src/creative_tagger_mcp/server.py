@@ -16,6 +16,7 @@ Usage:
     CREATIVE_TAGGER_API_KEY=ct_xxx creative-tagger-mcp
 """
 
+import csv
 import json
 import os
 from pathlib import Path
@@ -492,11 +493,11 @@ async def list_tools() -> list[Tool]:
                 "Import Meta-style performance rows gathered by the user's own Meta "
                 "MCP/CLI or Ads Manager export. Use this when native Creative Tagger "
                 "Meta OAuth is unavailable; it stores performance memory without "
-                "creating campaigns or editing budgets."
+                "creating campaigns or editing budgets. Supports inline rows or a "
+                "local CSV/JSON export path for smoother agent-driven imports."
             ),
             inputSchema={
                 "type": "object",
-                "required": ["rows"],
                 "properties": {
                     "brand_name": {"type": "string"},
                     "rows": {
@@ -509,8 +510,28 @@ async def list_tools() -> list[Tool]:
                             "thumbstop, retention, and funnel scoring."
                         ),
                     },
+                    "csv_path": {
+                        "type": "string",
+                        "description": (
+                            "Local path to a CSV export with header columns such as "
+                            "ad_name/ad_id/spend/impressions/clicks/conversions/"
+                            "revenue/date."
+                        ),
+                    },
+                    "json_path": {
+                        "type": "string",
+                        "description": (
+                            "Local path to a JSON export containing either a top-level "
+                            "rows array or a raw array of performance row objects."
+                        ),
+                    },
                     "source": {"type": "string", "default": "meta_mcp"},
                 },
+                "oneOf": [
+                    {"required": ["rows"]},
+                    {"required": ["csv_path"]},
+                    {"required": ["json_path"]},
+                ],
             },
         ),
         Tool(
@@ -1331,9 +1352,10 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
 
 
 async def _import_meta_performance(args: dict) -> list[TextContent]:
-    rows = args.get("rows") or []
-    if not isinstance(rows, list) or not rows:
-        return _err("rows must be a non-empty list of Meta performance objects")
+    try:
+        rows = _meta_import_rows(args)
+    except ValueError as exc:
+        return _err(str(exc))
     body = {
         "brand_name": args.get("brand_name", ""),
         "rows": rows,
@@ -1343,6 +1365,64 @@ async def _import_meta_performance(args: dict) -> list[TextContent]:
         resp = await client.post(f"{API_URL}/meta/import", json=body, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
+
+
+def _meta_import_rows(args: dict) -> list[dict]:
+    rows = args.get("rows")
+    csv_path = args.get("csv_path")
+    json_path = args.get("json_path")
+
+    provided = [value for value in (rows, csv_path, json_path) if value not in (None, "")]
+    if len(provided) != 1:
+        raise ValueError("Provide exactly one of rows, csv_path, or json_path")
+
+    if rows is not None:
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("rows must be a non-empty list of Meta performance objects")
+        return [_normalize_meta_import_row(row) for row in rows]
+
+    path = Path(str(csv_path or json_path)).expanduser().resolve()
+    if not path.exists():
+        raise ValueError(f"File not found: {path}")
+
+    if csv_path:
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            parsed_rows = [
+                _normalize_meta_import_row(row)
+                for row in csv.DictReader(handle)
+                if any((value or "").strip() for value in row.values())
+            ]
+        if not parsed_rows:
+            raise ValueError("csv_path must contain at least one non-empty data row")
+        return parsed_rows
+
+    with path.open(encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if isinstance(payload, dict):
+        payload = payload.get("rows")
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("json_path must contain a non-empty array or {\"rows\": [...]} payload")
+    return [_normalize_meta_import_row(row) for row in payload]
+
+
+def _normalize_meta_import_row(row: Any) -> dict:
+    if not isinstance(row, dict):
+        raise ValueError("Every imported performance row must be an object")
+    normalized = {}
+    for key, value in row.items():
+        if key is None:
+            continue
+        clean_key = str(key).strip()
+        if not clean_key:
+            continue
+        if isinstance(value, str):
+            value = value.strip()
+            if value == "":
+                value = None
+        normalized[clean_key] = value
+    if not normalized:
+        raise ValueError("Imported performance rows cannot be empty objects")
+    return normalized
 
 
 async def _get_meta_performance_summary(args: dict) -> list[TextContent]:

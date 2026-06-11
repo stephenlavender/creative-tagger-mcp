@@ -230,6 +230,13 @@ Creative Tagger:
 }
 ```
 
+Agents can also point `import_meta_performance` at a local export instead of
+inlining rows:
+```
+{ "brand_name": "Acme", "csv_path": "./exports/meta-last-30d.csv" }
+{ "brand_name": "Acme", "json_path": "./exports/meta-last-30d.json" }
+```
+
 ### `get_meta_performance_summary`
 Read saved Meta performance memory without triggering a sync.
 ```

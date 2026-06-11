@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import json
+import tempfile
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -208,6 +209,55 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
 
+    def test_import_meta_performance_supports_file_paths(self) -> None:
+        tools = _declared_tools()
+        import_tool = tools["import_meta_performance"]
+        props = import_tool["inputSchema"]["properties"]
+        one_of = import_tool["inputSchema"]["oneOf"]
+
+        self.assertIn("csv_path", props)
+        self.assertIn("json_path", props)
+        self.assertIn("local CSV/JSON export path", import_tool["description"])
+        self.assertIn({"required": ["rows"]}, one_of)
+        self.assertIn({"required": ["csv_path"]}, one_of)
+        self.assertIn({"required": ["json_path"]}, one_of)
+
+    def test_meta_import_rows_reads_csv_and_json_exports(self) -> None:
+        namespace = _load_pure_helpers(
+            {"_meta_import_rows", "_normalize_meta_import_row"}
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "meta.csv"
+            csv_path.write_text(
+                "ad_name,spend,impressions\nSpring Sale,123.45,1000\n",
+                encoding="utf-8",
+            )
+            json_path = Path(tmpdir) / "meta.json"
+            json_path.write_text(
+                json.dumps({"rows": [{"ad_name": "Retargeting", "spend": "88"}]}),
+                encoding="utf-8",
+            )
+
+            csv_rows = namespace["_meta_import_rows"]({"csv_path": str(csv_path)})
+            json_rows = namespace["_meta_import_rows"]({"json_path": str(json_path)})
+
+        self.assertEqual(
+            csv_rows,
+            [{"ad_name": "Spring Sale", "spend": "123.45", "impressions": "1000"}],
+        )
+        self.assertEqual(json_rows, [{"ad_name": "Retargeting", "spend": "88"}])
+
+    def test_meta_import_rows_requires_exactly_one_source(self) -> None:
+        namespace = _load_pure_helpers(
+            {"_meta_import_rows", "_normalize_meta_import_row"}
+        )
+
+        with self.assertRaisesRegex(
+            ValueError, "Provide exactly one of rows, csv_path, or json_path"
+        ):
+            namespace["_meta_import_rows"]({"rows": [], "csv_path": "/tmp/meta.csv"})
+
 
 def _declared_tool_names() -> set[str]:
     return set(_declared_tools())
@@ -254,6 +304,9 @@ def _load_pure_helpers(wanted: set[str]) -> dict:
     ast.fix_missing_locations(module)
 
     namespace = {
+        "Any": object,
+        "Path": Path,
+        "csv": __import__("csv"),
         "json": json,
         "_text": lambda payload: [SimpleNamespace(text=json.dumps(payload, indent=2))],
     }
