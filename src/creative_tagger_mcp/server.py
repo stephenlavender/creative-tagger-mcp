@@ -673,24 +673,64 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="run_saved_custom_report",
-            description="Run a saved custom report definition by id.",
+            description=(
+                "Run a saved custom report definition by id or name. "
+                "Use report_name when the user refers to a saved report naturally "
+                "and does not know the numeric id."
+            ),
             inputSchema={
                 "type": "object",
-                "required": ["report_id"],
                 "properties": {
-                    "report_id": {"type": "integer"},
+                    "report_id": {
+                        "type": "integer",
+                        "description": "Saved report id when already known",
+                    },
+                    "report_name": {
+                        "type": "string",
+                        "description": "Saved report name to resolve before running",
+                    },
+                    "brand_name": {
+                        "type": "string",
+                        "description": (
+                            "Optional brand filter used during report_name lookup"
+                        ),
+                    },
                 },
+                "anyOf": [
+                    {"required": ["report_id"]},
+                    {"required": ["report_name"]},
+                ],
             },
         ),
         Tool(
             name="delete_custom_report",
-            description="Delete a saved custom report definition by id.",
+            description=(
+                "Delete a saved custom report definition by id or name. "
+                "Use report_name when the user wants to remove a saved view but "
+                "does not know the numeric id."
+            ),
             inputSchema={
                 "type": "object",
-                "required": ["report_id"],
                 "properties": {
-                    "report_id": {"type": "integer"},
+                    "report_id": {
+                        "type": "integer",
+                        "description": "Saved report id when already known",
+                    },
+                    "report_name": {
+                        "type": "string",
+                        "description": "Saved report name to resolve before deleting",
+                    },
+                    "brand_name": {
+                        "type": "string",
+                        "description": (
+                            "Optional brand filter used during report_name lookup"
+                        ),
+                    },
                 },
+                "anyOf": [
+                    {"required": ["report_id"]},
+                    {"required": ["report_name"]},
+                ],
             },
         ),
         Tool(
@@ -1447,6 +1487,93 @@ async def _list_custom_reports(args: dict) -> list[TextContent]:
         return _text(resp.json())
 
 
+def _saved_reports_from_payload(payload: object) -> list[dict]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("reports", "items", "results", "data"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    nested = payload.get("saved_reports")
+    if isinstance(nested, dict):
+        for key in ("reports", "items", "results", "data"):
+            value = nested.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _saved_report_name(report: dict) -> str:
+    for key in ("name", "title", "report_name"):
+        value = report.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _match_saved_report(
+    reports: list[dict], report_name: str, brand_name: str = ""
+) -> dict | None:
+    needle = report_name.strip().casefold()
+    brand = brand_name.strip().casefold()
+    if not needle:
+        return None
+    matches: list[dict] = []
+    for report in reports:
+        candidate = _saved_report_name(report)
+        if not candidate or candidate.casefold() != needle:
+            continue
+        if brand:
+            report_brand = str(report.get("brand_name") or "").strip().casefold()
+            if report_brand and report_brand != brand:
+                continue
+        matches.append(report)
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(
+            "Multiple saved custom reports matched that name. "
+            "Pass report_id or add brand_name to disambiguate."
+        )
+    return None
+
+
+async def _resolve_saved_custom_report_id(args: dict) -> int | None:
+    report_id = args.get("report_id")
+    if report_id:
+        return int(report_id)
+    report_name = str(args.get("report_name") or "").strip()
+    if not report_name:
+        return None
+
+    params = {"brand_name": args.get("brand_name", "")}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/reports/custom/saved",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        reports = _saved_reports_from_payload(resp.json())
+
+    match = _match_saved_report(reports, report_name, str(args.get("brand_name") or ""))
+    if not match:
+        available = sorted(
+            {name for name in (_saved_report_name(report) for report in reports) if name}
+        )
+        suffix = f" Available reports: {', '.join(available[:8])}" if available else ""
+        raise ValueError(f"No saved custom report matched '{report_name}'.{suffix}")
+
+    resolved_id = match.get("id") or match.get("report_id")
+    if not resolved_id:
+        raise ValueError(
+            f"Saved custom report '{_saved_report_name(match) or report_name}' is missing an id."
+        )
+    return int(resolved_id)
+
+
 async def _save_custom_report(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "")
     name = args.get("name", "")
@@ -1479,9 +1606,12 @@ async def _save_custom_report(args: dict) -> list[TextContent]:
 
 
 async def _run_saved_custom_report(args: dict) -> list[TextContent]:
-    report_id = args.get("report_id")
+    try:
+        report_id = await _resolve_saved_custom_report_id(args)
+    except ValueError as exc:
+        return _err(str(exc))
     if not report_id:
-        return _err("report_id is required")
+        return _err("report_id or report_name is required")
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/reports/custom/saved/{report_id}/run",
@@ -1492,9 +1622,12 @@ async def _run_saved_custom_report(args: dict) -> list[TextContent]:
 
 
 async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
-    report_id = args.get("report_id")
+    try:
+        report_id = await _resolve_saved_custom_report_id(args)
+    except ValueError as exc:
+        return _err(str(exc))
     if not report_id:
-        return _err("report_id is required")
+        return _err("report_id or report_name is required")
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.delete(
             f"{API_URL}/reports/custom/saved/{report_id}",
