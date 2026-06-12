@@ -271,12 +271,13 @@ Rows can include `parts` and `values`, so the agent can explain a winning
 combination instead of treating each tag independently.
 
 ### Saved custom reports
-Save reusable report definitions, list them for a brand, rerun them by id, or
-delete them when they are no longer needed.
+Save reusable report definitions, list them for a brand, rerun them by id or
+name, or delete them when they are no longer needed.
 ```
 { "brand_name": "Acme", "name": "Hook + LP + Offer", "dimensions": ["hook_type", "landing_page", "offer_type"] }
 { "brand_name": "Acme" }
 { "report_id": 7 }
+{ "report_name": "Hook + LP + Offer", "brand_name": "Acme" }
 ```
 Tools: `save_custom_report`, `list_custom_reports`, `run_saved_custom_report`,
 `delete_custom_report`.

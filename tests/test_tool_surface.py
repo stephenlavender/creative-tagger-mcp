@@ -198,6 +198,46 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
 
+    def test_saved_custom_report_tools_accept_name_lookup(self) -> None:
+        tools = _declared_tools()
+
+        run_schema = tools["run_saved_custom_report"]["inputSchema"]
+        delete_schema = tools["delete_custom_report"]["inputSchema"]
+
+        self.assertIn("report_name", run_schema["properties"])
+        self.assertIn("brand_name", run_schema["properties"])
+        self.assertIn({"required": ["report_name"]}, run_schema["anyOf"])
+        self.assertIn("report_name", delete_schema["properties"])
+        self.assertIn({"required": ["report_name"]}, delete_schema["anyOf"])
+        self.assertIn("or name", tools["run_saved_custom_report"]["description"])
+        self.assertIn("or name", tools["delete_custom_report"]["description"])
+
+    def test_saved_report_lookup_helpers_match_by_name_and_brand(self) -> None:
+        namespace = _load_pure_helpers(
+            {"_saved_reports_from_payload", "_saved_report_name", "_match_saved_report"}
+        )
+
+        payload = {
+            "saved_reports": {
+                "items": [
+                    {"id": 11, "name": "Top Hooks", "brand_name": "Acme"},
+                    {"id": 12, "title": "Top Hooks", "brand_name": "Other"},
+                    {"id": 13, "report_name": "Angles", "brand_name": "Acme"},
+                ]
+            }
+        }
+
+        reports = namespace["_saved_reports_from_payload"](payload)
+        self.assertEqual(len(reports), 3)
+        self.assertEqual(namespace["_saved_report_name"](reports[2]), "Angles")
+        self.assertEqual(
+            namespace["_match_saved_report"](reports, "top hooks", "acme")["id"], 11
+        )
+        self.assertIsNone(namespace["_match_saved_report"](reports, "missing", "acme"))
+
+        with self.assertRaises(ValueError):
+            namespace["_match_saved_report"](reports, "Top Hooks")
+
     def test_competitor_import_tool_documents_approval_workaround(self) -> None:
         tools = _declared_tools()
         import_tool = tools["import_competitor_ads"]
