@@ -8,6 +8,7 @@ Your AI of choice gets:
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
+- **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
 - **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
 
@@ -234,6 +235,20 @@ milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score.
   "rows": "messaging_angle",
   "columns": "ad_type",
   "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"
+}
+```
+
+### `get_brain_learnings`
+Read the auto-written Brand Brain learnings generated from performance memory,
+strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
+hero learning, concise stories, and an `agent_context` payload for the next
+brief or strategist prompt.
+```
+{
+  "brand_name": "Acme",
+  "minimum_spend": 500,
+  "learning_spend": 1500,
+  "limit": 6
 }
 ```
 

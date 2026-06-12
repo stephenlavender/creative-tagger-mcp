@@ -42,6 +42,7 @@ PUBLIC_EXPECTED_TOOLS = {
     "get_taxonomy_performance",
     "get_prebuilt_reports",
     "get_creative_strategy_report",
+    "get_brain_learnings",
     "create_custom_report",
     "list_custom_reports",
     "save_custom_report",
@@ -183,6 +184,7 @@ class ToolSurfaceTest(unittest.TestCase):
         taxonomy_desc = tools["get_taxonomy_performance"]["description"]
         prebuilt_desc = tools["get_prebuilt_reports"]["description"]
         strategy_desc = tools["get_creative_strategy_report"]["description"]
+        brain_desc = tools["get_brain_learnings"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
         import_rows = (
@@ -206,6 +208,12 @@ class ToolSurfaceTest(unittest.TestCase):
             "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
         )
         self.assertIn("hook_rate", strategy_schema["metrics"]["description"])
+        self.assertIn("Brand Brain learnings", brain_desc)
+        self.assertIn("agent_context", brain_desc)
+        self.assertIn("audience opportunities", brain_desc)
+        brain_schema = tools["get_brain_learnings"]["inputSchema"]["properties"]
+        self.assertEqual(brain_schema["limit"]["default"], 8)
+        self.assertIn("YYYY-MM-DD", brain_schema["start_date"]["description"])
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)

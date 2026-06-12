@@ -647,6 +647,44 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_brain_learnings",
+            description=(
+                "Return auto-written Brand Brain learnings from saved performance, "
+                "strategy, taxonomy, and audience data. Use this when an agent needs "
+                "the current working patterns, watchouts, audience opportunities, "
+                "fatigue, and gap learnings plus an agent_context brief seed."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "description": "Spend floor before a pattern is treated as significant",
+                    },
+                    "learning_spend": {
+                        "type": "number",
+                        "description": "Spend target before a cell graduates from live learning",
+                    },
+                    "cpa_target": {"type": "number"},
+                    "roas_target": {"type": "number"},
+                    "limit": {
+                        "type": "integer",
+                        "default": 8,
+                        "description": "Maximum learning stories to return",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="create_custom_report",
             description=(
                 "Create a custom performance report by selecting standard and/or "
@@ -979,6 +1017,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_prebuilt_reports(arguments)
         if name == "get_creative_strategy_report":
             return await _get_creative_strategy_report(arguments)
+        if name == "get_brain_learnings":
+            return await _get_brain_learnings(arguments)
         if name == "create_custom_report":
             return await _create_custom_report(arguments)
         if name == "list_custom_reports":
@@ -1495,6 +1535,31 @@ async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/reports/creative-strategy",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_brain_learnings(args: dict) -> list[TextContent]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "limit": args.get("limit", 8),
+    }
+    for key in (
+        "start_date",
+        "end_date",
+        "minimum_spend",
+        "learning_spend",
+        "cpa_target",
+        "roas_target",
+    ):
+        if args.get(key) not in (None, ""):
+            params[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/brain/learnings",
             params=params,
             headers=_headers(),
         )
