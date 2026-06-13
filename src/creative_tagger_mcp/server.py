@@ -690,6 +690,59 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_performance_timeseries",
+            description=(
+                "Return saved performance time series for creative or campaign fatigue "
+                "checks. Use this to inspect dated ROAS, CPA, CTR, CPM, thumbstop, "
+                "completion, or funnel trends per ad, campaign, landing page, or "
+                "analysis id, plus the same fatigue decay signal the strategy matrix uses."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "group_by": {
+                        "type": "string",
+                        "default": "ad_name",
+                        "description": (
+                            "ad_name, campaign_name, landing_page_domain, or analysis_id"
+                        ),
+                    },
+                    "metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, "
+                            "video_completion_rate, or funnel_score"
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Maximum grouped series to return",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "default": 500,
+                        "description": "Spend floor before fatigue is treated as meaningful",
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a series to fatigued",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="create_custom_report",
             description=(
                 "Create a custom performance report by selecting standard and/or "
@@ -1024,6 +1077,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_creative_strategy_report(arguments)
         if name == "get_brain_learnings":
             return await _get_brain_learnings(arguments)
+        if name == "get_performance_timeseries":
+            return await _get_performance_timeseries(arguments)
         if name == "create_custom_report":
             return await _create_custom_report(arguments)
         if name == "list_custom_reports":
@@ -1566,6 +1621,28 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/brain/learnings",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_performance_timeseries(args: dict) -> list[TextContent]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "group_by": args.get("group_by", "ad_name"),
+        "metric": args.get("metric", "roas"),
+        "limit": args.get("limit", 10),
+        "minimum_spend": args.get("minimum_spend", 500),
+        "fatigue_decay_threshold": args.get("fatigue_decay_threshold", 0.18),
+    }
+    for key in ("start_date", "end_date"):
+        if args.get(key) not in (None, ""):
+            params[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/performance/timeseries",
             params=params,
             headers=_headers(),
         )

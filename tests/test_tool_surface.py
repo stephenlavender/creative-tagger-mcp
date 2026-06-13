@@ -43,6 +43,7 @@ PUBLIC_EXPECTED_TOOLS = {
     "get_prebuilt_reports",
     "get_creative_strategy_report",
     "get_brain_learnings",
+    "get_performance_timeseries",
     "create_custom_report",
     "list_custom_reports",
     "save_custom_report",
@@ -185,6 +186,7 @@ class ToolSurfaceTest(unittest.TestCase):
         prebuilt_desc = tools["get_prebuilt_reports"]["description"]
         strategy_desc = tools["get_creative_strategy_report"]["description"]
         brain_desc = tools["get_brain_learnings"]["description"]
+        timeseries_desc = tools["get_performance_timeseries"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
         import_rows = (
@@ -216,6 +218,16 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(brain_schema["limit"]["default"], 8)
         self.assertIn("YYYY-MM-DD", brain_schema["start_date"]["description"])
         self.assertIn("working, watch, audience, gap", brain_schema["kinds"]["description"])
+        self.assertIn("fatigue", timeseries_desc)
+        self.assertIn("thumbstop", timeseries_desc)
+        self.assertIn("analysis id", timeseries_desc)
+        timeseries_schema = tools["get_performance_timeseries"]["inputSchema"]["properties"]
+        self.assertEqual(timeseries_schema["group_by"]["default"], "ad_name")
+        self.assertEqual(timeseries_schema["metric"]["default"], "roas")
+        self.assertEqual(timeseries_schema["minimum_spend"]["default"], 500)
+        self.assertEqual(timeseries_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertIn("landing_page_domain", timeseries_schema["group_by"]["description"])
+        self.assertIn("funnel_score", timeseries_schema["metric"]["description"])
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)

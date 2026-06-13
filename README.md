@@ -254,6 +254,23 @@ such as `working,audience` or `watch`.
 }
 ```
 
+### `get_performance_timeseries`
+Read saved performance curves for fatigue checks without opening the dashboard.
+Returns dated points plus a fatigue signal for each grouped series, using the
+same decay threshold as Creative Tagger's strategy matrix. Group by creative,
+campaign, landing page, or `analysis_id`, and inspect metrics like ROAS, CPA,
+CTR, CPM, thumbstop, completion rate, or funnel score.
+```
+{
+  "brand_name": "Acme",
+  "group_by": "ad_name",
+  "metric": "roas",
+  "minimum_spend": 500,
+  "fatigue_decay_threshold": 0.18,
+  "limit": 5
+}
+```
+
 Internal migration/backfill tools are hidden from the default published MCP
 surface. They require `CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS=1` and should not
 be used in customer flows or to avoid Meta approval.
