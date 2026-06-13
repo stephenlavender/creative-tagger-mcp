@@ -242,12 +242,14 @@ milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score.
 Read the auto-written Brand Brain learnings generated from performance memory,
 strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
 hero learning, concise stories, and an `agent_context` payload for the next
-brief or strategist prompt.
+brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
+such as `working,audience` or `watch`.
 ```
 {
   "brand_name": "Acme",
   "minimum_spend": 500,
   "learning_spend": 1500,
+  "kinds": "working,audience",
   "limit": 6
 }
 ```

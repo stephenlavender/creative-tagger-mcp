@@ -211,9 +211,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("Brand Brain learnings", brain_desc)
         self.assertIn("agent_context", brain_desc)
         self.assertIn("audience opportunities", brain_desc)
+        self.assertIn("working-only", brain_desc)
         brain_schema = tools["get_brain_learnings"]["inputSchema"]["properties"]
         self.assertEqual(brain_schema["limit"]["default"], 8)
         self.assertIn("YYYY-MM-DD", brain_schema["start_date"]["description"])
+        self.assertIn("working, watch, audience, gap", brain_schema["kinds"]["description"])
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)

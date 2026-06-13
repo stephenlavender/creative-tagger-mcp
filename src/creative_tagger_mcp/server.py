@@ -652,7 +652,8 @@ async def list_tools() -> list[Tool]:
                 "Return auto-written Brand Brain learnings from saved performance, "
                 "strategy, taxonomy, and audience data. Use this when an agent needs "
                 "the current working patterns, watchouts, audience opportunities, "
-                "fatigue, and gap learnings plus an agent_context brief seed."
+                "fatigue, and gap learnings plus an agent_context brief seed. "
+                "Supports focused reads like working-only or audience-only learnings."
             ),
             inputSchema={
                 "type": "object",
@@ -676,6 +677,10 @@ async def list_tools() -> list[Tool]:
                     },
                     "cpa_target": {"type": "number"},
                     "roas_target": {"type": "number"},
+                    "kinds": {
+                        "type": "string",
+                        "description": "Optional comma-separated kinds: working, watch, audience, gap, or all",
+                    },
                     "limit": {
                         "type": "integer",
                         "default": 8,
@@ -1554,6 +1559,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "learning_spend",
         "cpa_target",
         "roas_target",
+        "kinds",
     ):
         if args.get(key) not in (None, ""):
             params[key] = args[key]
