@@ -694,8 +694,9 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Return saved performance time series for creative or campaign fatigue "
                 "checks. Use this to inspect dated ROAS, CPA, CTR, CPM, thumbstop, "
-                "completion, or funnel trends per ad, campaign, landing page, or "
-                "analysis id, plus the same fatigue decay signal the strategy matrix uses."
+                "completion, or funnel trends per creative, campaign, landing page, "
+                "hook, angle, ad type, format, visual style, CTA, or analysis id, "
+                "plus the same fatigue decay signal the strategy matrix uses."
             ),
             inputSchema={
                 "type": "object",
@@ -705,7 +706,8 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "default": "ad_name",
                         "description": (
-                            "ad_name, campaign_name, landing_page_domain, or analysis_id"
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, or emotion"
                         ),
                     },
                     "metric": {
