@@ -226,7 +226,10 @@ messaging angles by ad types, with states for next tests, live learning,
 winners, losers, fatigue, and gaps. Returns the decision queue plus an
 `agent_context` payload that can be handed directly to an LLM for strategy work.
 Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
-milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score.
+milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score. For
+audience-mode reads, switch the axes to demographic dimensions such as
+`demographic_age` and `demographic_gender`, or use the `demographic-read`
+template.
 
 ```
 {
@@ -235,6 +238,19 @@ milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score.
   "rows": "messaging_angle",
   "columns": "ad_type",
   "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"
+}
+```
+
+```json
+{
+  "brand_name": "Acme",
+  "report_template": "demographic-read",
+  "rows": "demographic_age",
+  "columns": "demographic_gender",
+  "metrics": "spend,roas,ctr,thumbstop_rate",
+  "roas_target": 2.5,
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-31"
 }
 ```
 

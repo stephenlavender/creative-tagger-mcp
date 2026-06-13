@@ -601,11 +601,13 @@ async def list_tools() -> list[Tool]:
                 "Return the strategist matrix for deciding what to test next on Meta. "
                 "Defaults to messaging_angle rows by ad_type columns, with text and "
                 "color-coded states for next tests, live learning, winners, losers, "
-                "fatigue, and gaps. Includes the decision queue, report table, and "
-                "agent_context payload so an LLM can brief next tests from the same "
-                "source of truth as the Creative Tagger UI. Supports CTR, thumbstop, "
-                "hook, hold, video milestone, CPA, CVR, ROAS, revenue, spend, and "
-                "funnel metrics."
+                "fatigue, and gaps. Also supports audience-mode matrices with "
+                "demographic_age, demographic_gender, demographic_segment, and "
+                "demographic_signal axes. Includes the decision queue, report table, "
+                "and agent_context payload so an LLM can brief next tests from the "
+                "same source of truth as the Creative Tagger UI. Supports CTR, "
+                "thumbstop, hook, hold, video milestone, CPA, CVR, ROAS, revenue, "
+                "spend, and funnel metrics."
             ),
             inputSchema={
                 "type": "object",
@@ -614,17 +616,25 @@ async def list_tools() -> list[Tool]:
                     "report_template": {
                         "type": "string",
                         "default": "next-tests",
-                        "description": "next-tests, creative-winners, fatigue-watch, etc.",
+                        "description": (
+                            "next-tests, creative-winners, fatigue-watch, demographic-read, etc."
+                        ),
                     },
                     "rows": {
                         "type": "string",
                         "default": "messaging_angle",
-                        "description": "Matrix row dimension, e.g. messaging_angle, hook, persona",
+                        "description": (
+                            "Matrix row dimension, e.g. messaging_angle, hook, persona, "
+                            "demographic_age, demographic_gender, demographic_segment"
+                        ),
                     },
                     "columns": {
                         "type": "string",
                         "default": "ad_type",
-                        "description": "Matrix column dimension, e.g. ad_type, format, funnel_stage",
+                        "description": (
+                            "Matrix column dimension, e.g. ad_type, format, funnel_stage, "
+                            "demographic_gender, demographic_age, demographic_signal"
+                        ),
                     },
                     "status_focus": {
                         "type": "string",
@@ -639,7 +649,16 @@ async def list_tools() -> list[Tool]:
                             "thumbstop_rate,hook_rate,hold_rate,cpa"
                         ),
                     },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
                     "cpa_target": {"type": "number"},
+                    "roas_target": {"type": "number"},
                     "minimum_spend": {"type": "number"},
                     "learning_spend": {"type": "number"},
                     "limit": {"type": "integer", "default": 10},
@@ -1597,9 +1616,11 @@ async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
         "columns": args.get("columns", "ad_type"),
         "status_focus": args.get("status_focus", "all"),
         "metrics": args.get("metrics", "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"),
+        "start_date": args.get("start_date", ""),
+        "end_date": args.get("end_date", ""),
         "limit": args.get("limit", 10),
     }
-    for key in ("cpa_target", "minimum_spend", "learning_spend"):
+    for key in ("cpa_target", "roas_target", "minimum_spend", "learning_spend"):
         if args.get(key) is not None:
             params[key] = args[key]
     async with httpx.AsyncClient(timeout=30.0) as client:

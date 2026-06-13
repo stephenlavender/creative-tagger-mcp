@@ -203,13 +203,18 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("agent_context", strategy_desc)
         self.assertIn("hook", strategy_desc)
         self.assertIn("hold", strategy_desc)
+        self.assertIn("demographic_age", strategy_desc)
         strategy_schema = tools["get_creative_strategy_report"]["inputSchema"]["properties"]
         self.assertIn("messaging_angle", strategy_schema["rows"]["description"])
+        self.assertIn("demographic_gender", strategy_schema["columns"]["description"])
+        self.assertIn("demographic-read", strategy_schema["report_template"]["description"])
         self.assertEqual(
             strategy_schema["metrics"]["default"],
             "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
         )
         self.assertIn("hook_rate", strategy_schema["metrics"]["description"])
+        self.assertIn("YYYY-MM-DD", strategy_schema["start_date"]["description"])
+        self.assertIn("roas_target", strategy_schema)
         self.assertIn("Brand Brain learnings", brain_desc)
         self.assertIn("agent_context", brain_desc)
         self.assertIn("audience opportunities", brain_desc)
@@ -245,6 +250,15 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("reusable custom report", saved_desc)
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
+
+    def test_strategy_tool_forwards_demographic_and_date_controls(self) -> None:
+        source = SERVER.read_text()
+
+        self.assertIn('"start_date": args.get("start_date", "")', source)
+        self.assertIn('"end_date": args.get("end_date", "")', source)
+        self.assertIn('"rows": args.get("rows", "messaging_angle")', source)
+        self.assertIn('"columns": args.get("columns", "ad_type")', source)
+        self.assertIn('"roas_target"', source)
 
     def test_competitor_import_tool_is_positioned_as_gated_backfill(self) -> None:
         tools = _declared_tools()
