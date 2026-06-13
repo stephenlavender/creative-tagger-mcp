@@ -716,6 +716,14 @@ async def list_tools() -> list[Tool]:
                             "video_completion_rate, or funnel_score"
                         ),
                     },
+                    "signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional fatigue filter: all, fatigued, stable, "
+                            "or insufficient_data"
+                        ),
+                    },
                     "start_date": {
                         "type": "string",
                         "description": "Optional YYYY-MM-DD start date",
@@ -1633,6 +1641,7 @@ async def _get_performance_timeseries(args: dict) -> list[TextContent]:
         "brand_name": args.get("brand_name", ""),
         "group_by": args.get("group_by", "ad_name"),
         "metric": args.get("metric", "roas"),
+        "signal_focus": args.get("signal_focus", "all"),
         "limit": args.get("limit", 10),
         "minimum_spend": args.get("minimum_spend", 500),
         "fatigue_decay_threshold": args.get("fatigue_decay_threshold", 0.18),

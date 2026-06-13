@@ -259,12 +259,14 @@ Read saved performance curves for fatigue checks without opening the dashboard.
 Returns dated points plus a fatigue signal for each grouped series, using the
 same decay threshold as Creative Tagger's strategy matrix. Group by creative,
 campaign, landing page, or `analysis_id`, and inspect metrics like ROAS, CPA,
-CTR, CPM, thumbstop, completion rate, or funnel score.
+CTR, CPM, thumbstop, completion rate, or funnel score. Use `signal_focus` when
+an agent only wants the current fatigue watchlist or only stable controls.
 ```
 {
   "brand_name": "Acme",
   "group_by": "ad_name",
   "metric": "roas",
+  "signal_focus": "fatigued",
   "minimum_spend": 500,
   "fatigue_decay_threshold": 0.18,
   "limit": 5

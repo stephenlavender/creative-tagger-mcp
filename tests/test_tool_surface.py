@@ -224,10 +224,12 @@ class ToolSurfaceTest(unittest.TestCase):
         timeseries_schema = tools["get_performance_timeseries"]["inputSchema"]["properties"]
         self.assertEqual(timeseries_schema["group_by"]["default"], "ad_name")
         self.assertEqual(timeseries_schema["metric"]["default"], "roas")
+        self.assertEqual(timeseries_schema["signal_focus"]["default"], "all")
         self.assertEqual(timeseries_schema["minimum_spend"]["default"], 500)
         self.assertEqual(timeseries_schema["fatigue_decay_threshold"]["default"], 0.18)
         self.assertIn("landing_page_domain", timeseries_schema["group_by"]["description"])
         self.assertIn("funnel_score", timeseries_schema["metric"]["description"])
+        self.assertIn("fatigued", timeseries_schema["signal_focus"]["description"])
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)
