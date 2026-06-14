@@ -55,6 +55,8 @@ EXPECTED_TOOLS = {
     "get_prebuilt_reports",
     "get_creative_strategy_report",
     "get_brain_learnings",
+    "get_performance_timeseries",
+    "save_brain_learnings",
     "create_custom_report",
     "list_custom_reports",
     "save_custom_report",

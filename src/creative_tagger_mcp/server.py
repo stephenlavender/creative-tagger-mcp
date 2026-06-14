@@ -738,6 +738,83 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="save_brain_learnings",
+            description=(
+                "Persist the current auto-written Brand Brain learnings into saved "
+                "Brand Brain notes for a brand. Use this after reviewing a filtered "
+                "learning set when the user wants those working patterns, watchouts, "
+                "audience signals, or gaps saved as reusable strategist context."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "description": "Spend floor before a pattern is treated as significant",
+                    },
+                    "learning_spend": {
+                        "type": "number",
+                        "description": "Spend target before a cell graduates from live learning",
+                    },
+                    "cpa_target": {"type": "number"},
+                    "roas_target": {"type": "number"},
+                    "watch_group_by": {
+                        "type": "string",
+                        "default": "messaging_angle",
+                        "description": (
+                            "Timeseries grouping for watch/fatigue learnings: "
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, or emotion"
+                        ),
+                    },
+                    "watch_metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "Timeseries metric used for watch/fatigue learnings: "
+                            "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
+                        ),
+                    },
+                    "watch_sources": {
+                        "type": "string",
+                        "description": (
+                            "Optional comma-separated watch sources: timeseries, "
+                            "strategy, patterns, or all"
+                        ),
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a watch trend to fatigued",
+                    },
+                    "kinds": {
+                        "type": "string",
+                        "description": "Optional comma-separated kinds: working, watch, audience, gap, or all",
+                    },
+                    "include_gaps_in_notes": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Keep gap learnings in the persisted notes block",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 8,
+                        "description": "Maximum learning stories to persist",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="get_performance_timeseries",
             description=(
                 "Return saved performance time series for creative or campaign fatigue "
@@ -1135,6 +1212,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_creative_strategy_report(arguments)
         if name == "get_brain_learnings":
             return await _get_brain_learnings(arguments)
+        if name == "save_brain_learnings":
+            return await _save_brain_learnings(arguments)
         if name == "get_performance_timeseries":
             return await _get_performance_timeseries(arguments)
         if name == "create_custom_report":
@@ -1686,6 +1765,40 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         resp = await client.get(
             f"{API_URL}/brain/learnings",
             params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _save_brain_learnings(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    if not brand_name:
+        return _err("brand_name is required")
+    body: dict[str, Any] = {
+        "brand_name": brand_name,
+        "include_gaps_in_notes": bool(args.get("include_gaps_in_notes", False)),
+        "limit": args.get("limit", 8),
+    }
+    for key in (
+        "start_date",
+        "end_date",
+        "minimum_spend",
+        "learning_spend",
+        "cpa_target",
+        "roas_target",
+        "watch_group_by",
+        "watch_metric",
+        "watch_sources",
+        "fatigue_decay_threshold",
+        "kinds",
+    ):
+        if args.get(key) not in (None, ""):
+            body[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{API_URL}/brain/learnings/save",
+            json=body,
             headers=_headers(),
         )
         resp.raise_for_status()

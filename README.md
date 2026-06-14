@@ -277,6 +277,25 @@ type, weak taxonomy patterns only, or CTR by hook.
 }
 ```
 
+### `save_brain_learnings`
+Persist the current auto-written Brand Brain learnings into saved Brain notes
+for a brand, using the same filtering controls as `get_brain_learnings`. Use
+this after reviewing a working/watch/audience/gap slice when the user wants the
+best current learnings saved back into reusable strategist context.
+```
+{
+  "brand_name": "Acme",
+  "minimum_spend": 500,
+  "learning_spend": 1500,
+  "watch_group_by": "ad_type",
+  "watch_metric": "cpa",
+  "watch_sources": "timeseries,patterns",
+  "kinds": "working,watch",
+  "include_gaps_in_notes": false,
+  "limit": 6
+}
+```
+
 ### `get_performance_timeseries`
 Read saved performance curves for fatigue checks without opening the dashboard.
 Returns dated points plus a fatigue signal for each grouped series, using the

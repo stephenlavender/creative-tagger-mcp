@@ -43,6 +43,7 @@ PUBLIC_EXPECTED_TOOLS = {
     "get_prebuilt_reports",
     "get_creative_strategy_report",
     "get_brain_learnings",
+    "save_brain_learnings",
     "get_performance_timeseries",
     "create_custom_report",
     "list_custom_reports",
@@ -186,6 +187,7 @@ class ToolSurfaceTest(unittest.TestCase):
         prebuilt_desc = tools["get_prebuilt_reports"]["description"]
         strategy_desc = tools["get_creative_strategy_report"]["description"]
         brain_desc = tools["get_brain_learnings"]["description"]
+        brain_save_desc = tools["save_brain_learnings"]["description"]
         timeseries_desc = tools["get_performance_timeseries"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
@@ -219,6 +221,16 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("agent_context", brain_desc)
         self.assertIn("audience opportunities", brain_desc)
         self.assertIn("working-only", brain_desc)
+        self.assertIn("Persist", brain_save_desc)
+        self.assertIn("Brand Brain notes", brain_save_desc)
+        brain_save_schema = tools["save_brain_learnings"]["inputSchema"]["properties"]
+        self.assertEqual(brain_save_schema["limit"]["default"], 8)
+        self.assertEqual(brain_save_schema["include_gaps_in_notes"]["default"], False)
+        self.assertIn("YYYY-MM-DD", brain_save_schema["start_date"]["description"])
+        self.assertEqual(brain_save_schema["watch_group_by"]["default"], "messaging_angle")
+        self.assertEqual(brain_save_schema["watch_metric"]["default"], "roas")
+        self.assertEqual(brain_save_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertIn("strategy", brain_save_schema["watch_sources"]["description"])
         brain_schema = tools["get_brain_learnings"]["inputSchema"]["properties"]
         self.assertEqual(brain_schema["limit"]["default"], 8)
         self.assertIn("YYYY-MM-DD", brain_schema["start_date"]["description"])
@@ -270,6 +282,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"watch_metric"', source)
         self.assertIn('"watch_sources"', source)
         self.assertIn('"fatigue_decay_threshold"', source)
+        self.assertIn('if name == "save_brain_learnings":', source)
+        self.assertIn('f"{API_URL}/brain/learnings/save"', source)
 
     def test_competitor_import_tool_is_positioned_as_gated_backfill(self) -> None:
         tools = _declared_tools()
