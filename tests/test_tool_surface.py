@@ -223,6 +223,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(brain_schema["limit"]["default"], 8)
         self.assertIn("YYYY-MM-DD", brain_schema["start_date"]["description"])
         self.assertIn("working, watch, audience, gap", brain_schema["kinds"]["description"])
+        self.assertEqual(brain_schema["watch_group_by"]["default"], "messaging_angle")
+        self.assertEqual(brain_schema["watch_metric"]["default"], "roas")
+        self.assertEqual(brain_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertIn("visual_style", brain_schema["watch_group_by"]["description"])
+        self.assertIn("thumbstop_rate", brain_schema["watch_metric"]["description"])
         self.assertIn("fatigue", timeseries_desc)
         self.assertIn("thumbstop", timeseries_desc)
         self.assertIn("analysis id", timeseries_desc)
@@ -259,6 +264,9 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"rows": args.get("rows", "messaging_angle")', source)
         self.assertIn('"columns": args.get("columns", "ad_type")', source)
         self.assertIn('"roas_target"', source)
+        self.assertIn('"watch_group_by"', source)
+        self.assertIn('"watch_metric"', source)
+        self.assertIn('"fatigue_decay_threshold"', source)
 
     def test_competitor_import_tool_is_positioned_as_gated_backfill(self) -> None:
         tools = _declared_tools()

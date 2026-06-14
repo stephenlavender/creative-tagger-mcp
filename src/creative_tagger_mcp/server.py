@@ -696,6 +696,28 @@ async def list_tools() -> list[Tool]:
                     },
                     "cpa_target": {"type": "number"},
                     "roas_target": {"type": "number"},
+                    "watch_group_by": {
+                        "type": "string",
+                        "default": "messaging_angle",
+                        "description": (
+                            "Timeseries grouping for watch/fatigue learnings: "
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, or emotion"
+                        ),
+                    },
+                    "watch_metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "Timeseries metric used for watch/fatigue learnings: "
+                            "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
+                        ),
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a watch trend to fatigued",
+                    },
                     "kinds": {
                         "type": "string",
                         "description": "Optional comma-separated kinds: working, watch, audience, gap, or all",
@@ -1645,6 +1667,9 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "learning_spend",
         "cpa_target",
         "roas_target",
+        "watch_group_by",
+        "watch_metric",
+        "fatigue_decay_threshold",
         "kinds",
     ):
         if args.get(key) not in (None, ""):

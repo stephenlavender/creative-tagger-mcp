@@ -259,12 +259,17 @@ Read the auto-written Brand Brain learnings generated from performance memory,
 strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
 hero learning, concise stories, and an `agent_context` payload for the next
 brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
-such as `working,audience` or `watch`.
+such as `working,audience` or `watch`. Use `watch_group_by`,
+`watch_metric`, and `fatigue_decay_threshold` when the watchouts should be
+written from a different fatigue lens such as CPA by ad type or CTR by hook.
 ```
 {
   "brand_name": "Acme",
   "minimum_spend": 500,
   "learning_spend": 1500,
+  "watch_group_by": "ad_type",
+  "watch_metric": "cpa",
+  "fatigue_decay_threshold": 0.25,
   "kinds": "working,audience",
   "limit": 6
 }
