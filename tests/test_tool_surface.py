@@ -228,6 +228,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(brain_schema["fatigue_decay_threshold"]["default"], 0.18)
         self.assertIn("visual_style", brain_schema["watch_group_by"]["description"])
         self.assertIn("thumbstop_rate", brain_schema["watch_metric"]["description"])
+        self.assertIn("timeseries", brain_schema["watch_sources"]["description"])
+        self.assertIn("patterns", brain_schema["watch_sources"]["description"])
         self.assertIn("fatigue", timeseries_desc)
         self.assertIn("thumbstop", timeseries_desc)
         self.assertIn("analysis id", timeseries_desc)
@@ -266,6 +268,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"roas_target"', source)
         self.assertIn('"watch_group_by"', source)
         self.assertIn('"watch_metric"', source)
+        self.assertIn('"watch_sources"', source)
         self.assertIn('"fatigue_decay_threshold"', source)
 
     def test_competitor_import_tool_is_positioned_as_gated_backfill(self) -> None:

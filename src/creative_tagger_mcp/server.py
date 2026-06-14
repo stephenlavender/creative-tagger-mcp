@@ -713,6 +713,13 @@ async def list_tools() -> list[Tool]:
                             "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
                         ),
                     },
+                    "watch_sources": {
+                        "type": "string",
+                        "description": (
+                            "Optional comma-separated watch sources: timeseries, "
+                            "strategy, patterns, or all"
+                        ),
+                    },
                     "fatigue_decay_threshold": {
                         "type": "number",
                         "default": 0.18,
@@ -1669,6 +1676,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "roas_target",
         "watch_group_by",
         "watch_metric",
+        "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
     ):
