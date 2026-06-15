@@ -2,6 +2,12 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
+Status note (2026-06-15): PyPI still serves `creative-tagger-mcp==0.1.0`.
+This README tracks the local `0.2.0` branch surface in this repo. Tools such
+as strategy reports, brain learnings, and performance timeseries require the
+matching API branch and should be treated as pre-publish until `0.2.0` is live
+on PyPI and the corresponding API changes are deployed.
+
 Your AI of choice gets:
 
 - **Taxonomy** — 28 standardized dimensions for any ad creative (video, image, carousel, landing page, email)
@@ -15,7 +21,7 @@ Your AI of choice gets:
 ## Quick Start
 
 ```bash
-# Install
+# Install (PyPI currently resolves to 0.1.0)
 pip install creative-tagger-mcp
 
 # Run against production (default)
