@@ -670,9 +670,10 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Return auto-written Brand Brain learnings from saved performance, "
                 "strategy, taxonomy, and audience data. Use this when an agent needs "
-                "the current working patterns, watchouts, audience opportunities, "
-                "fatigue, and gap learnings plus an agent_context brief seed. "
-                "Supports focused reads like working-only or audience-only learnings."
+                "the current test conclusions, working patterns, watchouts, audience "
+                "opportunities, fatigue, and gap learnings plus an agent_context "
+                "brief seed. Supports focused reads like conclusion-only, "
+                "working-only, or audience-only learnings."
             ),
             inputSchema={
                 "type": "object",
@@ -727,7 +728,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "kinds": {
                         "type": "string",
-                        "description": "Optional comma-separated kinds: working, watch, audience, gap, or all",
+                        "description": "Optional comma-separated kinds: conclusion, working, watch, audience, gap, or all",
                     },
                     "limit": {
                         "type": "integer",
@@ -742,8 +743,9 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Persist the current auto-written Brand Brain learnings into saved "
                 "Brand Brain notes for a brand. Use this after reviewing a filtered "
-                "learning set when the user wants those working patterns, watchouts, "
-                "audience signals, or gaps saved as reusable strategist context."
+                "learning set when the user wants those conclusions, working "
+                "patterns, watchouts, audience signals, or gaps saved as reusable "
+                "strategist context."
             ),
             inputSchema={
                 "type": "object",
@@ -799,7 +801,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "kinds": {
                         "type": "string",
-                        "description": "Optional comma-separated kinds: working, watch, audience, gap, or all",
+                        "description": "Optional comma-separated kinds: conclusion, working, watch, audience, gap, or all",
                     },
                     "include_gaps_in_notes": {
                         "type": "boolean",

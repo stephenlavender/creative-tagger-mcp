@@ -259,7 +259,7 @@ Read the auto-written Brand Brain learnings generated from performance memory,
 strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
 hero learning, concise stories, and an `agent_context` payload for the next
 brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
-such as `working,audience` or `watch`. Use `watch_group_by`,
+such as `conclusion`, `working,audience`, or `watch`. Use `watch_group_by`,
 `watch_metric`, `watch_sources`, and `fatigue_decay_threshold` when the
 watchouts should be written from a different fatigue lens such as CPA by ad
 type, weak taxonomy patterns only, or CTR by hook.
@@ -280,8 +280,8 @@ type, weak taxonomy patterns only, or CTR by hook.
 ### `save_brain_learnings`
 Persist the current auto-written Brand Brain learnings into saved Brain notes
 for a brand, using the same filtering controls as `get_brain_learnings`. Use
-this after reviewing a working/watch/audience/gap slice when the user wants the
-best current learnings saved back into reusable strategist context.
+this after reviewing a conclusion/working/watch/audience/gap slice when the
+user wants the best current learnings saved back into reusable strategist context.
 ```
 {
   "brand_name": "Acme",

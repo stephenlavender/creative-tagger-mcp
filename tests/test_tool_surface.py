@@ -220,6 +220,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("Brand Brain learnings", brain_desc)
         self.assertIn("agent_context", brain_desc)
         self.assertIn("audience opportunities", brain_desc)
+        self.assertIn("conclusion-only", brain_desc)
         self.assertIn("working-only", brain_desc)
         self.assertIn("Persist", brain_save_desc)
         self.assertIn("Brand Brain notes", brain_save_desc)
@@ -234,7 +235,8 @@ class ToolSurfaceTest(unittest.TestCase):
         brain_schema = tools["get_brain_learnings"]["inputSchema"]["properties"]
         self.assertEqual(brain_schema["limit"]["default"], 8)
         self.assertIn("YYYY-MM-DD", brain_schema["start_date"]["description"])
-        self.assertIn("working, watch, audience, gap", brain_schema["kinds"]["description"])
+        self.assertIn("conclusion, working, watch, audience, gap", brain_schema["kinds"]["description"])
+        self.assertIn("conclusion, working, watch, audience, gap", brain_save_schema["kinds"]["description"])
         self.assertEqual(brain_schema["watch_group_by"]["default"], "messaging_angle")
         self.assertEqual(brain_schema["watch_metric"]["default"], "roas")
         self.assertEqual(brain_schema["fatigue_decay_threshold"]["default"], 0.18)
