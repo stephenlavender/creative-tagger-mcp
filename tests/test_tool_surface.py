@@ -208,6 +208,20 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
 
+    def test_readme_tracks_current_tool_names_and_pr_gate_status(self) -> None:
+        readme = (ROOT / "README.md").read_text()
+
+        self.assertIn("36 public MCP tools", readme)
+        self.assertIn("creative-tagger-mcp==0.2.0", readme)
+        self.assertIn("recommend", readme)
+        self.assertIn("get_taxonomy_performance", readme)
+        self.assertIn("get_demographics_performance", readme)
+        self.assertIn("pull/1", readme)
+        self.assertIn("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS=1", readme)
+        self.assertIn("Public `llms.txt` copy is lagging", readme)
+        self.assertIn("strategist_recommend", readme)
+        self.assertIn("get_tag_performance", readme)
+
 
 def _declared_tool_names() -> set[str]:
     return set(_declared_tools())

@@ -11,6 +11,26 @@ Your AI of choice gets:
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
 - **Competitive intelligence** — scan a competitor's Meta Ad Library, or import rows gathered by the user's own browser/CSV/MCP workflow while app approval is pending
 
+## Positioning and Status
+
+As of June 15, 2026, the shipped `main` branch and PyPI package `creative-tagger-mcp==0.2.0`
+expose **36 public MCP tools**.
+
+- The current customer-facing path is: analyze creatives, search library memory,
+  customize brand taxonomy, sync read-only Meta performance, run reports, ask the
+  strategist, scan competitors, and generate naming.
+- `import_meta_performance` and `import_competitor_ads` are still part of the
+  public tool surface on `main` today.
+- Open PR [#1](https://github.com/stephenlavender/creative-tagger-mcp/pull/1)
+  proposes gating those two import tools behind
+  `CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS=1`, reducing the default public
+  surface from 36 tools to 34. Until that PR merges, the wheel and source in
+  this repo still expose the 36-tool surface.
+- Public `llms.txt` copy is lagging behind the MCP/API surface today. The
+  current tool names are `recommend`, `get_taxonomy_performance`, and
+  `get_demographics_performance` rather than older aliases such as
+  `strategist_recommend`, `get_tag_performance`, or `get_demographics`.
+
 ## Quick Start
 
 ```bash
@@ -27,6 +47,24 @@ CREATIVE_TAGGER_API_KEY=ct_your_key \
 ```
 
 Get an API key at [app.creativetagger.ai](https://app.creativetagger.ai).
+
+## Connect to Any MCP Client
+
+Every MCP client needs the same runtime shape:
+
+```json
+{
+  "command": "creative-tagger-mcp",
+  "env": {
+    "CREATIVE_TAGGER_URL": "https://api.creativetagger.ai",
+    "CREATIVE_TAGGER_API_KEY": "ct_your_key_here"
+  }
+}
+```
+
+Use that command/env block in Claude Desktop, Cursor, Windsurf, ChatGPT, or any
+other MCP-capable client. If you are pointing at production, `CREATIVE_TAGGER_URL`
+is optional because it defaults to `https://api.creativetagger.ai`.
 
 ## Release Verification
 
@@ -106,6 +144,12 @@ python -m twine upload dist/*
 Restart Claude Desktop. The tools appear in the MCP picker.
 
 ## Tools
+
+The sections below describe the 36-tool public surface on `main` as of
+June 15, 2026. If PR [#1](https://github.com/stephenlavender/creative-tagger-mcp/pull/1)
+lands, the default public surface will hide `import_meta_performance` and
+`import_competitor_ads` unless `CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS=1` is
+set.
 
 ### `analyze_creative`
 Analyze any ad creative and get structured classification across 28 dimensions.
@@ -219,9 +263,15 @@ Creative Tagger can derive thumbstop, retention, and funnel scores.
 { "brand_name": "Acme", "date_preset": "last_30d" }
 ```
 
-When a user connects Meta through their own Meta MCP/CLI instead of Creative
-Tagger's native OAuth, use `import_meta_performance` to hand rows back to
-Creative Tagger:
+Default customer flow: connect read-only Meta OAuth and call
+`sync_meta_performance`. If the import-tool gating in PR
+[#1](https://github.com/stephenlavender/creative-tagger-mcp/pull/1) merges,
+`import_meta_performance` becomes an internal migration/backfill tool instead of
+part of the default public surface.
+
+Current `main` behavior still allows a user to connect Meta through their own
+Meta MCP/CLI and use `import_meta_performance` to hand rows back to Creative
+Tagger:
 ```
 {
   "brand_name": "Acme",
@@ -330,6 +380,11 @@ available.
 ```
 Returns normalized ads, optional joined analyses, and the same aggregate
 strategy breakdown as `scan_competitor`.
+
+Default customer flow is still `scan_competitor`. If PR
+[#1](https://github.com/stephenlavender/creative-tagger-mcp/pull/1) merges,
+`import_competitor_ads` becomes an internal backfill/migration tool unless
+`CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS=1` is set.
 
 ### `generate_naming`
 Build naming strings from already-classified attributes (rarely needed — `analyze_creative` already includes naming).
