@@ -385,9 +385,14 @@ swaps.
 ```
 
 ### `get_demographics_performance`
-Read age x gender performance memory with opportunity and waste flags.
+Read age x gender performance memory with opportunity and waste flags. Use
+`start_date` / `end_date` to isolate a specific audience window.
 ```
-{ "brand_name": "Acme" }
+{
+  "brand_name": "Acme",
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-31"
+}
 ```
 
 ### `generate_brand_taxonomy`

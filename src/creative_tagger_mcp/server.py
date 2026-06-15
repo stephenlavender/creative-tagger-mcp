@@ -1021,12 +1021,22 @@ async def list_tools() -> list[Tool]:
             name="get_demographics_performance",
             description=(
                 "Return saved age x gender performance memory with opportunity and "
-                "waste flags. Useful for audience strategy and Advantage+ diagnostics."
+                "waste flags. Useful for audience strategy and Advantage+ diagnostics. "
+                "Optional start_date/end_date (YYYY-MM-DD) scope the audience read to "
+                "a specific performance window."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional start date in YYYY-MM-DD format",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional end date in YYYY-MM-DD format",
+                    },
                 },
             },
         ),
@@ -1926,7 +1936,11 @@ async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
 
 
 async def _get_demographics_performance(args: dict) -> list[TextContent]:
-    params = {"brand_name": args.get("brand_name", "")}
+    params = {
+        "brand_name": args.get("brand_name", ""),
+        "start_date": args.get("start_date", ""),
+        "end_date": args.get("end_date", ""),
+    }
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/performance/demographics",

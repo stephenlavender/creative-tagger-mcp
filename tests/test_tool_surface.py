@@ -189,6 +189,7 @@ class ToolSurfaceTest(unittest.TestCase):
         brain_desc = tools["get_brain_learnings"]["description"]
         brain_save_desc = tools["save_brain_learnings"]["description"]
         timeseries_desc = tools["get_performance_timeseries"]["description"]
+        demographics_desc = tools["get_demographics_performance"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
         import_rows = (
@@ -259,6 +260,12 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("cta", timeseries_schema["group_by"]["description"])
         self.assertIn("funnel_score", timeseries_schema["metric"]["description"])
         self.assertIn("fatigued", timeseries_schema["signal_focus"]["description"])
+        self.assertIn("YYYY-MM-DD", demographics_desc)
+        demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
+        self.assertIn("start_date", demographics_schema)
+        self.assertIn("end_date", demographics_schema)
+        self.assertIn("YYYY-MM-DD", demographics_schema["start_date"]["description"])
+        self.assertIn("YYYY-MM-DD", demographics_schema["end_date"]["description"])
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)
@@ -284,6 +291,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"watch_metric"', source)
         self.assertIn('"watch_sources"', source)
         self.assertIn('"fatigue_decay_threshold"', source)
+        self.assertIn('f"{API_URL}/performance/demographics"', source)
         self.assertIn('if name == "save_brain_learnings":', source)
         self.assertIn('f"{API_URL}/brain/learnings/save"', source)
 
