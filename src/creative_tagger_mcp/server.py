@@ -679,6 +679,11 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
                     "start_date": {
                         "type": "string",
                         "description": "Optional YYYY-MM-DD start date",
@@ -713,6 +718,11 @@ async def list_tools() -> list[Tool]:
                             "Timeseries metric used for watch/fatigue learnings: "
                             "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
                         ),
+                    },
+                    "watch_minimum_points": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "Minimum observed timeseries points before a watch group is eligible",
                     },
                     "watch_sources": {
                         "type": "string",
@@ -752,6 +762,11 @@ async def list_tools() -> list[Tool]:
                 "required": ["brand_name"],
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
                     "start_date": {
                         "type": "string",
                         "description": "Optional YYYY-MM-DD start date",
@@ -786,6 +801,11 @@ async def list_tools() -> list[Tool]:
                             "Timeseries metric used for watch/fatigue learnings: "
                             "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
                         ),
+                    },
+                    "watch_minimum_points": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "Minimum observed timeseries points before a watch group is eligible",
                     },
                     "watch_sources": {
                         "type": "string",
@@ -829,6 +849,11 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "last_30d",
+                        "description": "Optional date window preset: all_time, last_7d, last_30d, last_90d, maximum, or custom",
+                    },
                     "group_by": {
                         "type": "string",
                         "default": "ad_name",
@@ -870,6 +895,11 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "default": 500,
                         "description": "Spend floor before fatigue is treated as meaningful",
+                    },
+                    "minimum_points": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum observed points required before a grouped series is returned",
                     },
                     "fatigue_decay_threshold": {
                         "type": "number",
@@ -1756,6 +1786,7 @@ async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
 async def _get_brain_learnings(args: dict) -> list[TextContent]:
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "all_time"),
         "limit": args.get("limit", 8),
     }
     for key in (
@@ -1767,6 +1798,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "roas_target",
         "watch_group_by",
         "watch_metric",
+        "watch_minimum_points",
         "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
@@ -1789,6 +1821,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         return _err("brand_name is required")
     body: dict[str, Any] = {
         "brand_name": brand_name,
+        "date_preset": args.get("date_preset", "all_time"),
         "include_gaps_in_notes": bool(args.get("include_gaps_in_notes", False)),
         "limit": args.get("limit", 8),
     }
@@ -1801,6 +1834,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "roas_target",
         "watch_group_by",
         "watch_metric",
+        "watch_minimum_points",
         "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
@@ -1820,11 +1854,13 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
 async def _get_performance_timeseries(args: dict) -> list[TextContent]:
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "last_30d"),
         "group_by": args.get("group_by", "ad_name"),
         "metric": args.get("metric", "roas"),
         "signal_focus": args.get("signal_focus", "all"),
         "limit": args.get("limit", 10),
         "minimum_spend": args.get("minimum_spend", 500),
+        "minimum_points": args.get("minimum_points", 0),
         "fatigue_decay_threshold": args.get("fatigue_decay_threshold", 0.18),
     }
     for key in ("start_date", "end_date"):

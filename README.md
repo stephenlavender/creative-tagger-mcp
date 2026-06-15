@@ -272,10 +272,12 @@ type, weak taxonomy patterns only, or CTR by hook.
 ```
 {
   "brand_name": "Acme",
+  "date_preset": "last_30_days",
   "minimum_spend": 500,
   "learning_spend": 1500,
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
+  "watch_minimum_points": 3,
   "watch_sources": "timeseries,patterns",
   "fatigue_decay_threshold": 0.25,
   "kinds": "working,audience",
@@ -291,10 +293,12 @@ user wants the best current learnings saved back into reusable strategist contex
 ```
 {
   "brand_name": "Acme",
+  "date_preset": "last_30_days",
   "minimum_spend": 500,
   "learning_spend": 1500,
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
+  "watch_minimum_points": 3,
   "watch_sources": "timeseries,patterns",
   "kinds": "working,watch",
   "include_gaps_in_notes": false,
@@ -312,14 +316,19 @@ an agent only wants the current fatigue watchlist or only stable controls.
 ```
 {
   "brand_name": "Acme",
+  "date_preset": "last_30d",
   "group_by": "ad_name",
   "metric": "roas",
   "signal_focus": "fatigued",
   "minimum_spend": 500,
+  "minimum_points": 3,
   "fatigue_decay_threshold": 0.18,
   "limit": 5
 }
 ```
+
+Use `date_preset` for a standard lookback window, or pass explicit
+`start_date` / `end_date` to override it.
 
 Internal migration/backfill tools are hidden from the default published MCP
 surface. They require `CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS=1` and should not
