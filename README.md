@@ -268,7 +268,8 @@ brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
 such as `conclusion`, `working,audience`, or `watch`. Use `watch_group_by`,
 `watch_metric`, `watch_sources`, and `fatigue_decay_threshold` when the
 watchouts should be written from a different fatigue lens such as CPA by ad
-type, weak taxonomy patterns only, or CTR by hook.
+type, weak taxonomy patterns only, CTR by hook, or ROAS by
+`demographic_segment`.
 ```
 {
   "brand_name": "Acme",
@@ -310,9 +311,11 @@ user wants the best current learnings saved back into reusable strategist contex
 Read saved performance curves for fatigue checks without opening the dashboard.
 Returns dated points plus a fatigue signal for each grouped series, using the
 same decay threshold as Creative Tagger's strategy matrix. Group by creative,
-campaign, landing page, or `analysis_id`, and inspect metrics like ROAS, CPA,
-CTR, CPM, thumbstop, completion rate, or funnel score. Use `signal_focus` when
-an agent only wants the current fatigue watchlist or only stable controls.
+campaign, landing page, `analysis_id`, or audience slices like
+`demographic_age`, `demographic_gender`, `demographic_segment`, and
+`demographic_signal`, and inspect metrics like ROAS, CPA, CTR, CPM, thumbstop,
+completion rate, or funnel score. Use `signal_focus` when an agent only wants
+the current fatigue watchlist or only stable controls.
 ```
 {
   "brand_name": "Acme",

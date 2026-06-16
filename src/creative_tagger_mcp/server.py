@@ -673,7 +673,9 @@ async def list_tools() -> list[Tool]:
                 "the current test conclusions, working patterns, watchouts, audience "
                 "opportunities, fatigue, and gap learnings plus an agent_context "
                 "brief seed. Supports focused reads like conclusion-only, "
-                "working-only, or audience-only learnings."
+                "working-only, or audience-only learnings, including audience "
+                "fatigue reads grouped by demographic_age, demographic_gender, "
+                "demographic_segment, or demographic_signal."
             ),
             inputSchema={
                 "type": "object",
@@ -708,7 +710,8 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Timeseries grouping for watch/fatigue learnings: "
                             "ad_name, campaign_name, landing_page_domain, analysis_id, "
-                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, or emotion"
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
                         ),
                     },
                     "watch_metric": {
@@ -755,7 +758,9 @@ async def list_tools() -> list[Tool]:
                 "Brand Brain notes for a brand. Use this after reviewing a filtered "
                 "learning set when the user wants those conclusions, working "
                 "patterns, watchouts, audience signals, or gaps saved as reusable "
-                "strategist context."
+                "strategist context, including audience watchouts grouped by "
+                "demographic_age, demographic_gender, demographic_segment, or "
+                "demographic_signal."
             ),
             inputSchema={
                 "type": "object",
@@ -791,7 +796,8 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Timeseries grouping for watch/fatigue learnings: "
                             "ad_name, campaign_name, landing_page_domain, analysis_id, "
-                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, or emotion"
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
                         ),
                     },
                     "watch_metric": {
@@ -842,8 +848,9 @@ async def list_tools() -> list[Tool]:
                 "Return saved performance time series for creative or campaign fatigue "
                 "checks. Use this to inspect dated ROAS, CPA, CTR, CPM, thumbstop, "
                 "completion, or funnel trends per creative, campaign, landing page, "
-                "hook, angle, ad type, format, visual style, CTA, or analysis id, "
-                "plus the same fatigue decay signal the strategy matrix uses."
+                "hook, angle, ad type, format, visual style, CTA, analysis id, or "
+                "audience slice, plus the same fatigue decay signal the strategy "
+                "matrix uses."
             ),
             inputSchema={
                 "type": "object",
@@ -859,7 +866,8 @@ async def list_tools() -> list[Tool]:
                         "default": "ad_name",
                         "description": (
                             "ad_name, campaign_name, landing_page_domain, analysis_id, "
-                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, or emotion"
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
                         ),
                     },
                     "metric": {
