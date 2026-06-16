@@ -179,6 +179,19 @@ class ToolSurfaceTest(unittest.TestCase):
             },
         )
 
+    def test_coerce_bool_handles_stringified_false_values(self) -> None:
+        namespace = _load_pure_helpers({"_coerce_bool"})
+        coerce = namespace["_coerce_bool"]
+
+        self.assertIs(coerce(False), False)
+        self.assertIs(coerce(True), True)
+        self.assertIs(coerce("false"), False)
+        self.assertIs(coerce("0"), False)
+        self.assertIs(coerce("off"), False)
+        self.assertIs(coerce("true"), True)
+        self.assertIs(coerce("1"), True)
+        self.assertIs(coerce(None, default=True), True)
+
     def test_performance_tools_describe_funnel_scores(self) -> None:
         tools = _declared_tools()
 

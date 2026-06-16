@@ -56,6 +56,24 @@ def _err(msg: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Error: {msg}")]
 
 
+def _coerce_bool(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"", "default"}:
+            return default
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+    return bool(value)
+
+
 def _is_internal_backfill_enabled() -> bool:
     return os.environ.get("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", "") == "1"
 
@@ -1830,7 +1848,9 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
     body: dict[str, Any] = {
         "brand_name": brand_name,
         "date_preset": args.get("date_preset", "all_time"),
-        "include_gaps_in_notes": bool(args.get("include_gaps_in_notes", False)),
+        "include_gaps_in_notes": _coerce_bool(
+            args.get("include_gaps_in_notes", False)
+        ),
         "limit": args.get("limit", 8),
     }
     for key in (
