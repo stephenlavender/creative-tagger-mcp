@@ -223,6 +223,7 @@ class ToolSurfaceTest(unittest.TestCase):
         strategy_schema = tools["get_creative_strategy_report"]["inputSchema"]["properties"]
         self.assertIn("messaging_angle", strategy_schema["rows"]["description"])
         self.assertIn("demographic_gender", strategy_schema["columns"]["description"])
+        self.assertNotIn("funnel_stage", strategy_schema["columns"]["description"])
         self.assertIn("demographic-read", strategy_schema["report_template"]["description"])
         self.assertEqual(
             strategy_schema["metrics"]["default"],

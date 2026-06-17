@@ -650,7 +650,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "default": "ad_type",
                         "description": (
-                            "Matrix column dimension, e.g. ad_type, format, funnel_stage, "
+                            "Matrix column dimension, e.g. ad_type, format, "
                             "demographic_gender, demographic_age, demographic_signal"
                         ),
                     },
