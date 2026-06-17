@@ -266,9 +266,9 @@ strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
 hero learning, concise stories, and an `agent_context` payload for the next
 brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
 such as `conclusion`, `working,audience`, or `watch`. Use `watch_group_by`,
-`watch_metric`, `watch_sources`, and `fatigue_decay_threshold` when the
-watchouts should be written from a different fatigue lens such as CPA by ad
-type, weak taxonomy patterns only, CTR by hook, or ROAS by
+`watch_metric`, `watch_trajectory_focus`, `watch_sources`, and
+`fatigue_decay_threshold` when the watchouts should be written from a different
+fatigue lens such as worsening CPA by ad type, weak taxonomy patterns only, CTR by hook, or ROAS by
 `demographic_segment`.
 ```
 {
@@ -278,6 +278,7 @@ type, weak taxonomy patterns only, CTR by hook, or ROAS by
   "learning_spend": 1500,
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
+  "watch_trajectory_focus": "worsening",
   "watch_minimum_points": 3,
   "watch_sources": "timeseries,patterns",
   "fatigue_decay_threshold": 0.25,
@@ -299,6 +300,7 @@ user wants the best current learnings saved back into reusable strategist contex
   "learning_spend": 1500,
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
+  "watch_trajectory_focus": "worsening",
   "watch_minimum_points": 3,
   "watch_sources": "timeseries,patterns",
   "kinds": "working,watch",

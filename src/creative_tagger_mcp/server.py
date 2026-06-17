@@ -769,6 +769,14 @@ async def list_tools() -> list[Tool]:
                             "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
                         ),
                     },
+                    "watch_trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter for watch/fatigue learnings: "
+                            "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
                     "watch_minimum_points": {
                         "type": "integer",
                         "default": 2,
@@ -853,6 +861,14 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Timeseries metric used for watch/fatigue learnings: "
                             "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
+                        ),
+                    },
+                    "watch_trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter for watch/fatigue learnings: "
+                            "all, worsening, improving, flat, or insufficient_data"
                         ),
                     },
                     "watch_minimum_points": {
@@ -1855,6 +1871,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "roas_target",
         "watch_group_by",
         "watch_metric",
+        "watch_trajectory_focus",
         "watch_minimum_points",
         "watch_sources",
         "fatigue_decay_threshold",
@@ -1893,6 +1910,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "roas_target",
         "watch_group_by",
         "watch_metric",
+        "watch_trajectory_focus",
         "watch_minimum_points",
         "watch_sources",
         "fatigue_decay_threshold",
