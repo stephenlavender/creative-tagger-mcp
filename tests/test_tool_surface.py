@@ -221,10 +221,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("hold", strategy_desc)
         self.assertIn("demographic_age", strategy_desc)
         strategy_schema = tools["get_creative_strategy_report"]["inputSchema"]["properties"]
+        self.assertEqual(strategy_schema["date_preset"]["default"], "all_time")
+        self.assertIn("last_30_days", strategy_schema["date_preset"]["description"])
         self.assertIn("messaging_angle", strategy_schema["rows"]["description"])
         self.assertIn("demographic_gender", strategy_schema["columns"]["description"])
         self.assertNotIn("funnel_stage", strategy_schema["columns"]["description"])
         self.assertIn("demographic-read", strategy_schema["report_template"]["description"])
+        self.assertIn("metric_preset", strategy_schema)
+        self.assertIn("delivery", strategy_schema["metric_preset"]["description"])
         self.assertEqual(
             strategy_schema["metrics"]["default"],
             "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
@@ -309,10 +313,12 @@ class ToolSurfaceTest(unittest.TestCase):
     def test_strategy_tool_forwards_demographic_and_date_controls(self) -> None:
         source = SERVER.read_text()
 
+        self.assertIn('"date_preset": args.get("date_preset", "all_time")', source)
         self.assertIn('"start_date": args.get("start_date", "")', source)
         self.assertIn('"end_date": args.get("end_date", "")', source)
         self.assertIn('"rows": args.get("rows", "messaging_angle")', source)
         self.assertIn('"columns": args.get("columns", "ad_type")', source)
+        self.assertIn('"metric_preset": args.get("metric_preset", "")', source)
         self.assertIn('"roas_target"', source)
         self.assertIn('"watch_group_by"', source)
         self.assertIn('"watch_metric"', source)

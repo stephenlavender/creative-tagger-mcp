@@ -631,6 +631,11 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
                     "report_template": {
                         "type": "string",
                         "default": "next-tests",
@@ -666,6 +671,10 @@ async def list_tools() -> list[Tool]:
                             "Comma-separated metrics to show in each cell, e.g. spend,ctr,"
                             "thumbstop_rate,hook_rate,hold_rate,cpa"
                         ),
+                    },
+                    "metric_preset": {
+                        "type": "string",
+                        "description": "Optional metric preset key: diagnostics, conversion, delivery, video, scale, or all",
                     },
                     "start_date": {
                         "type": "string",
@@ -1787,11 +1796,13 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
 async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "all_time"),
         "report_template": args.get("report_template", "next-tests"),
         "rows": args.get("rows", "messaging_angle"),
         "columns": args.get("columns", "ad_type"),
         "status_focus": args.get("status_focus", "all"),
         "metrics": args.get("metrics", "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"),
+        "metric_preset": args.get("metric_preset", ""),
         "start_date": args.get("start_date", ""),
         "end_date": args.get("end_date", ""),
         "limit": args.get("limit", 10),
