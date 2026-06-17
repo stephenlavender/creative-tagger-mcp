@@ -155,6 +155,31 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("forensic_mode", props)
         self.assertIn({"required": ["file_paths"]}, one_of)
 
+    def test_list_library_supports_performance_sorts_and_facets(self) -> None:
+        tools = _declared_tools()
+        library = tools["list_library"]
+        desc = library["description"]
+        props = library["inputSchema"]["properties"]
+        source = SERVER.read_text()
+
+        self.assertIn("joined performance", desc)
+        self.assertIn("ROAS", desc)
+        self.assertIn("angle", desc)
+        self.assertIn("emotion", desc)
+        self.assertIn("CTA", desc)
+        self.assertEqual(props["sort"]["default"], "recent")
+        self.assertIn("spend", props["sort"]["description"])
+        self.assertIn("roas", props["sort"]["description"])
+        self.assertIn("ctr", props["sort"]["description"])
+        self.assertIn("cpa", props["sort"]["description"])
+        self.assertIn("messaging angle", props["angle"]["description"])
+        self.assertIn("emotion", props["emotion"]["description"])
+        self.assertIn("CTA", props["cta"]["description"])
+        self.assertIn('"angle"', source)
+        self.assertIn('"emotion"', source)
+        self.assertIn('"cta"', source)
+        self.assertIn('"sort"', source)
+
     def test_analysis_form_data_matches_api_fields(self) -> None:
         namespace = _load_pure_helpers({"_analysis_form_data"})
 
