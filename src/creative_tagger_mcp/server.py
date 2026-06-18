@@ -189,7 +189,7 @@ async def list_tools() -> list[Tool]:
                 "Every analyze_creative call is automatically saved. Use this to "
                 "recall what has been analyzed before — search by filename, hook, "
                 "angle, emotion, CTA, or format, then sort by recency or joined "
-                "performance (spend, ROAS, CTR, CPA)."
+                "performance (spend, reach, frequency, ROAS, CTR, CPM, CPA)."
             ),
             inputSchema={
                 "type": "object",
@@ -223,9 +223,20 @@ async def list_tools() -> list[Tool]:
                     "sort": {
                         "type": "string",
                         "default": "recent",
+                        "enum": [
+                            "recent",
+                            "spend",
+                            "reach",
+                            "roas",
+                            "ctr",
+                            "frequency",
+                            "cpm",
+                            "cpa",
+                        ],
                         "description": (
-                            "Sort by recent, spend, roas, ctr, or cpa. Performance "
-                            "sorts use joined Meta performance when it exists."
+                            "Sort by recent, spend, reach, roas, ctr, frequency, "
+                            "cpm, or cpa. Performance sorts use joined Meta "
+                            "performance when it exists."
                         ),
                     },
                 },

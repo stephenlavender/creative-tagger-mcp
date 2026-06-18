@@ -164,14 +164,24 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertIn("joined performance", desc)
         self.assertIn("ROAS", desc)
+        self.assertIn("reach", desc)
+        self.assertIn("frequency", desc)
+        self.assertIn("CPM", desc)
         self.assertIn("angle", desc)
         self.assertIn("emotion", desc)
         self.assertIn("CTA", desc)
         self.assertEqual(props["sort"]["default"], "recent")
         self.assertIn("spend", props["sort"]["description"])
+        self.assertIn("reach", props["sort"]["description"])
         self.assertIn("roas", props["sort"]["description"])
         self.assertIn("ctr", props["sort"]["description"])
+        self.assertIn("frequency", props["sort"]["description"])
+        self.assertIn("cpm", props["sort"]["description"])
         self.assertIn("cpa", props["sort"]["description"])
+        self.assertEqual(
+            props["sort"]["enum"],
+            ["recent", "spend", "reach", "roas", "ctr", "frequency", "cpm", "cpa"],
+        )
         self.assertIn("messaging angle", props["angle"]["description"])
         self.assertIn("emotion", props["emotion"]["description"])
         self.assertIn("CTA", props["cta"]["description"])
