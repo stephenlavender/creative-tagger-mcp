@@ -782,6 +782,11 @@ async def list_tools() -> list[Tool]:
                         "default": 2,
                         "description": "Minimum observed timeseries points before a watch group is eligible",
                     },
+                    "watch_minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days before a watch group is eligible",
+                    },
                     "watch_sources": {
                         "type": "string",
                         "description": (
@@ -875,6 +880,11 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 2,
                         "description": "Minimum observed timeseries points before a watch group is eligible",
+                    },
+                    "watch_minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days before a watch group is eligible",
                     },
                     "watch_sources": {
                         "type": "string",
@@ -980,6 +990,11 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 0,
                         "description": "Minimum observed points required before a grouped series is returned",
+                    },
+                    "minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days required before a grouped series is returned",
                     },
                     "fatigue_decay_threshold": {
                         "type": "number",
@@ -1882,6 +1897,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "watch_metric",
         "watch_trajectory_focus",
         "watch_minimum_points",
+        "watch_minimum_calendar_days",
         "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
@@ -1921,6 +1937,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "watch_metric",
         "watch_trajectory_focus",
         "watch_minimum_points",
+        "watch_minimum_calendar_days",
         "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
@@ -1948,6 +1965,7 @@ async def _get_performance_timeseries(args: dict) -> list[TextContent]:
         "limit": args.get("limit", 10),
         "minimum_spend": args.get("minimum_spend", 500),
         "minimum_points": args.get("minimum_points", 0),
+        "minimum_calendar_days": args.get("minimum_calendar_days", 0),
         "fatigue_decay_threshold": args.get("fatigue_decay_threshold", 0.18),
     }
     for key in ("start_date", "end_date"):

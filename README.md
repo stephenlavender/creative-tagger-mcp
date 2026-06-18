@@ -266,7 +266,8 @@ strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
 hero learning, concise stories, and an `agent_context` payload for the next
 brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
 such as `conclusion`, `working,audience`, or `watch`. Use `watch_group_by`,
-`watch_metric`, `watch_trajectory_focus`, `watch_sources`, and
+`watch_metric`, `watch_trajectory_focus`, `watch_minimum_points`,
+`watch_minimum_calendar_days`, `watch_sources`, and
 `fatigue_decay_threshold` when the watchouts should be written from a different
 fatigue lens such as worsening CPA by ad type, weak taxonomy patterns only, CTR by hook, or ROAS by
 `demographic_segment`.
@@ -280,6 +281,7 @@ fatigue lens such as worsening CPA by ad type, weak taxonomy patterns only, CTR 
   "watch_metric": "cpa",
   "watch_trajectory_focus": "worsening",
   "watch_minimum_points": 3,
+  "watch_minimum_calendar_days": 7,
   "watch_sources": "timeseries,patterns",
   "fatigue_decay_threshold": 0.25,
   "kinds": "working,audience",
@@ -302,6 +304,7 @@ user wants the best current learnings saved back into reusable strategist contex
   "watch_metric": "cpa",
   "watch_trajectory_focus": "worsening",
   "watch_minimum_points": 3,
+  "watch_minimum_calendar_days": 7,
   "watch_sources": "timeseries,patterns",
   "kinds": "working,watch",
   "include_gaps_in_notes": false,
@@ -319,7 +322,8 @@ campaign, landing page, `analysis_id`, or audience slices like
 completion rate, or funnel score. Use `signal_focus` when an agent only wants
 the current fatigue watchlist or only stable controls, and `trajectory_focus`
 when the agent wants only worsening, improving, flat, or insufficient-data
-series.
+series. Add `minimum_calendar_days` when fatigue should only count after a
+trend has been live long enough, not just after a few close-together points.
 ```
 {
   "brand_name": "Acme",
@@ -330,6 +334,7 @@ series.
   "trajectory_focus": "worsening",
   "minimum_spend": 500,
   "minimum_points": 3,
+  "minimum_calendar_days": 7,
   "fatigue_decay_threshold": 0.18,
   "limit": 5
 }
