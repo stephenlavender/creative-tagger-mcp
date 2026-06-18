@@ -913,7 +913,8 @@ async def list_tools() -> list[Tool]:
                 "completion, or funnel trends per creative, campaign, landing page, "
                 "hook, angle, ad type, format, visual style, CTA, analysis id, or "
                 "audience slice, plus the same fatigue decay signal the strategy "
-                "matrix uses."
+                "matrix uses. Supports trajectory filters for worsening, improving, "
+                "flat, or insufficient-data reads."
             ),
             inputSchema={
                 "type": "object",
@@ -947,6 +948,14 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Optional fatigue filter: all, fatigued, stable, "
                             "or insufficient_data"
+                        ),
+                    },
+                    "trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter: all, worsening, improving, "
+                            "flat, or insufficient_data"
                         ),
                     },
                     "start_date": {
@@ -1935,6 +1944,7 @@ async def _get_performance_timeseries(args: dict) -> list[TextContent]:
         "group_by": args.get("group_by", "ad_name"),
         "metric": args.get("metric", "roas"),
         "signal_focus": args.get("signal_focus", "all"),
+        "trajectory_focus": args.get("trajectory_focus", "all"),
         "limit": args.get("limit", 10),
         "minimum_spend": args.get("minimum_spend", 500),
         "minimum_points": args.get("minimum_points", 0),

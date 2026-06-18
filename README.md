@@ -317,7 +317,9 @@ campaign, landing page, `analysis_id`, or audience slices like
 `demographic_age`, `demographic_gender`, `demographic_segment`, and
 `demographic_signal`, and inspect metrics like ROAS, CPA, CTR, CPM, thumbstop,
 completion rate, or funnel score. Use `signal_focus` when an agent only wants
-the current fatigue watchlist or only stable controls.
+the current fatigue watchlist or only stable controls, and `trajectory_focus`
+when the agent wants only worsening, improving, flat, or insufficient-data
+series.
 ```
 {
   "brand_name": "Acme",
@@ -325,6 +327,7 @@ the current fatigue watchlist or only stable controls.
   "group_by": "ad_name",
   "metric": "roas",
   "signal_focus": "fatigued",
+  "trajectory_focus": "worsening",
   "minimum_spend": 500,
   "minimum_points": 3,
   "fatigue_decay_threshold": 0.18,
