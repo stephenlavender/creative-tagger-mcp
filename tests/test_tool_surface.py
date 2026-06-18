@@ -246,8 +246,10 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertIn("funnel_score", summary_desc)
         self.assertIn("capture", summary_desc)
+        self.assertIn("last_30_days", summary_desc)
         self.assertIn("funnel_score", taxonomy_desc)
         self.assertIn("thumbstop", taxonomy_desc)
+        self.assertIn("date presets", taxonomy_desc)
         self.assertIn("best hooks", prebuilt_desc)
         self.assertIn("landing pages", prebuilt_desc)
         self.assertIn("strategist matrix", strategy_desc)
@@ -318,6 +320,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("audience slice", timeseries_desc)
         self.assertIn("visual style", timeseries_desc)
         self.assertIn("worsening", timeseries_desc)
+        summary_schema = tools["get_meta_performance_summary"]["inputSchema"]["properties"]
+        self.assertEqual(summary_schema["date_preset"]["default"], "all_time")
+        self.assertIn("last_30_days", summary_schema["date_preset"]["description"])
+        self.assertIn("YYYY-MM-DD", summary_schema["start_date"]["description"])
+        taxonomy_schema = tools["get_taxonomy_performance"]["inputSchema"]["properties"]
+        self.assertEqual(taxonomy_schema["date_preset"]["default"], "all_time")
+        self.assertIn("last_90_days", taxonomy_schema["date_preset"]["description"])
+        self.assertIn("YYYY-MM-DD", taxonomy_schema["end_date"]["description"])
         timeseries_schema = tools["get_performance_timeseries"]["inputSchema"]["properties"]
         self.assertEqual(timeseries_schema["group_by"]["default"], "ad_name")
         self.assertEqual(timeseries_schema["date_preset"]["default"], "last_30d")
@@ -376,6 +386,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"trajectory_focus": args.get("trajectory_focus", "all")', source)
         self.assertIn('"date_preset": args.get("date_preset", "all_time")', source)
         self.assertIn('"date_preset": args.get("date_preset", "last_30d")', source)
+        self.assertIn('f"{API_URL}/meta/performance/summary"', source)
+        self.assertIn('f"{API_URL}/performance/by-taxonomy"', source)
         self.assertIn('f"{API_URL}/performance/demographics"', source)
         self.assertIn('if name == "save_brain_learnings":', source)
         self.assertIn('f"{API_URL}/brain/learnings/save"', source)

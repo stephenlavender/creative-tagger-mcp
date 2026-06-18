@@ -579,12 +579,27 @@ async def list_tools() -> list[Tool]:
                 "Read the saved Meta performance memory for a brand without triggering "
                 "a sync. Returns totals plus winners/losers by standard taxonomy and "
                 "brand-custom taxonomy values, including explainable funnel_score "
-                "signals for capture, hold, bring-to-site, and convert stages."
+                "signals for capture, hold, bring-to-site, and convert stages. "
+                "Supports all_time, last_7_days, last_30_days, last_90_days, or "
+                "custom date windows."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
                 },
             },
         ),
@@ -594,7 +609,8 @@ async def list_tools() -> list[Tool]:
                 "Return tag-level performance with significance gating and coverage "
                 "gaps. Use this to find which taxonomy values scale, which are "
                 "unproven, and which standard values have never been tried. Rows include "
-                "ROAS, CTR, thumbstop, and funnel_score when performance memory exists."
+                "ROAS, CTR, thumbstop, and funnel_score when performance memory exists. "
+                "Supports the same date presets as the main performance summary."
             ),
             inputSchema={
                 "type": "object",
@@ -608,6 +624,19 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "default": 500,
                         "description": "Spend floor before a tag is treated as proven",
+                    },
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
                     },
                 },
             },
@@ -1802,6 +1831,12 @@ async def _import_meta_performance(args: dict) -> list[TextContent]:
 
 async def _get_meta_performance_summary(args: dict) -> list[TextContent]:
     params = {"brand_name": args.get("brand_name", "")}
+    if args.get("date_preset"):
+        params["date_preset"] = args["date_preset"]
+    if args.get("start_date"):
+        params["start_date"] = args["start_date"]
+    if args.get("end_date"):
+        params["end_date"] = args["end_date"]
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/meta/performance/summary",
@@ -1836,6 +1871,12 @@ async def _get_taxonomy_performance(args: dict) -> list[TextContent]:
     }
     if args.get("dimension"):
         params["dimension"] = args["dimension"]
+    if args.get("date_preset"):
+        params["date_preset"] = args["date_preset"]
+    if args.get("start_date"):
+        params["start_date"] = args["start_date"]
+    if args.get("end_date"):
+        params["end_date"] = args["end_date"]
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/performance/by-taxonomy",
