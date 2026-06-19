@@ -266,6 +266,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("demographic-read", strategy_schema["report_template"]["description"])
         self.assertIn("metric_preset", strategy_schema)
         self.assertIn("delivery", strategy_schema["metric_preset"]["description"])
+        self.assertEqual(strategy_schema["fatigue_minimum_calendar_days"]["default"], 0)
+        self.assertIn(
+            "fatigue read is treated as meaningful",
+            strategy_schema["fatigue_minimum_calendar_days"]["description"],
+        )
         self.assertEqual(
             strategy_schema["metrics"]["default"],
             "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
@@ -380,6 +385,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"columns": args.get("columns", "ad_type")', source)
         self.assertIn('"metric_preset": args.get("metric_preset", "")', source)
         self.assertIn('"roas_target"', source)
+        self.assertIn('"fatigue_minimum_calendar_days"', source)
         self.assertIn('"watch_group_by"', source)
         self.assertIn('"watch_metric"', source)
         self.assertIn('"watch_minimum_points"', source)

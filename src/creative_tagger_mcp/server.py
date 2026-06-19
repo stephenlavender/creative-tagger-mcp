@@ -1939,7 +1939,13 @@ async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
         "end_date": args.get("end_date", ""),
         "limit": args.get("limit", 10),
     }
-    for key in ("cpa_target", "roas_target", "minimum_spend", "learning_spend"):
+    for key in (
+        "cpa_target",
+        "roas_target",
+        "minimum_spend",
+        "learning_spend",
+        "fatigue_minimum_calendar_days",
+    ):
         if args.get(key) is not None:
             params[key] = args[key]
     async with httpx.AsyncClient(timeout=30.0) as client:

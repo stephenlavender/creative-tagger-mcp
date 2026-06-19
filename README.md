@@ -235,7 +235,9 @@ Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
 milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score. For
 audience-mode reads, switch the axes to demographic dimensions such as
 `demographic_age` and `demographic_gender`, or use the `demographic-read`
-template.
+template. Add `fatigue_minimum_calendar_days` when fatigue should only count
+after a long enough live window, not just after a few close-together synced
+points.
 
 ```
 {
@@ -255,6 +257,7 @@ template.
   "columns": "demographic_gender",
   "metrics": "spend,roas,ctr,thumbstop_rate",
   "roas_target": 2.5,
+  "fatigue_minimum_calendar_days": 7,
   "start_date": "2026-05-01",
   "end_date": "2026-05-31"
 }
