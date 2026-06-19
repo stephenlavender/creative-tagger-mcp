@@ -1139,7 +1139,9 @@ async def list_tools() -> list[Tool]:
                 "Save or update a reusable custom report definition for a brand. "
                 "Use this when the user wants the same Motion-style combination "
                 "view available later, such as hook_type x landing_page x offer_type, "
-                "including custom report windows scoped to a specific test period."
+                "including custom report windows scoped to a specific test period "
+                "or a richer dashboard preset with a saved view type, grouping, "
+                "metric set, filters, sort, and metric preset."
             ),
             inputSchema={
                 "type": "object",
@@ -1165,6 +1167,46 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "default": "roas",
                         "description": "roas, funnel_score, spend, ctr, cpa",
+                    },
+                    "view_type": {
+                        "type": "string",
+                        "default": "table",
+                        "description": "Saved dashboard view mode: table, matrix, comparison, or cards",
+                    },
+                    "date_range": {
+                        "type": "string",
+                        "default": "last_30_days",
+                        "description": "Saved dashboard range preset: last_7_days, last_30_days, last_90_days, custom, or all_time",
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "default": "creative",
+                        "description": "Saved dashboard grouping mode such as creative, dimension, or matrix",
+                    },
+                    "metrics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional saved dashboard metric set, e.g. spend, roas, cpa, ctr",
+                    },
+                    "filters": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "field": {"type": "string"},
+                                "value": {"type": "string"},
+                            },
+                        },
+                        "description": "Optional saved dashboard filters as field/value pairs",
+                    },
+                    "sort": {
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Saved dashboard sort direction: asc or desc",
+                    },
+                    "saved_metric_preset": {
+                        "type": "string",
+                        "description": "Optional saved dashboard metric preset key such as diagnostics, conversion, delivery, video, scale, or all",
                     },
                     "start_date": {
                         "type": "string",
@@ -2153,6 +2195,13 @@ async def _save_custom_report(args: dict) -> list[TextContent]:
         "dimensions": dimensions,
         "layer": args.get("layer", "standard"),
         "metric": args.get("metric", "roas"),
+        "view_type": args.get("view_type", "table"),
+        "date_range": args.get("date_range", "last_30_days"),
+        "group_by": args.get("group_by", "creative"),
+        "metrics": args.get("metrics") or [],
+        "filters": args.get("filters") or [],
+        "sort": args.get("sort", "desc"),
+        "saved_metric_preset": args.get("saved_metric_preset", ""),
         "spend_threshold": args.get("spend_threshold", 500),
         "limit": args.get("limit", 12),
     }

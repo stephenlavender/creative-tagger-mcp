@@ -400,9 +400,24 @@ combination instead of treating each tag independently.
 ### Saved custom reports
 Save reusable report definitions, list them for a brand, rerun them by id, or
 delete them when they are no longer needed. Saved reports can also persist a
-custom `start_date` / `end_date` window for a specific launch or test period.
+custom `start_date` / `end_date` window for a specific launch or test period,
+plus dashboard-style preset state such as `view_type`, `date_range`,
+`group_by`, `metrics`, `filters`, `sort`, and `saved_metric_preset`.
 ```
-{ "brand_name": "Acme", "name": "Hook + LP + Offer", "dimensions": ["hook_type", "landing_page", "offer_type"], "start_date": "2026-05-01", "end_date": "2026-05-31" }
+{
+  "brand_name": "Acme",
+  "name": "Hook + LP + Offer",
+  "dimensions": ["hook_type", "landing_page", "offer_type"],
+  "view_type": "matrix",
+  "date_range": "custom",
+  "group_by": "dimension",
+  "metrics": ["spend", "roas", "cpa", "ctr"],
+  "filters": [{"field": "status", "value": "winner"}],
+  "sort": "desc",
+  "saved_metric_preset": "delivery",
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-31"
+}
 { "brand_name": "Acme" }
 { "report_id": 7 }
 ```
