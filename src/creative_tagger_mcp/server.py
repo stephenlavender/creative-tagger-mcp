@@ -748,6 +748,11 @@ async def list_tools() -> list[Tool]:
                     "roas_target": {"type": "number"},
                     "minimum_spend": {"type": "number"},
                     "learning_spend": {"type": "number"},
+                    "fatigue_minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days before a fatigue read is treated as meaningful",
+                    },
                     "limit": {"type": "integer", "default": 10},
                 },
             },
@@ -826,6 +831,11 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 0,
                         "description": "Minimum elapsed calendar days before a watch group is eligible",
+                    },
+                    "watch_maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days before a watch group is eligible",
                     },
                     "watch_sources": {
                         "type": "string",
@@ -925,6 +935,11 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 0,
                         "description": "Minimum elapsed calendar days before a watch group is eligible",
+                    },
+                    "watch_maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days before a watch group is eligible",
                     },
                     "watch_sources": {
                         "type": "string",
@@ -1035,6 +1050,11 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 0,
                         "description": "Minimum elapsed calendar days required before a grouped series is returned",
+                    },
+                    "maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days allowed before a grouped series is returned",
                     },
                     "fatigue_decay_threshold": {
                         "type": "number",
@@ -1950,6 +1970,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "watch_trajectory_focus",
         "watch_minimum_points",
         "watch_minimum_calendar_days",
+        "watch_maximum_gap_days",
         "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
@@ -1990,6 +2011,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "watch_trajectory_focus",
         "watch_minimum_points",
         "watch_minimum_calendar_days",
+        "watch_maximum_gap_days",
         "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
@@ -2018,6 +2040,7 @@ async def _get_performance_timeseries(args: dict) -> list[TextContent]:
         "minimum_spend": args.get("minimum_spend", 500),
         "minimum_points": args.get("minimum_points", 0),
         "minimum_calendar_days": args.get("minimum_calendar_days", 0),
+        "maximum_gap_days": args.get("maximum_gap_days", 0),
         "fatigue_decay_threshold": args.get("fatigue_decay_threshold", 0.18),
     }
     for key in ("start_date", "end_date"):
