@@ -647,7 +647,8 @@ async def list_tools() -> list[Tool]:
                 "Return Motion-style prebuilt creative reports for a brand: best hooks, "
                 "landing pages, messaging angles, audiences, offers, CTAs, visual formats, "
                 "and brand-custom values. Rows include ROAS, spend, CTR, thumbstop, "
-                "and funnel_score when performance memory exists."
+                "and funnel_score when performance memory exists. Optional start_date/"
+                "end_date (YYYY-MM-DD) scope the report window."
             ),
             inputSchema={
                 "type": "object",
@@ -664,6 +665,14 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "default": 500,
                         "description": "Spend floor before a row is treated as proven",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
                     },
                     "limit": {
                         "type": "integer",
@@ -1072,8 +1081,10 @@ async def list_tools() -> list[Tool]:
                 "dimension combinations by ROAS, funnel_score, spend, CTR, or CPA. "
                 "Use this when the user asks for a custom Motion-style view like "
                 "hook x landing_page x offer_type, founder x hook, offer x audience, "
-                "or custom segments. Rows can include `parts` and `values` so the "
-                "agent can explain the winning combination."
+                "or custom segments. Optional start_date and end_date let an agent "
+                "isolate a specific test window before explaining the winning "
+                "combination. Rows can include `parts` and `values` so the agent "
+                "can explain the winning combination."
             ),
             inputSchema={
                 "type": "object",
@@ -1099,6 +1110,14 @@ async def list_tools() -> list[Tool]:
                         "default": "roas",
                         "description": "roas, funnel_score, spend, ctr, cpa",
                     },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lookback start for the report window",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lookback end for the report window",
+                    },
                     "spend_threshold": {"type": "number", "default": 500},
                     "limit": {"type": "integer", "default": 12},
                 },
@@ -1119,7 +1138,8 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Save or update a reusable custom report definition for a brand. "
                 "Use this when the user wants the same Motion-style combination "
-                "view available later, such as hook_type x landing_page x offer_type."
+                "view available later, such as hook_type x landing_page x offer_type, "
+                "including custom report windows scoped to a specific test period."
             ),
             inputSchema={
                 "type": "object",
@@ -1145,6 +1165,14 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "default": "roas",
                         "description": "roas, funnel_score, spend, ctr, cpa",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lookback start to persist with the saved report",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lookback end to persist with the saved report",
                     },
                     "spend_threshold": {"type": "number", "default": 500},
                     "limit": {"type": "integer", "default": 12},
@@ -1915,6 +1943,10 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
     }
     if args.get("report_id"):
         params["report_id"] = args["report_id"]
+    if args.get("start_date"):
+        params["start_date"] = args["start_date"]
+    if args.get("end_date"):
+        params["end_date"] = args["end_date"]
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/reports/prebuilt",
@@ -2078,6 +2110,9 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
         "spend_threshold": args.get("spend_threshold", 500),
         "limit": args.get("limit", 12),
     }
+    for key in ("start_date", "end_date"):
+        if args.get(key) not in (None, ""):
+            payload[key] = args[key]
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{API_URL}/reports/custom",
@@ -2121,6 +2156,9 @@ async def _save_custom_report(args: dict) -> list[TextContent]:
         "spend_threshold": args.get("spend_threshold", 500),
         "limit": args.get("limit", 12),
     }
+    for key in ("start_date", "end_date"):
+        if args.get(key) not in (None, ""):
+            payload[key] = args[key]
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{API_URL}/reports/custom/saved",

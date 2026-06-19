@@ -252,6 +252,13 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("date presets", taxonomy_desc)
         self.assertIn("best hooks", prebuilt_desc)
         self.assertIn("landing pages", prebuilt_desc)
+        self.assertIn("YYYY-MM-DD", prebuilt_desc)
+        prebuilt_schema = tools["get_prebuilt_reports"]["inputSchema"]["properties"]
+        self.assertEqual(prebuilt_schema["limit"]["default"], 8)
+        self.assertIn("start_date", prebuilt_schema)
+        self.assertIn("end_date", prebuilt_schema)
+        self.assertIn("YYYY-MM-DD", prebuilt_schema["start_date"]["description"])
+        self.assertIn("YYYY-MM-DD", prebuilt_schema["end_date"]["description"])
         self.assertIn("strategist matrix", strategy_desc)
         self.assertIn("agent_context", strategy_desc)
         self.assertIn("hook", strategy_desc)
@@ -365,14 +372,26 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)
+        self.assertIn("start_date and end_date", custom_desc)
         self.assertIn(
             "landing_page",
             tools["create_custom_report"]["inputSchema"]["properties"]["dimensions"][
                 "description"
             ],
         )
+        custom_schema = tools["create_custom_report"]["inputSchema"]["properties"]
+        self.assertIn("start_date", custom_schema)
+        self.assertIn("end_date", custom_schema)
+        self.assertIn("YYYY-MM-DD", custom_schema["start_date"]["description"])
+        self.assertIn("YYYY-MM-DD", custom_schema["end_date"]["description"])
         self.assertIn("reusable custom report", saved_desc)
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
+        self.assertIn("specific test period", saved_desc)
+        saved_schema = tools["save_custom_report"]["inputSchema"]["properties"]
+        self.assertIn("start_date", saved_schema)
+        self.assertIn("end_date", saved_schema)
+        self.assertIn("YYYY-MM-DD", saved_schema["start_date"]["description"])
+        self.assertIn("YYYY-MM-DD", saved_schema["end_date"]["description"])
         self.assertIn("video_p100", import_rows["description"])
 
     def test_strategy_tool_forwards_demographic_and_date_controls(self) -> None:
@@ -399,11 +418,18 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"trajectory_focus": args.get("trajectory_focus", "all")', source)
         self.assertIn('"date_preset": args.get("date_preset", "all_time")', source)
         self.assertIn('"date_preset": args.get("date_preset", "last_30d")', source)
+        self.assertIn('params["start_date"] = args["start_date"]', source)
+        self.assertIn('params["end_date"] = args["end_date"]', source)
         self.assertIn('f"{API_URL}/meta/performance/summary"', source)
         self.assertIn('f"{API_URL}/performance/by-taxonomy"', source)
+        self.assertIn('f"{API_URL}/reports/prebuilt"', source)
         self.assertIn('f"{API_URL}/performance/demographics"', source)
         self.assertIn('if name == "save_brain_learnings":', source)
         self.assertIn('f"{API_URL}/brain/learnings/save"', source)
+        self.assertIn('payload[key] = args[key]', source)
+        self.assertIn('for key in ("start_date", "end_date"):', source)
+        self.assertIn('f"{API_URL}/reports/custom"', source)
+        self.assertIn('f"{API_URL}/reports/custom/saved"', source)
 
     def test_competitor_import_tool_is_positioned_as_gated_backfill(self) -> None:
         tools = _declared_tools()

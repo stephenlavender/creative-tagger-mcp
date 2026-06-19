@@ -369,22 +369,29 @@ performance memory exists.
 
 ### `get_prebuilt_reports`
 Return ready-made Motion-style reports: best hooks, landing pages, messaging angles,
-audiences, offers, CTAs, visual formats, and brand-custom values.
+audiences, offers, CTAs, visual formats, and brand-custom values. Add
+`start_date` / `end_date` when the report should only cover a specific synced
+window.
 ```
 { "brand_name": "Acme", "report_id": "best_hooks", "limit": 8 }
+{ "brand_name": "Acme", "report_id": "best_angles", "start_date": "2026-05-01", "end_date": "2026-05-31", "limit": 8 }
 ```
 
 ### `create_custom_report`
 Build a custom report from selected standard or brand taxonomy dimensions and
 rank the actual matched dimension combinations by ROAS, funnel score, spend,
 CTR, or CPA. Use this for Motion-style views like best hook x landing page x
-offer, founder x hook, audience x offer, or brand segment x product.
+offer, founder x hook, audience x offer, or brand segment x product. Add
+`start_date` and `end_date` when the report should isolate a specific test
+window instead of the full synced history.
 ```
 {
   "brand_name": "Acme",
   "dimensions": ["hook_type", "landing_page", "offer_type"],
   "layer": "all",
-  "metric": "roas"
+  "metric": "roas",
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-31"
 }
 ```
 Rows can include `parts` and `values`, so the agent can explain a winning
@@ -392,9 +399,10 @@ combination instead of treating each tag independently.
 
 ### Saved custom reports
 Save reusable report definitions, list them for a brand, rerun them by id, or
-delete them when they are no longer needed.
+delete them when they are no longer needed. Saved reports can also persist a
+custom `start_date` / `end_date` window for a specific launch or test period.
 ```
-{ "brand_name": "Acme", "name": "Hook + LP + Offer", "dimensions": ["hook_type", "landing_page", "offer_type"] }
+{ "brand_name": "Acme", "name": "Hook + LP + Offer", "dimensions": ["hook_type", "landing_page", "offer_type"], "start_date": "2026-05-01", "end_date": "2026-05-31" }
 { "brand_name": "Acme" }
 { "report_id": 7 }
 ```
