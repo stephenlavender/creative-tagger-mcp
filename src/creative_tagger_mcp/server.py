@@ -188,8 +188,9 @@ async def list_tools() -> list[Tool]:
                 "Browse the authenticated user's saved analysis library (memory). "
                 "Every analyze_creative call is automatically saved. Use this to "
                 "recall what has been analyzed before — search by filename, hook, "
-                "angle, emotion, CTA, or format, then sort by recency or joined "
-                "performance (spend, reach, frequency, ROAS, CTR, CPM, CPA)."
+                "angle, emotion, CTA, talent, offer, audio, season, or format, "
+                "then sort by recency or joined performance (spend, reach, "
+                "frequency, ROAS, CTR, CPM, CPA)."
             ),
             inputSchema={
                 "type": "object",
@@ -219,6 +220,22 @@ async def list_tools() -> list[Tool]:
                     "cta": {
                         "type": "string",
                         "description": "Filter by CTA",
+                    },
+                    "talent": {
+                        "type": "string",
+                        "description": "Filter by talent classification",
+                    },
+                    "offer": {
+                        "type": "string",
+                        "description": "Filter by offer type",
+                    },
+                    "audio": {
+                        "type": "string",
+                        "description": "Filter by audio type",
+                    },
+                    "season": {
+                        "type": "string",
+                        "description": "Filter by seasonality",
                     },
                     "sort": {
                         "type": "string",
@@ -1652,7 +1669,21 @@ async def _get_taxonomy(args: dict) -> list[TextContent]:
 
 async def _list_library(args: dict) -> list[TextContent]:
     params: dict[str, Any] = {**_auth_params()}
-    for k in ("limit", "offset", "search", "format", "hook", "angle", "emotion", "cta", "sort"):
+    for k in (
+        "limit",
+        "offset",
+        "search",
+        "format",
+        "hook",
+        "angle",
+        "emotion",
+        "cta",
+        "talent",
+        "offer",
+        "audio",
+        "season",
+        "sort",
+    ):
         if args.get(k) is not None:
             params[k] = args[k]
     async with httpx.AsyncClient(timeout=30.0) as client:

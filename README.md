@@ -131,9 +131,18 @@ Live fetch of the complete taxonomy or a single dimension.
 ```
 
 ### `list_library`
-Browse saved analyses. Search by filename or hook, filter by format.
+Browse saved analyses. Search by filename or hook, filter by format, messaging
+angle, emotion, CTA, talent, offer, audio type, or seasonality, and sort by
+joined performance.
 ```
-{ "limit": 50, "search": "BFCM", "format": "video" }
+{
+  "limit": 50,
+  "search": "BFCM",
+  "format": "video",
+  "angle": "Social Proof",
+  "talent": "Founder",
+  "sort": "roas"
+}
 ```
 
 ### `get_library_patterns`
