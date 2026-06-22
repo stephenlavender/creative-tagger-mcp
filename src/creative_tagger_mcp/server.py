@@ -716,11 +716,12 @@ async def list_tools() -> list[Tool]:
                 "color-coded states for next tests, live learning, winners, losers, "
                 "fatigue, and gaps. Also supports audience-mode matrices with "
                 "demographic_age, demographic_gender, demographic_segment, and "
-                "demographic_signal axes. Includes the decision queue, report table, "
-                "and agent_context payload so an LLM can brief next tests from the "
-                "same source of truth as the Creative Tagger UI. Supports CTR, "
-                "thumbstop, hook, hold, video milestone, CPA, CVR, ROAS, revenue, "
-                "spend, and funnel metrics."
+                "demographic_signal axes, plus mixed creative x audience reads such "
+                "as messaging_angle by demographic_segment. Includes the decision "
+                "queue, report table, and agent_context payload so an LLM can brief "
+                "next tests from the same source of truth as the Creative Tagger UI. "
+                "Supports CTR, thumbstop, hook, hold, video milestone, CPA, CVR, "
+                "ROAS, revenue, spend, and funnel metrics."
             ),
             inputSchema={
                 "type": "object",
@@ -735,7 +736,9 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "default": "next-tests",
                         "description": (
-                            "next-tests, creative-winners, fatigue-watch, demographic-read, etc."
+                            "next-tests, creative-winners, fatigue-watch, demographic-read, "
+                            "or a mixed creative x audience cut via rows/columns such as "
+                            "messaging_angle by demographic_segment"
                         ),
                     },
                     "rows": {
@@ -743,7 +746,9 @@ async def list_tools() -> list[Tool]:
                         "default": "ad_type",
                         "description": (
                             "Matrix row dimension, e.g. ad_type, format, hook, persona, "
-                            "demographic_age, demographic_gender, demographic_segment"
+                            "demographic_age, demographic_gender, demographic_segment. "
+                            "Combine a creative dimension here with a demographic column "
+                            "for mixed audience reads."
                         ),
                     },
                     "columns": {
@@ -751,7 +756,9 @@ async def list_tools() -> list[Tool]:
                         "default": "messaging_angle",
                         "description": (
                             "Matrix column dimension, e.g. messaging_angle, ad_type, format, "
-                            "demographic_gender, demographic_age, demographic_signal"
+                            "demographic_gender, demographic_age, demographic_signal. "
+                            "Set one axis to a creative tag and the other to a demographic "
+                            "axis for a mixed creative x audience matrix."
                         ),
                     },
                     "status_focus": {

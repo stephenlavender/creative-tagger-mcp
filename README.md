@@ -244,9 +244,11 @@ Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
 milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score. For
 audience-mode reads, switch the axes to demographic dimensions such as
 `demographic_age` and `demographic_gender`, or use the `demographic-read`
-template. Add `fatigue_minimum_calendar_days` when fatigue should only count
-after a long enough live window, not just after a few close-together synced
-points.
+template. For mixed creative × audience reads, keep one creative axis such as
+`messaging_angle` or `ad_type` and set the other axis to
+`demographic_segment` or `demographic_signal`. Add
+`fatigue_minimum_calendar_days` when fatigue should only count after a long
+enough live window, not just after a few close-together synced points.
 
 ```
 {
@@ -269,6 +271,18 @@ points.
   "fatigue_minimum_calendar_days": 7,
   "start_date": "2026-05-01",
   "end_date": "2026-05-31"
+}
+```
+
+```json
+{
+  "brand_name": "Acme",
+  "rows": "messaging_angle",
+  "columns": "demographic_segment",
+  "status_focus": "all",
+  "metrics": "spend,roas,ctr,cpa,conversions,revenue",
+  "fatigue_minimum_calendar_days": 7,
+  "date_preset": "last_30_days"
 }
 ```
 
