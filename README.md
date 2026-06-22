@@ -269,11 +269,11 @@ strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
 hero learning, concise stories, and an `agent_context` payload for the next
 brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
 such as `conclusion`, `working,audience`, or `watch`. Use `watch_group_by`,
-`watch_metric`, `watch_trajectory_focus`, `watch_minimum_points`,
+`watch_metric`, `watch_signal_focus`, `watch_trajectory_focus`, `watch_minimum_points`,
 `watch_minimum_calendar_days`, `watch_sources`, and
 `fatigue_decay_threshold` when the watchouts should be written from a different
-fatigue lens such as worsening CPA by ad type, weak taxonomy patterns only, CTR by hook, or ROAS by
-`demographic_segment`.
+fatigue lens such as fatigued-only CPA by ad type, weak taxonomy patterns only,
+CTR by hook, or stable ROAS by `demographic_segment`.
 ```
 {
   "brand_name": "Acme",
@@ -282,6 +282,7 @@ fatigue lens such as worsening CPA by ad type, weak taxonomy patterns only, CTR 
   "learning_spend": 1500,
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
+  "watch_signal_focus": "fatigued",
   "watch_trajectory_focus": "worsening",
   "watch_minimum_points": 3,
   "watch_minimum_calendar_days": 7,
@@ -305,6 +306,7 @@ user wants the best current learnings saved back into reusable strategist contex
   "learning_spend": 1500,
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
+  "watch_signal_focus": "fatigued",
   "watch_trajectory_focus": "worsening",
   "watch_minimum_points": 3,
   "watch_minimum_calendar_days": 7,

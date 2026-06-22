@@ -823,6 +823,14 @@ async def list_tools() -> list[Tool]:
                             "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
                         ),
                     },
+                    "watch_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional signal filter for watch/fatigue learnings: "
+                            "all, fatigued, stable, or insufficient_data"
+                        ),
+                    },
                     "watch_trajectory_focus": {
                         "type": "string",
                         "default": "all",
@@ -925,6 +933,14 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Timeseries metric used for watch/fatigue learnings: "
                             "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
+                        ),
+                    },
+                    "watch_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional signal filter for watch/fatigue learnings: "
+                            "all, fatigued, stable, or insufficient_data"
                         ),
                     },
                     "watch_trajectory_focus": {
@@ -2047,6 +2063,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "roas_target",
         "watch_group_by",
         "watch_metric",
+        "watch_signal_focus",
         "watch_trajectory_focus",
         "watch_minimum_points",
         "watch_minimum_calendar_days",
@@ -2088,6 +2105,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "roas_target",
         "watch_group_by",
         "watch_metric",
+        "watch_signal_focus",
         "watch_trajectory_focus",
         "watch_minimum_points",
         "watch_minimum_calendar_days",
