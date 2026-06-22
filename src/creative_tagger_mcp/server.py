@@ -74,6 +74,15 @@ def _coerce_bool(value: Any, *, default: bool = False) -> bool:
     return bool(value)
 
 
+def _csv_arg(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        parts = [str(item).strip() for item in value if str(item or "").strip()]
+        return ",".join(parts)
+    return str(value).strip()
+
+
 def _is_internal_backfill_enabled() -> bool:
     return os.environ.get("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", "") == "1"
 
@@ -2118,6 +2127,11 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "kinds",
         "conclusion_statuses",
     ):
+        if key in {"watch_sources", "kinds", "conclusion_statuses"}:
+            value = _csv_arg(args.get(key))
+            if value:
+                params[key] = value
+            continue
         if args.get(key) not in (None, ""):
             params[key] = args[key]
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -2161,6 +2175,11 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "kinds",
         "conclusion_statuses",
     ):
+        if key in {"watch_sources", "kinds", "conclusion_statuses"}:
+            value = _csv_arg(args.get(key))
+            if value:
+                body[key] = value
+            continue
         if args.get(key) not in (None, ""):
             body[key] = args[key]
     async with httpx.AsyncClient(timeout=30.0) as client:

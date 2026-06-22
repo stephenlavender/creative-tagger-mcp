@@ -277,18 +277,22 @@ Read the auto-written Brand Brain learnings generated from performance memory,
 strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
 hero learning, concise stories, and an `agent_context` payload for the next
 brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
-such as `conclusion`, `working,audience`, or `watch`. Use `watch_group_by`,
-`watch_metric`, `watch_signal_focus`, `watch_trajectory_focus`, `watch_minimum_points`,
-`watch_minimum_calendar_days`, `watch_sources`, and
-`fatigue_decay_threshold` when the watchouts should be written from a different
-fatigue lens such as fatigued-only CPA by ad type, weak taxonomy patterns only,
-CTR by hook, or stable ROAS by `demographic_segment`.
+such as `conclusion`, `working,audience`, or `watch`. Add
+`conclusion_statuses` to narrow conclusion stories to `winner`, `fatigued`, or
+`loser` outcomes only. Use `watch_group_by`, `watch_metric`,
+`watch_signal_focus`, `watch_trajectory_focus`, `watch_minimum_points`,
+`watch_minimum_calendar_days`, `watch_sources`, and `fatigue_decay_threshold`
+when the watchouts should be written from a different fatigue lens such as
+fatigued-only CPA by ad type, weak taxonomy patterns only, CTR by hook, or
+stable ROAS by `demographic_segment`.
 ```
 {
   "brand_name": "Acme",
   "date_preset": "last_30_days",
   "minimum_spend": 500,
   "learning_spend": 1500,
+  "kinds": "conclusion,watch",
+  "conclusion_statuses": "winner,fatigued",
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
   "watch_signal_focus": "fatigued",
@@ -297,7 +301,6 @@ CTR by hook, or stable ROAS by `demographic_segment`.
   "watch_minimum_calendar_days": 7,
   "watch_sources": "timeseries,patterns",
   "fatigue_decay_threshold": 0.25,
-  "kinds": "working,audience",
   "limit": 6
 }
 ```
@@ -313,6 +316,8 @@ user wants the best current learnings saved back into reusable strategist contex
   "date_preset": "last_30_days",
   "minimum_spend": 500,
   "learning_spend": 1500,
+  "kinds": "conclusion,watch",
+  "conclusion_statuses": "winner,fatigued",
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
   "watch_signal_focus": "fatigued",
@@ -320,7 +325,6 @@ user wants the best current learnings saved back into reusable strategist contex
   "watch_minimum_points": 3,
   "watch_minimum_calendar_days": 7,
   "watch_sources": "timeseries,patterns",
-  "kinds": "working,watch",
   "include_gaps_in_notes": false,
   "limit": 6
 }

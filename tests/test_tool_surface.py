@@ -142,6 +142,20 @@ class ToolSurfaceTest(unittest.TestCase):
         )
         self.assertEqual(payload["variables"]["aspect_ratio"], "9x16")
 
+    def test_csv_arg_normalizes_multiselect_values(self) -> None:
+        namespace = _load_pure_helpers({"_csv_arg"})
+
+        self.assertEqual(namespace["_csv_arg"](None), "")
+        self.assertEqual(namespace["_csv_arg"](" winner,fatigued "), "winner,fatigued")
+        self.assertEqual(
+            namespace["_csv_arg"](["winner", " fatigued ", "", None, "loser"]),
+            "winner,fatigued,loser",
+        )
+        self.assertEqual(
+            namespace["_csv_arg"](("timeseries", "patterns")),
+            "timeseries,patterns",
+        )
+
     def test_analyze_creative_declares_carousel_and_version_inputs(self) -> None:
         tools = _declared_tools()
         analyze = tools["analyze_creative"]
@@ -465,6 +479,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('f"{API_URL}/performance/demographics"', source)
         self.assertIn('if name == "save_brain_learnings":', source)
         self.assertIn('f"{API_URL}/brain/learnings/save"', source)
+        self.assertIn('_csv_arg(args.get(key))', source)
         self.assertIn('payload[key] = args[key]', source)
         self.assertIn('for key in ("start_date", "end_date"):', source)
         self.assertIn('f"{API_URL}/reports/custom"', source)
