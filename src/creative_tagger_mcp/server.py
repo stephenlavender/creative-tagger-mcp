@@ -887,6 +887,10 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional comma-separated kinds: conclusion, working, watch, audience, gap, or all",
                     },
+                    "conclusion_statuses": {
+                        "type": "string",
+                        "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
+                    },
                     "limit": {
                         "type": "integer",
                         "default": 8,
@@ -998,6 +1002,10 @@ async def list_tools() -> list[Tool]:
                     "kinds": {
                         "type": "string",
                         "description": "Optional comma-separated kinds: conclusion, working, watch, audience, gap, or all",
+                    },
+                    "conclusion_statuses": {
+                        "type": "string",
+                        "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
                     },
                     "include_gaps_in_notes": {
                         "type": "boolean",
@@ -1310,13 +1318,19 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Return saved age x gender performance memory with opportunity and "
                 "waste flags. Useful for audience strategy and Advantage+ diagnostics. "
-                "Optional start_date/end_date (YYYY-MM-DD) scope the audience read to "
+                "Supports report date presets like last_30_days or a custom "
+                "start_date/end_date (YYYY-MM-DD) to scope the audience read to "
                 "a specific performance window."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
                     "start_date": {
                         "type": "string",
                         "description": "Optional start date in YYYY-MM-DD format",
@@ -2102,6 +2116,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
+        "conclusion_statuses",
     ):
         if args.get(key) not in (None, ""):
             params[key] = args[key]
@@ -2144,6 +2159,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "watch_sources",
         "fatigue_decay_threshold",
         "kinds",
+        "conclusion_statuses",
     ):
         if args.get(key) not in (None, ""):
             body[key] = args[key]
@@ -2296,6 +2312,7 @@ async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
 async def _get_demographics_performance(args: dict) -> list[TextContent]:
     params = {
         "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "all_time"),
         "start_date": args.get("start_date", ""),
         "end_date": args.get("end_date", ""),
     }

@@ -445,10 +445,12 @@ swaps.
 
 ### `get_demographics_performance`
 Read age x gender performance memory with opportunity and waste flags. Use
-`start_date` / `end_date` to isolate a specific audience window.
+`date_preset` for a standard audience window, or `start_date` / `end_date` to
+isolate a specific audience window.
 ```
 {
   "brand_name": "Acme",
+  "date_preset": "last_30_days",
   "start_date": "2026-05-01",
   "end_date": "2026-05-31"
 }
