@@ -243,10 +243,12 @@ winners, losers, fatigue, and gaps. Returns the decision queue plus an
 Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
 milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score. For
 audience-mode reads, switch the axes to demographic dimensions such as
-`demographic_age` and `demographic_gender`, or use the `demographic-read`
-template. For mixed creative × audience reads, keep one creative axis such as
-`messaging_angle` or `ad_type` and set the other axis to
-`demographic_segment` or `demographic_signal`. Add
+`demographic_age` and `demographic_gender`, or use the `demographic-read` or
+`audience-signals` templates. Other built-in templates include
+`creative-winners`, `fatigue-watch`, `coverage-gaps`, `hook-performance`, and
+`persona-read`. For mixed creative × audience reads, keep one creative axis
+such as `messaging_angle`, `ad_type`, `hook`, `persona`, or `offer_type` and
+set the other axis to `demographic_segment` or `demographic_signal`. Add
 `fatigue_minimum_calendar_days` when fatigue should only count after a long
 enough live window, not just after a few close-together synced points.
 
@@ -266,11 +268,22 @@ enough live window, not just after a few close-together synced points.
   "report_template": "demographic-read",
   "rows": "demographic_age",
   "columns": "demographic_gender",
-  "metrics": "spend,roas,ctr,thumbstop_rate",
+  "metrics": "spend,roas,ctr,cpa,conversions,revenue",
   "roas_target": 2.5,
   "fatigue_minimum_calendar_days": 7,
   "start_date": "2026-05-01",
   "end_date": "2026-05-31"
+}
+```
+
+```json
+{
+  "brand_name": "Acme",
+  "report_template": "audience-signals",
+  "rows": "demographic_signal",
+  "columns": "demographic_segment",
+  "metrics": "spend,roas,ctr,cpa,conversions,revenue",
+  "date_preset": "last_30_days"
 }
 ```
 

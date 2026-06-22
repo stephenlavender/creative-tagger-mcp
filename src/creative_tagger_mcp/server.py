@@ -736,19 +736,21 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "default": "next-tests",
                         "description": (
-                            "next-tests, creative-winners, fatigue-watch, demographic-read, "
-                            "or a mixed creative x audience cut via rows/columns such as "
-                            "messaging_angle by demographic_segment"
+                            "Template preset: next-tests, creative-winners, fatigue-watch, "
+                            "coverage-gaps, hook-performance, persona-read, demographic-read, "
+                            "or audience-signals. You can also skip the preset and request a "
+                            "mixed creative x audience cut via rows/columns such as "
+                            "messaging_angle by demographic_segment."
                         ),
                     },
                     "rows": {
                         "type": "string",
                         "default": "ad_type",
                         "description": (
-                            "Matrix row dimension, e.g. ad_type, format, hook, persona, "
-                            "demographic_age, demographic_gender, demographic_segment. "
-                            "Combine a creative dimension here with a demographic column "
-                            "for mixed audience reads."
+                            "Matrix row dimension, e.g. ad_type, messaging_angle, format, "
+                            "hook, persona, offer_type, demographic_age, demographic_gender, "
+                            "demographic_segment, or demographic_signal. Combine a creative "
+                            "dimension here with a demographic column for mixed audience reads."
                         ),
                     },
                     "columns": {
@@ -756,9 +758,10 @@ async def list_tools() -> list[Tool]:
                         "default": "messaging_angle",
                         "description": (
                             "Matrix column dimension, e.g. messaging_angle, ad_type, format, "
-                            "demographic_gender, demographic_age, demographic_signal. "
-                            "Set one axis to a creative tag and the other to a demographic "
-                            "axis for a mixed creative x audience matrix."
+                            "hook, persona, offer_type, demographic_gender, demographic_age, "
+                            "demographic_segment, or demographic_signal. Set one axis to a "
+                            "creative tag and the other to a demographic axis for a mixed "
+                            "creative x audience matrix."
                         ),
                     },
                     "status_focus": {
