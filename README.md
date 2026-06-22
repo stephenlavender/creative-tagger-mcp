@@ -237,7 +237,7 @@ customer accounts can sync Meta performance.
 
 ### `get_creative_strategy_report`
 Pull the same strategy matrix shown in Creative Tagger Reports. Defaults to
-messaging angles by ad types, with states for next tests, live learning,
+ad types by messaging angles, with states for next tests, live learning,
 winners, losers, fatigue, and gaps. Returns the decision queue plus an
 `agent_context` payload that can be handed directly to an LLM for strategy work.
 Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
@@ -252,8 +252,8 @@ points.
 {
   "brand_name": "Acme",
   "report_template": "next-tests",
-  "rows": "messaging_angle",
-  "columns": "ad_type",
+  "rows": "ad_type",
+  "columns": "messaging_angle",
   "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"
 }
 ```

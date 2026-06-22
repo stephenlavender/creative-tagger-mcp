@@ -712,7 +712,7 @@ async def list_tools() -> list[Tool]:
             name="get_creative_strategy_report",
             description=(
                 "Return the strategist matrix for deciding what to test next on Meta. "
-                "Defaults to messaging_angle rows by ad_type columns, with text and "
+                "Defaults to ad_type rows by messaging_angle columns, with text and "
                 "color-coded states for next tests, live learning, winners, losers, "
                 "fatigue, and gaps. Also supports audience-mode matrices with "
                 "demographic_age, demographic_gender, demographic_segment, and "
@@ -740,17 +740,17 @@ async def list_tools() -> list[Tool]:
                     },
                     "rows": {
                         "type": "string",
-                        "default": "messaging_angle",
+                        "default": "ad_type",
                         "description": (
-                            "Matrix row dimension, e.g. messaging_angle, hook, persona, "
+                            "Matrix row dimension, e.g. ad_type, format, hook, persona, "
                             "demographic_age, demographic_gender, demographic_segment"
                         ),
                     },
                     "columns": {
                         "type": "string",
-                        "default": "ad_type",
+                        "default": "messaging_angle",
                         "description": (
-                            "Matrix column dimension, e.g. ad_type, format, "
+                            "Matrix column dimension, e.g. messaging_angle, ad_type, format, "
                             "demographic_gender, demographic_age, demographic_signal"
                         ),
                     },
@@ -2074,8 +2074,8 @@ async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
         "brand_name": args.get("brand_name", ""),
         "date_preset": args.get("date_preset", "all_time"),
         "report_template": args.get("report_template", "next-tests"),
-        "rows": args.get("rows", "messaging_angle"),
-        "columns": args.get("columns", "ad_type"),
+        "rows": args.get("rows", "ad_type"),
+        "columns": args.get("columns", "messaging_angle"),
         "status_focus": args.get("status_focus", "all"),
         "metrics": args.get("metrics", "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"),
         "metric_preset": args.get("metric_preset", ""),
