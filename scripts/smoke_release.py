@@ -66,6 +66,7 @@ EXPECTED_TOOLS = {
     "get_demographics_performance",
     "generate_brand_taxonomy",
     "scan_competitor",
+    "get_competitor_scan_history",
     "generate_naming",
 }
 INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}

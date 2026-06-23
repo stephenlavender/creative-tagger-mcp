@@ -497,12 +497,20 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 ### `scan_competitor`
 Classify a competitor's Meta Ad Library ads and get strategy breakdown.
 ```
-{ "page_name": "Hims & Hers", "limit": 25 }
+{ "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
 ```
 
 Internal competitor-row backfill is also hidden from the default published MCP
 surface. Customer-facing competitor intelligence should use `scan_competitor`
 after native Meta Ad Library access is approved.
+
+### `get_competitor_scan_history`
+Read the saved Market scans/imports for a workspace without re-running Meta Ad
+Library access. Useful when the agent needs the latest saved competitor hooks,
+styles, or scan metadata before drafting briefs.
+```
+{ "brand_name": "Acme", "limit": 6 }
+```
 
 ### `generate_naming`
 Build naming strings from already-classified attributes (rarely needed — `analyze_creative` already includes naming).

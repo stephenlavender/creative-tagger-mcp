@@ -1396,12 +1396,45 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "brand_name": {
+                        "type": "string",
+                        "description": (
+                            "Optional workspace brand to attach the scan to for saved "
+                            "Market history and follow-up briefing."
+                        ),
+                    },
                     "page_id": {"type": "string"},
                     "page_name": {"type": "string"},
                     "keyword": {"type": "string"},
                     "country": {"type": "string", "default": "US"},
                     "limit": {"type": "integer", "default": 25},
                     "analyze_creatives": {"type": "boolean", "default": True},
+                },
+            },
+        ),
+        Tool(
+            name="get_competitor_scan_history",
+            description=(
+                "Return saved competitor Market scans/imports for the current workspace "
+                "without re-running Meta Ad Library access. Useful for re-briefing past "
+                "market reads, checking the latest tagged competitor patterns, or "
+                "building strategy prompts from previously saved scans."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {
+                        "type": "string",
+                        "description": (
+                            "Optional workspace brand filter. When omitted, returns the "
+                            "latest saved scans across brands for the current account."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Maximum number of saved scans/imports to return",
+                    },
                 },
             },
         ),
@@ -1567,6 +1600,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _generate_brand_taxonomy(arguments)
         if name == "scan_competitor":
             return await _scan_competitor(arguments)
+        if name == "get_competitor_scan_history":
+            return await _get_competitor_scan_history(arguments)
         if name == "import_competitor_ads":
             return await _import_competitor_ads(arguments)
         if name == "generate_naming":
@@ -2375,6 +2410,7 @@ async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
 
 async def _scan_competitor(args: dict) -> list[TextContent]:
     body = {
+        "brand_name": args.get("brand_name"),
         "page_id": args.get("page_id"),
         "page_name": args.get("page_name"),
         "keyword": args.get("keyword"),
@@ -2385,6 +2421,19 @@ async def _scan_competitor(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=300.0) as client:
         resp = await client.post(
             f"{API_URL}/competitors/scan", json=body, headers=_headers()
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_competitor_scan_history(args: dict) -> list[TextContent]:
+    params = {
+        "brand_name": args.get("brand_name", ""),
+        "limit": args.get("limit", 10),
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{API_URL}/competitors/history", params=params, headers=_headers()
         )
         resp.raise_for_status()
         return _text(resp.json())
