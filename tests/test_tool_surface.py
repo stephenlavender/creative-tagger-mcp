@@ -321,6 +321,19 @@ class ToolSurfaceTest(unittest.TestCase):
             "fatigue read is treated as meaningful",
             strategy_schema["fatigue_minimum_calendar_days"]["description"],
         )
+        self.assertEqual(strategy_schema["watch_signal_focus"]["default"], "all")
+        self.assertEqual(strategy_schema["watch_trajectory_focus"]["default"], "all")
+        self.assertEqual(strategy_schema["watch_minimum_points"]["default"], 2)
+        self.assertEqual(strategy_schema["watch_maximum_gap_days"]["default"], 0)
+        self.assertEqual(strategy_schema["watch_limit"]["default"], 5)
+        self.assertIn("messaging_angle", strategy_schema["watch_group_by"]["description"])
+        self.assertIn("demographic_segment", strategy_schema["watch_group_by"]["description"])
+        self.assertIn("thumbstop_rate", strategy_schema["watch_metric"]["description"])
+        self.assertIn("fatigued", strategy_schema["watch_signal_focus"]["description"])
+        self.assertIn("worsening", strategy_schema["watch_trajectory_focus"]["description"])
+        self.assertIn("fatigue cadence gate", strategy_schema["watch_minimum_calendar_days"]["description"])
+        self.assertIn("sync gap", strategy_schema["watch_maximum_gap_days"]["description"])
+        self.assertIn("fatigue watch groups", strategy_schema["watch_limit"]["description"])
         self.assertEqual(
             strategy_schema["metrics"]["default"],
             "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
@@ -471,6 +484,10 @@ class ToolSurfaceTest(unittest.TestCase):
 
     def test_strategy_tool_forwards_demographic_and_date_controls(self) -> None:
         source = SERVER.read_text()
+        strategy_handler = source.split(
+            "async def _get_creative_strategy_report(args: dict) -> list[TextContent]:",
+            1,
+        )[1].split("async def _get_brain_learnings", 1)[0]
 
         self.assertIn('"date_preset": args.get("date_preset", "all_time")', source)
         self.assertIn('"start_date": args.get("start_date", "")', source)
@@ -497,6 +514,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"date_preset": args.get("date_preset", "last_30d")', source)
         self.assertIn('params["start_date"] = args["start_date"]', source)
         self.assertIn('params["end_date"] = args["end_date"]', source)
+        self.assertIn('"watch_group_by"', strategy_handler)
+        self.assertIn('"watch_metric"', strategy_handler)
+        self.assertIn('"watch_signal_focus"', strategy_handler)
+        self.assertIn('"watch_trajectory_focus"', strategy_handler)
+        self.assertIn('"watch_minimum_points"', strategy_handler)
+        self.assertIn('"watch_minimum_calendar_days"', strategy_handler)
+        self.assertIn('"watch_maximum_gap_days"', strategy_handler)
+        self.assertIn('"watch_limit"', strategy_handler)
         self.assertIn('f"{API_URL}/meta/performance/summary"', source)
         self.assertIn('f"{API_URL}/performance/by-taxonomy"', source)
         self.assertIn('f"{API_URL}/reports/prebuilt"', source)

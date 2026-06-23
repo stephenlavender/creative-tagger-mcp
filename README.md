@@ -250,7 +250,11 @@ audience-mode reads, switch the axes to demographic dimensions such as
 such as `messaging_angle`, `ad_type`, `hook`, `persona`, or `offer_type` and
 set the other axis to `demographic_segment` or `demographic_signal`. Add
 `fatigue_minimum_calendar_days` when fatigue should only count after a long
-enough live window, not just after a few close-together synced points.
+enough live window, not just after a few close-together synced points. For
+fatigue-aware reads, pass the same embedded watch controls the app/API support:
+`watch_group_by`, `watch_metric`, `watch_signal_focus`,
+`watch_trajectory_focus`, `watch_minimum_points`,
+`watch_minimum_calendar_days`, `watch_maximum_gap_days`, and `watch_limit`.
 
 ```
 {
@@ -271,6 +275,14 @@ enough live window, not just after a few close-together synced points.
   "metrics": "spend,roas,ctr,cpa,conversions,revenue",
   "roas_target": 2.5,
   "fatigue_minimum_calendar_days": 7,
+  "watch_group_by": "hook_type",
+  "watch_metric": "cpa",
+  "watch_signal_focus": "fatigued",
+  "watch_trajectory_focus": "worsening",
+  "watch_minimum_points": 2,
+  "watch_minimum_calendar_days": 7,
+  "watch_maximum_gap_days": 7,
+  "watch_limit": 5,
   "start_date": "2026-05-01",
   "end_date": "2026-05-31"
 }

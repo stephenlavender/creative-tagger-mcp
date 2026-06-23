@@ -798,6 +798,60 @@ async def list_tools() -> list[Tool]:
                         "default": 0,
                         "description": "Minimum elapsed calendar days before a fatigue read is treated as meaningful",
                     },
+                    "watch_group_by": {
+                        "type": "string",
+                        "default": "",
+                        "description": (
+                            "Optional fatigue watch grouping for the strategy report: "
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "watch_metric": {
+                        "type": "string",
+                        "default": "",
+                        "description": (
+                            "Optional fatigue watch metric for the strategy report: "
+                            "roas, cpa, ctr, spend, hook_rate, hold_rate, thumbstop_rate, "
+                            "or demographic-safe metrics such as conversions and revenue"
+                        ),
+                    },
+                    "watch_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional fatigue watch signal filter for the strategy report: "
+                            "all, fatigued, stable, or insufficient_data"
+                        ),
+                    },
+                    "watch_trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional fatigue watch trend filter for the strategy report: "
+                            "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_minimum_points": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "Minimum observed timeseries points before a fatigue watch group is eligible",
+                    },
+                    "watch_minimum_calendar_days": {
+                        "type": "integer",
+                        "description": "Optional elapsed calendar-day gate for fatigue watch groups; defaults to the report fatigue cadence gate",
+                    },
+                    "watch_maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days before a fatigue watch group is eligible",
+                    },
+                    "watch_limit": {
+                        "type": "integer",
+                        "default": 5,
+                        "description": "Maximum fatigue watch groups to rank in the strategy report",
+                    },
                     "limit": {"type": "integer", "default": 10},
                 },
             },
@@ -2134,6 +2188,14 @@ async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
         "minimum_spend",
         "learning_spend",
         "fatigue_minimum_calendar_days",
+        "watch_group_by",
+        "watch_metric",
+        "watch_signal_focus",
+        "watch_trajectory_focus",
+        "watch_minimum_points",
+        "watch_minimum_calendar_days",
+        "watch_maximum_gap_days",
+        "watch_limit",
     ):
         if args.get(key) is not None:
             params[key] = args[key]
