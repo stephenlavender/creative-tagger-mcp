@@ -44,6 +44,7 @@ PUBLIC_EXPECTED_TOOLS = {
     "get_creative_strategy_report",
     "get_brain_learnings",
     "save_brain_learnings",
+    "export_brain_learnings_context",
     "get_performance_timeseries",
     "create_custom_report",
     "list_custom_reports",
@@ -263,6 +264,7 @@ class ToolSurfaceTest(unittest.TestCase):
         strategy_desc = tools["get_creative_strategy_report"]["description"]
         brain_desc = tools["get_brain_learnings"]["description"]
         brain_save_desc = tools["save_brain_learnings"]["description"]
+        brain_export_desc = tools["export_brain_learnings_context"]["description"]
         timeseries_desc = tools["get_performance_timeseries"]["description"]
         demographics_desc = tools["get_demographics_performance"]["description"]
         competitor_desc = tools["scan_competitor"]["description"]
@@ -359,6 +361,29 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("Brand Brain notes", brain_save_desc)
         self.assertIn("demographic_signal", brain_save_desc)
         self.assertIn("opportunities-only", brain_save_desc)
+        self.assertIn("agent_context payload", brain_export_desc)
+        self.assertIn("brief-ready prompt seed", brain_export_desc)
+        self.assertIn("saved Brand Brain context", brain_export_desc)
+        brain_export_schema = tools["export_brain_learnings_context"]["inputSchema"]["properties"]
+        self.assertEqual(brain_export_schema["limit"]["default"], 8)
+        self.assertEqual(brain_export_schema["date_preset"]["default"], "all_time")
+        self.assertIn("YYYY-MM-DD", brain_export_schema["start_date"]["description"])
+        self.assertEqual(brain_export_schema["watch_group_by"]["default"], "messaging_angle")
+        self.assertEqual(brain_export_schema["watch_metric"]["default"], "roas")
+        self.assertEqual(brain_export_schema["watch_signal_focus"]["default"], "all")
+        self.assertEqual(brain_export_schema["watch_trajectory_focus"]["default"], "all")
+        self.assertEqual(brain_export_schema["watch_minimum_points"]["default"], 2)
+        self.assertEqual(brain_export_schema["watch_minimum_calendar_days"]["default"], 0)
+        self.assertEqual(brain_export_schema["watch_maximum_gap_days"]["default"], 0)
+        self.assertEqual(brain_export_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertEqual(brain_export_schema["audience_signal_focus"]["default"], "all")
+        self.assertEqual(brain_export_schema["audience_limit"]["default"], 3)
+        self.assertIn("conclusion, working, watch, audience, gap", brain_export_schema["kinds"]["description"])
+        self.assertIn("demographic_segment", brain_export_schema["watch_group_by"]["description"])
+        self.assertIn("thumbstop_rate", brain_export_schema["watch_metric"]["description"])
+        self.assertIn("worsening", brain_export_schema["watch_trajectory_focus"]["description"])
+        self.assertIn("strategy", brain_export_schema["watch_sources"]["description"])
+        self.assertIn("waste", brain_export_schema["audience_signal_focus"]["description"])
         brain_save_schema = tools["save_brain_learnings"]["inputSchema"]["properties"]
         self.assertEqual(brain_save_schema["limit"]["default"], 8)
         self.assertEqual(brain_save_schema["include_gaps_in_notes"]["default"], False)
@@ -542,6 +567,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('f"{API_URL}/competitors/history"', source)
         self.assertIn('if name == "save_brain_learnings":', source)
         self.assertIn('f"{API_URL}/brain/learnings/save"', source)
+        self.assertIn('if name == "export_brain_learnings_context":', source)
+        self.assertIn("async def _export_brain_learnings_context(args: dict)", source)
+        self.assertIn('payload = await _get_brain_learnings(args)', source)
+        self.assertIn('parsed.get("agent_context")', source)
         self.assertIn('_csv_arg(args.get(key))', source)
         self.assertIn('payload[key] = args[key]', source)
         self.assertIn('for key in ("start_date", "end_date"):', source)

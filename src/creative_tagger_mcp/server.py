@@ -1116,6 +1116,129 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="export_brain_learnings_context",
+            description=(
+                "Return the reusable agent_context payload from auto-written Brand "
+                "Brain learnings. Use this when another agent or workflow needs a "
+                "brief-ready prompt seed plus the filtered learnings, evidence "
+                "thresholds, saved Brand Brain context, and active watch or audience "
+                "filters without the full response wrapper."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "description": "Spend floor before a pattern is treated as significant",
+                    },
+                    "learning_spend": {
+                        "type": "number",
+                        "description": "Spend target before a cell graduates from live learning",
+                    },
+                    "cpa_target": {"type": "number"},
+                    "roas_target": {"type": "number"},
+                    "watch_group_by": {
+                        "type": "string",
+                        "default": "messaging_angle",
+                        "description": (
+                            "Timeseries grouping for watch/fatigue learnings: "
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "watch_metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "Timeseries metric used for watch/fatigue learnings: "
+                            "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
+                        ),
+                    },
+                    "watch_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional signal filter for watch/fatigue learnings: "
+                            "all, fatigued, stable, or insufficient_data"
+                        ),
+                    },
+                    "watch_trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter for watch/fatigue learnings: "
+                            "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_minimum_points": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "Minimum observed timeseries points before a watch group is eligible",
+                    },
+                    "watch_minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days before a watch group is eligible",
+                    },
+                    "watch_maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days before a watch group is eligible",
+                    },
+                    "watch_sources": {
+                        "type": "string",
+                        "description": (
+                            "Optional comma-separated watch sources: timeseries, "
+                            "strategy, patterns, or all"
+                        ),
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a watch trend to fatigued",
+                    },
+                    "kinds": {
+                        "type": "string",
+                        "description": "Optional comma-separated kinds: conclusion, working, watch, audience, gap, or all",
+                    },
+                    "conclusion_statuses": {
+                        "type": "string",
+                        "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
+                    },
+                    "audience_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                    },
+                    "audience_limit": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum audience learning stories to include in the exported context",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 8,
+                        "description": "Maximum learning stories to include in the exported context",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="get_performance_timeseries",
             description=(
                 "Return saved performance time series for creative or campaign fatigue "
@@ -1656,6 +1779,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_brain_learnings(arguments)
         if name == "save_brain_learnings":
             return await _save_brain_learnings(arguments)
+        if name == "export_brain_learnings_context":
+            return await _export_brain_learnings_context(arguments)
         if name == "get_performance_timeseries":
             return await _get_performance_timeseries(arguments)
         if name == "create_custom_report":
@@ -2323,6 +2448,32 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         )
         resp.raise_for_status()
         return _text(resp.json())
+
+
+async def _export_brain_learnings_context(args: dict) -> list[TextContent]:
+    payload = await _get_brain_learnings(args)
+    if not payload:
+        return payload
+    raw = getattr(payload[0], "text", "")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return payload
+    if not isinstance(parsed, dict):
+        return payload
+    context = parsed.get("agent_context")
+    if not isinstance(context, dict):
+        return _err("Brain learnings response did not include agent_context")
+    export = {
+        **context,
+        "brand_name": parsed.get("brand_name", args.get("brand_name", "")),
+        "generated_at": parsed.get("generated_at", ""),
+        "hero": parsed.get("hero") or {},
+        "summary": parsed.get("summary") or {},
+        "controls": parsed.get("controls") or {},
+        "source_summary": parsed.get("source_summary") or {},
+    }
+    return _text(export)
 
 
 async def _get_performance_timeseries(args: dict) -> list[TextContent]:
