@@ -866,7 +866,8 @@ async def list_tools() -> list[Tool]:
                 "brief seed. Supports focused reads like conclusion-only, "
                 "working-only, or audience-only learnings, including audience "
                 "fatigue reads grouped by demographic_age, demographic_gender, "
-                "demographic_segment, or demographic_signal."
+                "demographic_segment, or demographic_signal. Audience filters can "
+                "also isolate opportunities-only or waste-only learnings."
             ),
             inputSchema={
                 "type": "object",
@@ -964,6 +965,16 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
                     },
+                    "audience_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                    },
+                    "audience_limit": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum audience learning stories to return when audience signals are included",
+                    },
                     "limit": {
                         "type": "integer",
                         "default": 8,
@@ -981,7 +992,8 @@ async def list_tools() -> list[Tool]:
                 "patterns, watchouts, audience signals, or gaps saved as reusable "
                 "strategist context, including audience watchouts grouped by "
                 "demographic_age, demographic_gender, demographic_segment, or "
-                "demographic_signal."
+                "demographic_signal. Audience filters can isolate opportunities-only "
+                "or waste-only learnings before saving."
             ),
             inputSchema={
                 "type": "object",
@@ -1079,6 +1091,16 @@ async def list_tools() -> list[Tool]:
                     "conclusion_statuses": {
                         "type": "string",
                         "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
+                    },
+                    "audience_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                    },
+                    "audience_limit": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum audience learning stories to persist when audience signals are included",
                     },
                     "include_gaps_in_notes": {
                         "type": "boolean",
@@ -2233,6 +2255,8 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "fatigue_decay_threshold",
         "kinds",
         "conclusion_statuses",
+        "audience_signal_focus",
+        "audience_limit",
     ):
         if key in {"watch_sources", "kinds", "conclusion_statuses"}:
             value = _csv_arg(args.get(key))
@@ -2281,6 +2305,8 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "fatigue_decay_threshold",
         "kinds",
         "conclusion_statuses",
+        "audience_signal_focus",
+        "audience_limit",
     ):
         if key in {"watch_sources", "kinds", "conclusion_statuses"}:
             value = _csv_arg(args.get(key))
