@@ -911,7 +911,9 @@ async def list_tools() -> list[Tool]:
                 "working-only, or audience-only learnings, including audience "
                 "fatigue reads grouped by demographic_age, demographic_gender, "
                 "demographic_segment, or demographic_signal. Audience filters can "
-                "also isolate opportunities-only or waste-only learnings."
+                "also isolate opportunities-only or waste-only learnings, and "
+                "watch_coverage_focus can isolate call-ready, gappy, short-window, "
+                "insufficient-point, or windowed-history time-series reads."
             ),
             inputSchema={
                 "type": "object",
@@ -1045,7 +1047,9 @@ async def list_tools() -> list[Tool]:
                 "strategist context, including audience watchouts grouped by "
                 "demographic_age, demographic_gender, demographic_segment, or "
                 "demographic_signal. Audience filters can isolate opportunities-only "
-                "or waste-only learnings before saving."
+                "or waste-only learnings before saving, and watch_coverage_focus can "
+                "save only gappy, short-window, insufficient-point, or "
+                "windowed-history watchouts."
             ),
             inputSchema={
                 "type": "object",
@@ -1182,7 +1186,8 @@ async def list_tools() -> list[Tool]:
                 "Brain learnings. Use this when another agent or workflow needs a "
                 "brief-ready prompt seed plus the filtered learnings, evidence "
                 "thresholds, saved Brand Brain context, and active watch or audience "
-                "filters without the full response wrapper."
+                "filters without the full response wrapper, including "
+                "watch_coverage_focus for time-series sync-quality reads."
             ),
             inputSchema={
                 "type": "object",
