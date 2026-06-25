@@ -83,6 +83,41 @@ def _csv_arg(value: Any) -> str:
     return str(value).strip()
 
 
+def _strategy_params(args: dict) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "all_time"),
+        "report_template": args.get("report_template", "next-tests"),
+        "start_date": args.get("start_date", ""),
+        "end_date": args.get("end_date", ""),
+        "limit": args.get("limit", 10),
+    }
+    for key in ("rows", "columns", "status_focus", "metric_preset"):
+        if args.get(key) not in (None, ""):
+            params[key] = args[key]
+    metrics = _csv_arg(args.get("metrics"))
+    if metrics:
+        params["metrics"] = metrics
+    for key in (
+        "cpa_target",
+        "roas_target",
+        "minimum_spend",
+        "learning_spend",
+        "fatigue_minimum_calendar_days",
+        "watch_group_by",
+        "watch_metric",
+        "watch_signal_focus",
+        "watch_trajectory_focus",
+        "watch_minimum_points",
+        "watch_minimum_calendar_days",
+        "watch_maximum_gap_days",
+        "watch_limit",
+    ):
+        if args.get(key) is not None:
+            params[key] = args[key]
+    return params
+
+
 def _is_internal_backfill_enabled() -> bool:
     return os.environ.get("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", "") == "1"
 
@@ -2316,36 +2351,7 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
 
 
 async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
-    params: dict[str, Any] = {
-        "brand_name": args.get("brand_name", ""),
-        "date_preset": args.get("date_preset", "all_time"),
-        "report_template": args.get("report_template", "next-tests"),
-        "rows": args.get("rows", "ad_type"),
-        "columns": args.get("columns", "messaging_angle"),
-        "status_focus": args.get("status_focus", "all"),
-        "metrics": args.get("metrics", "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"),
-        "metric_preset": args.get("metric_preset", ""),
-        "start_date": args.get("start_date", ""),
-        "end_date": args.get("end_date", ""),
-        "limit": args.get("limit", 10),
-    }
-    for key in (
-        "cpa_target",
-        "roas_target",
-        "minimum_spend",
-        "learning_spend",
-        "fatigue_minimum_calendar_days",
-        "watch_group_by",
-        "watch_metric",
-        "watch_signal_focus",
-        "watch_trajectory_focus",
-        "watch_minimum_points",
-        "watch_minimum_calendar_days",
-        "watch_maximum_gap_days",
-        "watch_limit",
-    ):
-        if args.get(key) is not None:
-            params[key] = args[key]
+    params = _strategy_params(args)
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{API_URL}/reports/creative-strategy",

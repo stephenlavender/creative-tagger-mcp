@@ -158,6 +158,35 @@ class ToolSurfaceTest(unittest.TestCase):
             "timeseries,patterns",
         )
 
+    def test_strategy_params_preserve_template_defaults_unless_overridden(self) -> None:
+        namespace = _load_pure_helpers({"_csv_arg", "_strategy_params"})
+        strategy_params = namespace["_strategy_params"]
+
+        template_only = strategy_params({"brand_name": "Acme", "report_template": "audience-signals"})
+        self.assertEqual(template_only["report_template"], "audience-signals")
+        self.assertNotIn("rows", template_only)
+        self.assertNotIn("columns", template_only)
+        self.assertNotIn("status_focus", template_only)
+        self.assertNotIn("metrics", template_only)
+        self.assertNotIn("metric_preset", template_only)
+
+        explicit = strategy_params(
+            {
+                "brand_name": "Acme",
+                "report_template": "audience-signals",
+                "rows": "messaging_angle",
+                "columns": "demographic_segment",
+                "status_focus": "winner",
+                "metrics": ["spend", "roas"],
+                "metric_preset": "scale",
+            }
+        )
+        self.assertEqual(explicit["rows"], "messaging_angle")
+        self.assertEqual(explicit["columns"], "demographic_segment")
+        self.assertEqual(explicit["status_focus"], "winner")
+        self.assertEqual(explicit["metrics"], "spend,roas")
+        self.assertEqual(explicit["metric_preset"], "scale")
+
     def test_analyze_creative_declares_carousel_and_version_inputs(self) -> None:
         tools = _declared_tools()
         analyze = tools["analyze_creative"]
@@ -527,9 +556,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"date_preset": args.get("date_preset", "all_time")', source)
         self.assertIn('"start_date": args.get("start_date", "")', source)
         self.assertIn('"end_date": args.get("end_date", "")', source)
-        self.assertIn('"rows": args.get("rows", "ad_type")', source)
-        self.assertIn('"columns": args.get("columns", "messaging_angle")', source)
-        self.assertIn('"metric_preset": args.get("metric_preset", "")', source)
+        self.assertIn('for key in ("rows", "columns", "status_focus", "metric_preset"):', source)
+        self.assertIn('metrics = _csv_arg(args.get("metrics"))', source)
+        self.assertIn('params["metrics"] = metrics', source)
+        self.assertIn("params = _strategy_params(args)", strategy_handler)
         self.assertIn('"roas_target"', source)
         self.assertIn('"fatigue_minimum_calendar_days"', source)
         self.assertIn('"watch_group_by"', source)
@@ -551,14 +581,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"date_preset": args.get("date_preset", "last_30d")', source)
         self.assertIn('params["start_date"] = args["start_date"]', source)
         self.assertIn('params["end_date"] = args["end_date"]', source)
-        self.assertIn('"watch_group_by"', strategy_handler)
-        self.assertIn('"watch_metric"', strategy_handler)
-        self.assertIn('"watch_signal_focus"', strategy_handler)
-        self.assertIn('"watch_trajectory_focus"', strategy_handler)
-        self.assertIn('"watch_minimum_points"', strategy_handler)
-        self.assertIn('"watch_minimum_calendar_days"', strategy_handler)
-        self.assertIn('"watch_maximum_gap_days"', strategy_handler)
-        self.assertIn('"watch_limit"', strategy_handler)
+        self.assertIn('"watch_group_by"', source)
+        self.assertIn('"watch_metric"', source)
+        self.assertIn('"watch_signal_focus"', source)
+        self.assertIn('"watch_trajectory_focus"', source)
+        self.assertIn('"watch_minimum_points"', source)
+        self.assertIn('"watch_minimum_calendar_days"', source)
+        self.assertIn('"watch_maximum_gap_days"', source)
+        self.assertIn('"watch_limit"', source)
         self.assertIn('f"{API_URL}/meta/performance/summary"', source)
         self.assertIn('f"{API_URL}/performance/by-taxonomy"', source)
         self.assertIn('f"{API_URL}/reports/prebuilt"', source)
