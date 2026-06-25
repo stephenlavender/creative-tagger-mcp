@@ -1315,7 +1315,8 @@ async def list_tools() -> list[Tool]:
                 "hook, angle, ad type, format, visual style, CTA, analysis id, or "
                 "audience slice, plus the same fatigue decay signal the strategy "
                 "matrix uses. Supports trajectory filters for worsening, improving, "
-                "flat, or insufficient-data reads."
+                "flat, or insufficient-data reads, plus coverage-risk filters for "
+                "gappy, short-window, or call-ready histories."
             ),
             inputSchema={
                 "type": "object",
@@ -1357,6 +1358,15 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Optional trend filter: all, worsening, improving, "
                             "flat, or insufficient_data"
+                        ),
+                    },
+                    "coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional sync coverage filter: all, call_ready, "
+                            "gappy, insufficient_points, short_window, or "
+                            "windowed_history"
                         ),
                     },
                     "start_date": {
@@ -2525,6 +2535,7 @@ async def _get_performance_timeseries(args: dict) -> list[TextContent]:
         "metric": args.get("metric", "roas"),
         "signal_focus": args.get("signal_focus", "all"),
         "trajectory_focus": args.get("trajectory_focus", "all"),
+        "coverage_focus": args.get("coverage_focus", "all"),
         "limit": args.get("limit", 10),
         "minimum_spend": args.get("minimum_spend", 500),
         "minimum_points": args.get("minimum_points", 0),

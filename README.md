@@ -320,11 +320,11 @@ brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
 such as `conclusion`, `working,audience`, or `watch`. Add
 `conclusion_statuses` to narrow conclusion stories to `winner`, `fatigued`, or
 `loser` outcomes only. Use `watch_group_by`, `watch_metric`,
-`watch_signal_focus`, `watch_trajectory_focus`, `watch_minimum_points`,
-`watch_minimum_calendar_days`, `watch_sources`, and `fatigue_decay_threshold`
-when the watchouts should be written from a different fatigue lens such as
-fatigued-only CPA by ad type, weak taxonomy patterns only, CTR by hook, or
-stable ROAS by `demographic_segment`.
+`watch_signal_focus`, `watch_trajectory_focus`, `watch_coverage_focus`,
+`watch_minimum_points`, `watch_minimum_calendar_days`, `watch_sources`, and
+`fatigue_decay_threshold` when the watchouts should be written from a different
+fatigue lens such as fatigued-only CPA by ad type, weak taxonomy patterns only,
+CTR by hook, or stable ROAS by `demographic_segment`.
 ```
 {
   "brand_name": "Acme",
@@ -337,6 +337,7 @@ stable ROAS by `demographic_segment`.
   "watch_metric": "cpa",
   "watch_signal_focus": "fatigued",
   "watch_trajectory_focus": "worsening",
+  "watch_coverage_focus": "windowed_history",
   "watch_minimum_points": 3,
   "watch_minimum_calendar_days": 7,
   "watch_sources": "timeseries,patterns",
@@ -362,6 +363,7 @@ user wants the best current learnings saved back into reusable strategist contex
   "watch_metric": "cpa",
   "watch_signal_focus": "fatigued",
   "watch_trajectory_focus": "worsening",
+  "watch_coverage_focus": "windowed_history",
   "watch_minimum_points": 3,
   "watch_minimum_calendar_days": 7,
   "watch_sources": "timeseries,patterns",
@@ -380,8 +382,10 @@ campaign, landing page, `analysis_id`, or audience slices like
 completion rate, or funnel score. Use `signal_focus` when an agent only wants
 the current fatigue watchlist or only stable controls, and `trajectory_focus`
 when the agent wants only worsening, improving, flat, or insufficient-data
-series. Add `minimum_calendar_days` when fatigue should only count after a
-trend has been live long enough, not just after a few close-together points.
+series. Use `coverage_focus` to isolate call-ready, gappy, short-window, or
+windowed-history curves. Add `minimum_calendar_days` when fatigue should only
+count after a trend has been live long enough, not just after a few
+close-together points.
 ```
 {
   "brand_name": "Acme",
@@ -390,6 +394,7 @@ trend has been live long enough, not just after a few close-together points.
   "metric": "roas",
   "signal_focus": "fatigued",
   "trajectory_focus": "worsening",
+  "coverage_focus": "call_ready",
   "minimum_spend": 500,
   "minimum_points": 3,
   "minimum_calendar_days": 7,

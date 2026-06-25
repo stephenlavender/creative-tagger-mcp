@@ -492,6 +492,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(timeseries_schema["metric"]["default"], "roas")
         self.assertEqual(timeseries_schema["signal_focus"]["default"], "all")
         self.assertEqual(timeseries_schema["trajectory_focus"]["default"], "all")
+        self.assertEqual(timeseries_schema["coverage_focus"]["default"], "all")
         self.assertEqual(timeseries_schema["minimum_spend"]["default"], 500)
         self.assertEqual(timeseries_schema["minimum_points"]["default"], 0)
         self.assertEqual(timeseries_schema["minimum_calendar_days"]["default"], 0)
@@ -505,6 +506,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("funnel_score", timeseries_schema["metric"]["description"])
         self.assertIn("fatigued", timeseries_schema["signal_focus"]["description"])
         self.assertIn("insufficient_data", timeseries_schema["trajectory_focus"]["description"])
+        self.assertIn("windowed_history", timeseries_schema["coverage_focus"]["description"])
         self.assertIn("sync gap", timeseries_schema["maximum_gap_days"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_desc)
         demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
@@ -587,6 +589,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"maximum_gap_days": args.get("maximum_gap_days", 0)', source)
         self.assertIn('"fatigue_decay_threshold"', source)
         self.assertIn('"trajectory_focus": args.get("trajectory_focus", "all")', source)
+        self.assertIn('"coverage_focus": args.get("coverage_focus", "all")', source)
         self.assertIn('"date_preset": args.get("date_preset", "all_time")', source)
         self.assertIn('"date_preset": args.get("date_preset", "last_30d")', source)
         self.assertIn('params["start_date"] = args["start_date"]', source)
