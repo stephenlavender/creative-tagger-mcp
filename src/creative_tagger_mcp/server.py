@@ -874,7 +874,7 @@ async def list_tools() -> list[Tool]:
                         "default": "all",
                         "description": (
                             "Optional coverage-risk filter for the strategy report watch: "
-                            "all, call_ready, sparse_history, gappy, stale, or windowed_history"
+                            "all, call_ready, gappy, insufficient_points, short_window, or windowed_history"
                         ),
                     },
                     "watch_minimum_points": {
@@ -972,6 +972,14 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Optional trend filter for watch/fatigue learnings: "
                             "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional coverage-risk filter for watch/fatigue learnings: "
+                            "all, call_ready, gappy, insufficient_points, short_window, or windowed_history"
                         ),
                     },
                     "watch_minimum_points": {
@@ -1101,6 +1109,14 @@ async def list_tools() -> list[Tool]:
                             "all, worsening, improving, flat, or insufficient_data"
                         ),
                     },
+                    "watch_coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional coverage-risk filter for watch/fatigue learnings: "
+                            "all, call_ready, gappy, insufficient_points, short_window, or windowed_history"
+                        ),
+                    },
                     "watch_minimum_points": {
                         "type": "integer",
                         "default": 2,
@@ -1227,6 +1243,14 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Optional trend filter for watch/fatigue learnings: "
                             "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional coverage-risk filter for watch/fatigue learnings: "
+                            "all, call_ready, gappy, insufficient_points, short_window, or windowed_history"
                         ),
                     },
                     "watch_minimum_points": {
@@ -2388,6 +2412,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "watch_metric",
         "watch_signal_focus",
         "watch_trajectory_focus",
+        "watch_coverage_focus",
         "watch_minimum_points",
         "watch_minimum_calendar_days",
         "watch_maximum_gap_days",
@@ -2438,6 +2463,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "watch_metric",
         "watch_signal_focus",
         "watch_trajectory_focus",
+        "watch_coverage_focus",
         "watch_minimum_points",
         "watch_minimum_calendar_days",
         "watch_maximum_gap_days",
