@@ -46,6 +46,7 @@ PUBLIC_EXPECTED_TOOLS = {
     "save_brain_learnings",
     "export_brain_learnings_context",
     "get_performance_timeseries",
+    "export_performance_timeseries_context",
     "create_custom_report",
     "list_custom_reports",
     "save_custom_report",
@@ -308,6 +309,7 @@ class ToolSurfaceTest(unittest.TestCase):
         brain_save_desc = tools["save_brain_learnings"]["description"]
         brain_export_desc = tools["export_brain_learnings_context"]["description"]
         timeseries_desc = tools["get_performance_timeseries"]["description"]
+        timeseries_export_desc = tools["export_performance_timeseries_context"]["description"]
         demographics_desc = tools["get_demographics_performance"]["description"]
         competitor_desc = tools["scan_competitor"]["description"]
         competitor_history_desc = tools["get_competitor_scan_history"]["description"]
@@ -502,6 +504,9 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("audience slice", timeseries_desc)
         self.assertIn("visual style", timeseries_desc)
         self.assertIn("worsening", timeseries_desc)
+        self.assertIn("agent_context payload", timeseries_export_desc)
+        self.assertIn("decision queue", timeseries_export_desc)
+        self.assertIn("scale, hold, or sync more data", timeseries_export_desc)
         summary_schema = tools["get_meta_performance_summary"]["inputSchema"]["properties"]
         self.assertEqual(summary_schema["date_preset"]["default"], "all_time")
         self.assertIn("last_30_days", summary_schema["date_preset"]["description"])
@@ -532,6 +537,21 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("insufficient_data", timeseries_schema["trajectory_focus"]["description"])
         self.assertIn("windowed_history", timeseries_schema["coverage_focus"]["description"])
         self.assertIn("sync gap", timeseries_schema["maximum_gap_days"]["description"])
+        timeseries_export_schema = tools["export_performance_timeseries_context"]["inputSchema"]["properties"]
+        self.assertEqual(timeseries_export_schema["group_by"]["default"], "ad_name")
+        self.assertEqual(timeseries_export_schema["date_preset"]["default"], "last_30d")
+        self.assertEqual(timeseries_export_schema["metric"]["default"], "roas")
+        self.assertEqual(timeseries_export_schema["signal_focus"]["default"], "all")
+        self.assertEqual(timeseries_export_schema["trajectory_focus"]["default"], "all")
+        self.assertEqual(timeseries_export_schema["coverage_focus"]["default"], "all")
+        self.assertEqual(timeseries_export_schema["minimum_spend"]["default"], 500)
+        self.assertEqual(timeseries_export_schema["minimum_points"]["default"], 0)
+        self.assertEqual(timeseries_export_schema["minimum_calendar_days"]["default"], 0)
+        self.assertEqual(timeseries_export_schema["maximum_gap_days"]["default"], 0)
+        self.assertEqual(timeseries_export_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertIn("demographic_segment", timeseries_export_schema["group_by"]["description"])
+        self.assertIn("funnel_score", timeseries_export_schema["metric"]["description"])
+        self.assertIn("windowed_history", timeseries_export_schema["coverage_focus"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_desc)
         demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
         self.assertEqual(demographics_schema["date_preset"]["default"], "all_time")
@@ -640,6 +660,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("async def _export_brain_learnings_context(args: dict)", source)
         self.assertIn('payload = await _get_brain_learnings(args)', source)
         self.assertIn('parsed.get("agent_context")', source)
+        self.assertIn('if name == "export_performance_timeseries_context":', source)
+        self.assertIn("async def _export_performance_timeseries_context(args: dict)", source)
+        self.assertIn('payload = await _get_performance_timeseries(args)', source)
+        self.assertIn("Performance timeseries response did not include agent_context", source)
         self.assertIn('_csv_arg(args.get(key))', source)
         self.assertIn('payload[key] = args[key]', source)
         self.assertIn('for key in ("start_date", "end_date"):', source)

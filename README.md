@@ -412,6 +412,28 @@ close-together points.
 Use `date_preset` for a standard lookback window, or pass explicit
 `start_date` / `end_date` to override it.
 
+### `export_performance_timeseries_context`
+Return the reusable `agent_context` payload from performance time series. Use
+this when another agent needs the fatigue decision queue, summary text, action
+mix, top groups, and prompt-ready export without carrying the full chart payload.
+It accepts the same inputs as `get_performance_timeseries`.
+```
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30d",
+  "group_by": "ad_name",
+  "metric": "roas",
+  "signal_focus": "fatigued",
+  "trajectory_focus": "worsening",
+  "coverage_focus": "call_ready",
+  "minimum_spend": 500,
+  "minimum_points": 3,
+  "minimum_calendar_days": 7,
+  "fatigue_decay_threshold": 0.18,
+  "limit": 5
+}
+```
+
 Internal migration/backfill tools are hidden from the default published MCP
 surface. They require `CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS=1` and should not
 be used in customer flows or to avoid Meta approval.

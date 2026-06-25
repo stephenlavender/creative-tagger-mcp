@@ -1440,6 +1440,108 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="export_performance_timeseries_context",
+            description=(
+                "Return the reusable agent_context payload from saved performance "
+                "time series so another agent can decide what to refresh, watch, "
+                "scale, hold, or sync more data without opening the dashboard. "
+                "Exports the decision queue, summary text, action mix, top fatigue "
+                "or coverage-risk groups, and the prompt-ready context built from "
+                "the same fatigue/time-series logic as the Creative Tagger UI."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "last_30d",
+                        "description": "Optional date window preset: all_time, last_7d, last_30d, last_90d, maximum, or custom",
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "default": "ad_name",
+                        "description": (
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, "
+                            "video_completion_rate, or funnel_score"
+                        ),
+                    },
+                    "signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional fatigue filter: all, fatigued, stable, "
+                            "or insufficient_data"
+                        ),
+                    },
+                    "trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter: all, worsening, improving, "
+                            "flat, or insufficient_data"
+                        ),
+                    },
+                    "coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional sync coverage filter: all, call_ready, "
+                            "gappy, insufficient_points, short_window, or "
+                            "windowed_history"
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Maximum grouped series to return",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "default": 500,
+                        "description": "Spend floor before fatigue is treated as meaningful",
+                    },
+                    "minimum_points": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum observed points required before a grouped series is returned",
+                    },
+                    "minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days required before a grouped series is returned",
+                    },
+                    "maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days allowed before a grouped series is returned",
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a series to fatigued",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="create_custom_report",
             description=(
                 "Create a custom performance report by selecting standard and/or "
@@ -1890,6 +1992,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _export_brain_learnings_context(arguments)
         if name == "get_performance_timeseries":
             return await _get_performance_timeseries(arguments)
+        if name == "export_performance_timeseries_context":
+            return await _export_performance_timeseries_context(arguments)
         if name == "create_custom_report":
             return await _create_custom_report(arguments)
         if name == "list_custom_reports":
@@ -2584,6 +2688,30 @@ async def _get_performance_timeseries(args: dict) -> list[TextContent]:
         )
         resp.raise_for_status()
         return _text(resp.json())
+
+
+async def _export_performance_timeseries_context(args: dict) -> list[TextContent]:
+    payload = await _get_performance_timeseries(args)
+    if not payload:
+        return payload
+    raw = getattr(payload[0], "text", "")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return payload
+    if not isinstance(parsed, dict):
+        return payload
+    context = parsed.get("agent_context")
+    if not isinstance(context, dict):
+        return _err("Performance timeseries response did not include agent_context")
+    export = {
+        **context,
+        "brand_name": parsed.get("brand_name", args.get("brand_name", "")),
+        "generated_at": parsed.get("generated_at", ""),
+        "summary": parsed.get("summary") or {},
+        "series": parsed.get("series") or [],
+    }
+    return _text(export)
 
 
 async def _create_custom_report(args: dict) -> list[TextContent]:
