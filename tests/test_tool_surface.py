@@ -158,6 +158,18 @@ class ToolSurfaceTest(unittest.TestCase):
             "timeseries,patterns",
         )
 
+    def test_string_list_arg_normalizes_meta_window_values(self) -> None:
+        namespace = _load_pure_helpers({"_string_list_arg"})
+        normalize = namespace["_string_list_arg"]
+
+        self.assertIsNone(normalize(None))
+        self.assertEqual(normalize("7d_click, 1d_view"), ["7d_click", "1d_view"])
+        self.assertEqual(
+            normalize(["7d_click", " 1d_view ", "", None]),
+            ["7d_click", "1d_view"],
+        )
+        self.assertEqual(normalize(""), None)
+
     def test_strategy_params_preserve_template_defaults_unless_overridden(self) -> None:
         namespace = _load_pure_helpers({"_csv_arg", "_strategy_params"})
         strategy_params = namespace["_strategy_params"]
@@ -290,6 +302,7 @@ class ToolSurfaceTest(unittest.TestCase):
         summary_desc = tools["get_meta_performance_summary"]["description"]
         taxonomy_desc = tools["get_taxonomy_performance"]["description"]
         prebuilt_desc = tools["get_prebuilt_reports"]["description"]
+        meta_sync_desc = tools["sync_meta_performance"]["description"]
         strategy_desc = tools["get_creative_strategy_report"]["description"]
         brain_desc = tools["get_brain_learnings"]["description"]
         brain_save_desc = tools["save_brain_learnings"]["description"]
@@ -313,6 +326,12 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("best hooks", prebuilt_desc)
         self.assertIn("landing pages", prebuilt_desc)
         self.assertIn("YYYY-MM-DD", prebuilt_desc)
+        self.assertIn("attribution", meta_sync_desc)
+        meta_sync_schema = tools["sync_meta_performance"]["inputSchema"]["properties"]
+        self.assertIn("attribution_windows", meta_sync_schema)
+        self.assertEqual(meta_sync_schema["attribution_windows"]["type"], "array")
+        self.assertIn("7d_click", meta_sync_schema["attribution_windows"]["description"])
+        self.assertIn("1d_view", meta_sync_schema["attribution_windows"]["description"])
         prebuilt_schema = tools["get_prebuilt_reports"]["inputSchema"]["properties"]
         self.assertEqual(prebuilt_schema["limit"]["default"], 8)
         self.assertIn("start_date", prebuilt_schema)
@@ -597,6 +616,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"coverage_focus": args.get("coverage_focus", "all")', source)
         self.assertIn('"date_preset": args.get("date_preset", "all_time")', source)
         self.assertIn('"date_preset": args.get("date_preset", "last_30d")', source)
+        self.assertIn('"attribution_windows": _string_list_arg(args.get("attribution_windows"))', source)
         self.assertIn('params["start_date"] = args["start_date"]', source)
         self.assertIn('params["end_date"] = args["end_date"]', source)
         self.assertIn('"watch_group_by"', source)

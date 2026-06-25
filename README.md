@@ -231,8 +231,14 @@ Use `preview_naming_template` to test a template before saving, and
 Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
 Creative Tagger must have an approved native Meta OAuth connection before
 customer accounts can sync Meta performance.
+Pass `attribution_windows` when the buyer uses a non-default Meta lookback
+window and Creative Tagger should match Ads Manager exactly.
 ```
-{ "brand_name": "Acme", "date_preset": "last_30d" }
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30d",
+  "attribution_windows": ["7d_click", "1d_view"]
+}
 ```
 
 ### `get_creative_strategy_report`

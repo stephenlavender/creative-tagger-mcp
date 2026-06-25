@@ -83,6 +83,19 @@ def _csv_arg(value: Any) -> str:
     return str(value).strip()
 
 
+def _string_list_arg(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        parts = [item.strip() for item in value.split(",") if item.strip()]
+        return parts or None
+    if isinstance(value, (list, tuple, set)):
+        parts = [str(item).strip() for item in value if str(item or "").strip()]
+        return parts or None
+    text = str(value).strip()
+    return [text] if text else None
+
+
 def _strategy_params(args: dict) -> dict[str, Any]:
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
@@ -597,7 +610,9 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Trigger a read-only Meta ads performance sync for a brand. Syncs ad "
                 "performance rows and reports summaries by standard and brand-custom "
-                "taxonomy values. Does not create campaigns or edit budgets."
+                "taxonomy values. Supports explicit attribution/lookback windows so "
+                "agents can match the buyer's Ads Manager view. Does not create "
+                "campaigns or edit budgets."
             ),
             inputSchema={
                 "type": "object",
@@ -605,6 +620,15 @@ async def list_tools() -> list[Tool]:
                     "brand_name": {"type": "string"},
                     "account_id": {"type": "string"},
                     "date_preset": {"type": "string", "default": "last_30d"},
+                    "attribution_windows": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Optional Meta attribution/lookback windows such as "
+                            "7d_click and 1d_view. Defaults to Meta's standard "
+                            "7d_click + 1d_view reporting if omitted."
+                        ),
+                    },
                 },
             },
         ),
@@ -2294,6 +2318,7 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
         "brand_name": args.get("brand_name", ""),
         "account_id": args.get("account_id", ""),
         "date_preset": args.get("date_preset", "last_30d"),
+        "attribution_windows": _string_list_arg(args.get("attribution_windows")),
     }
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
