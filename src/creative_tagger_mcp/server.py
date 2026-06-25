@@ -108,6 +108,7 @@ def _strategy_params(args: dict) -> dict[str, Any]:
         "watch_metric",
         "watch_signal_focus",
         "watch_trajectory_focus",
+        "watch_coverage_focus",
         "watch_minimum_points",
         "watch_minimum_calendar_days",
         "watch_maximum_gap_days",
@@ -866,6 +867,14 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Optional fatigue watch trend filter for the strategy report: "
                             "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional coverage-risk filter for the strategy report watch: "
+                            "all, call_ready, sparse_history, gappy, stale, or windowed_history"
                         ),
                     },
                     "watch_minimum_points": {

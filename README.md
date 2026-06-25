@@ -253,7 +253,7 @@ set the other axis to `demographic_segment` or `demographic_signal`. Add
 enough live window, not just after a few close-together synced points. For
 fatigue-aware reads, pass the same embedded watch controls the app/API support:
 `watch_group_by`, `watch_metric`, `watch_signal_focus`,
-`watch_trajectory_focus`, `watch_minimum_points`,
+`watch_trajectory_focus`, `watch_coverage_focus`, `watch_minimum_points`,
 `watch_minimum_calendar_days`, `watch_maximum_gap_days`, and `watch_limit`.
 
 ```
@@ -279,6 +279,7 @@ fatigue-aware reads, pass the same embedded watch controls the app/API support:
   "watch_metric": "cpa",
   "watch_signal_focus": "fatigued",
   "watch_trajectory_focus": "worsening",
+  "watch_coverage_focus": "windowed_history",
   "watch_minimum_points": 2,
   "watch_minimum_calendar_days": 7,
   "watch_maximum_gap_days": 7,
