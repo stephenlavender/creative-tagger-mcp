@@ -126,7 +126,19 @@ def _infer_strategy_template(
             return "audience-signals"
         return "demographic-read"
     if len(demographic_axes) == 1:
-        return "angle-audience-fit"
+        creative_axis = next(
+            (
+                axis
+                for axis in (row_value, col_value)
+                if axis not in demographic_dimensions
+            ),
+            "",
+        )
+        if creative_axis == "messaging_angle":
+            return "angle-audience-fit"
+        if creative_axis == "hook":
+            return "hook-audience-fit"
+        return ""
     return ""
 
 

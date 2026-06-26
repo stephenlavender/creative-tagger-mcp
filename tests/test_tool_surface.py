@@ -243,6 +243,24 @@ class ToolSurfaceTest(unittest.TestCase):
         )
         self.assertEqual(mixed["report_template"], "angle-audience-fit")
 
+        hook_mixed = strategy_params(
+            {
+                "brand_name": "Acme",
+                "rows": "hook",
+                "columns": "demographic_segment",
+            }
+        )
+        self.assertEqual(hook_mixed["report_template"], "hook-audience-fit")
+
+        unmapped_mixed = strategy_params(
+            {
+                "brand_name": "Acme",
+                "rows": "ad_type",
+                "columns": "demographic_segment",
+            }
+        )
+        self.assertNotIn("report_template", unmapped_mixed)
+
         creative_only = strategy_params(
             {"brand_name": "Acme", "rows": "messaging_angle", "columns": "ad_type"}
         )
