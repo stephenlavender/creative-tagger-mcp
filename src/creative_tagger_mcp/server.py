@@ -96,15 +96,55 @@ def _string_list_arg(value: Any) -> list[str] | None:
     return [text] if text else None
 
 
+def _infer_strategy_template(
+    report_template: Any,
+    *,
+    rows: Any,
+    columns: Any,
+) -> str:
+    demographic_dimensions = {
+        "demographic_age",
+        "demographic_gender",
+        "demographic_segment",
+        "demographic_signal",
+    }
+    explicit = str(report_template or "").strip()
+    if explicit:
+        return explicit
+    row_value = str(rows or "").strip()
+    col_value = str(columns or "").strip()
+    if not row_value or not col_value:
+        return ""
+    demographic_axes = [
+        axis
+        for axis in (row_value, col_value)
+        if axis in demographic_dimensions
+    ]
+    if len(demographic_axes) == 2:
+        pair = frozenset(demographic_axes)
+        if pair == {"demographic_segment", "demographic_signal"}:
+            return "audience-signals"
+        return "demographic-read"
+    if len(demographic_axes) == 1:
+        return "angle-audience-fit"
+    return ""
+
+
 def _strategy_params(args: dict) -> dict[str, Any]:
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
         "date_preset": args.get("date_preset", "all_time"),
-        "report_template": args.get("report_template", "next-tests"),
         "start_date": args.get("start_date", ""),
         "end_date": args.get("end_date", ""),
         "limit": args.get("limit", 10),
     }
+    report_template = _infer_strategy_template(
+        args.get("report_template"),
+        rows=args.get("rows"),
+        columns=args.get("columns"),
+    )
+    if report_template:
+        params["report_template"] = report_template
     for key in ("rows", "columns", "status_focus", "metric_preset"):
         if args.get(key) not in (None, ""):
             params[key] = args[key]

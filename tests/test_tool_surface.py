@@ -172,7 +172,13 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(normalize(""), None)
 
     def test_strategy_params_preserve_template_defaults_unless_overridden(self) -> None:
-        namespace = _load_pure_helpers({"_csv_arg", "_strategy_params"})
+        namespace = _load_pure_helpers(
+            {
+                "_csv_arg",
+                "_infer_strategy_template",
+                "_strategy_params",
+            }
+        )
         strategy_params = namespace["_strategy_params"]
 
         template_only = strategy_params({"brand_name": "Acme", "report_template": "audience-signals"})
@@ -199,6 +205,48 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(explicit["status_focus"], "winner")
         self.assertEqual(explicit["metrics"], "spend,roas")
         self.assertEqual(explicit["metric_preset"], "scale")
+
+    def test_strategy_params_infer_audience_templates_from_axes(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_csv_arg",
+                "_infer_strategy_template",
+                "_strategy_params",
+            }
+        )
+        strategy_params = namespace["_strategy_params"]
+
+        demographic = strategy_params(
+            {
+                "brand_name": "Acme",
+                "rows": "demographic_age",
+                "columns": "demographic_gender",
+            }
+        )
+        self.assertEqual(demographic["report_template"], "demographic-read")
+
+        audience_signals = strategy_params(
+            {
+                "brand_name": "Acme",
+                "rows": "demographic_signal",
+                "columns": "demographic_segment",
+            }
+        )
+        self.assertEqual(audience_signals["report_template"], "audience-signals")
+
+        mixed = strategy_params(
+            {
+                "brand_name": "Acme",
+                "rows": "messaging_angle",
+                "columns": "demographic_segment",
+            }
+        )
+        self.assertEqual(mixed["report_template"], "angle-audience-fit")
+
+        creative_only = strategy_params(
+            {"brand_name": "Acme", "rows": "messaging_angle", "columns": "ad_type"}
+        )
+        self.assertNotIn("report_template", creative_only)
 
     def test_analyze_creative_declares_carousel_and_version_inputs(self) -> None:
         tools = _declared_tools()
