@@ -207,6 +207,38 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(explicit["metrics"], "spend,roas")
         self.assertEqual(explicit["metric_preset"], "scale")
 
+    def test_strategy_params_normalize_template_aliases(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_csv_arg",
+                "_infer_strategy_template",
+                "_normalize_strategy_axis",
+                "_strategy_params",
+            }
+        )
+        strategy_params = namespace["_strategy_params"]
+
+        self.assertEqual(
+            strategy_params({"brand_name": "Acme", "report_template": "winners"})["report_template"],
+            "creative-winners",
+        )
+        self.assertEqual(
+            strategy_params({"brand_name": "Acme", "report_template": "fatigue"})["report_template"],
+            "fatigue-watch",
+        )
+        self.assertEqual(
+            strategy_params({"brand_name": "Acme", "report_template": "coverage"})["report_template"],
+            "coverage-gaps",
+        )
+        self.assertEqual(
+            strategy_params({"brand_name": "Acme", "report_template": "personas"})["report_template"],
+            "persona-read",
+        )
+        self.assertEqual(
+            strategy_params({"brand_name": "Acme", "report_template": "angle audience"})["report_template"],
+            "angle-audience-fit",
+        )
+
     def test_strategy_params_infer_audience_templates_from_axes(self) -> None:
         namespace = _load_pure_helpers(
             {

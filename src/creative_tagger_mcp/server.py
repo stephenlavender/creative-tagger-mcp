@@ -102,6 +102,40 @@ def _infer_strategy_template(
     rows: Any,
     columns: Any,
 ) -> str:
+    template_aliases = {
+        "audience": "demographic-read",
+        "audience_read": "demographic-read",
+        "demographic": "demographic-read",
+        "demographic_read": "demographic-read",
+        "demographics": "demographic-read",
+        "audience_signal": "audience-signals",
+        "audience_signals": "audience-signals",
+        "signal": "audience-signals",
+        "signals": "audience-signals",
+        "angle_audience": "angle-audience-fit",
+        "angle_audience_fit": "angle-audience-fit",
+        "mixed_audience": "angle-audience-fit",
+        "hook_audience": "hook-audience-fit",
+        "hook_audience_fit": "hook-audience-fit",
+        "next": "next-tests",
+        "next_tests": "next-tests",
+        "winner": "creative-winners",
+        "winners": "creative-winners",
+        "creative_winners": "creative-winners",
+        "fatigue": "fatigue-watch",
+        "watch": "fatigue-watch",
+        "fatigue_watch": "fatigue-watch",
+        "gap": "coverage-gaps",
+        "gaps": "coverage-gaps",
+        "coverage": "coverage-gaps",
+        "coverage_gaps": "coverage-gaps",
+        "hook": "hook-performance",
+        "hooks": "hook-performance",
+        "hook_performance": "hook-performance",
+        "persona": "persona-read",
+        "personas": "persona-read",
+        "persona_read": "persona-read",
+    }
     demographic_dimensions = {
         "demographic_age",
         "demographic_gender",
@@ -110,7 +144,8 @@ def _infer_strategy_template(
     }
     explicit = str(report_template or "").strip()
     if explicit:
-        return explicit
+        normalized = explicit.lower().replace("-", "_").replace(" ", "_")
+        return template_aliases.get(normalized, explicit)
     row_value = _normalize_strategy_axis(rows)
     col_value = _normalize_strategy_axis(columns)
     if not row_value or not col_value:
