@@ -176,6 +176,7 @@ class ToolSurfaceTest(unittest.TestCase):
             {
                 "_csv_arg",
                 "_infer_strategy_template",
+                "_normalize_strategy_axis",
                 "_strategy_params",
             }
         )
@@ -211,6 +212,7 @@ class ToolSurfaceTest(unittest.TestCase):
             {
                 "_csv_arg",
                 "_infer_strategy_template",
+                "_normalize_strategy_axis",
                 "_strategy_params",
             }
         )
@@ -242,6 +244,33 @@ class ToolSurfaceTest(unittest.TestCase):
             }
         )
         self.assertEqual(mixed["report_template"], "angle-audience-fit")
+
+        demographic_aliases = strategy_params(
+            {
+                "brand_name": "Acme",
+                "rows": "age",
+                "columns": "gender",
+            }
+        )
+        self.assertEqual(demographic_aliases["report_template"], "demographic-read")
+
+        audience_signal_aliases = strategy_params(
+            {
+                "brand_name": "Acme",
+                "rows": "signal",
+                "columns": "segment",
+            }
+        )
+        self.assertEqual(audience_signal_aliases["report_template"], "audience-signals")
+
+        mixed_aliases = strategy_params(
+            {
+                "brand_name": "Acme",
+                "rows": "hook_type",
+                "columns": "audience_segment",
+            }
+        )
+        self.assertEqual(mixed_aliases["report_template"], "hook-audience-fit")
 
         hook_mixed = strategy_params(
             {

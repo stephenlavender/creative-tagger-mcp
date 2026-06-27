@@ -29,6 +29,17 @@ from mcp.types import TextContent, Tool
 API_URL = os.environ.get("CREATIVE_TAGGER_URL", "https://api.creativetagger.ai")
 API_KEY = os.environ.get("CREATIVE_TAGGER_API_KEY", "")
 INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
+TIMESERIES_GROUP_BY_DESCRIPTION = (
+    "ad_name, campaign_name, landing_page_domain, analysis_id, "
+    "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+    "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+)
+TIMESERIES_METRIC_DESCRIPTION = (
+    "roas, cpa, ctr, cpm, cvr, thumbstop_rate, hook_rate, hold_rate, "
+    "video_completion_rate, video_50_rate, video_75_rate, funnel_score, "
+    "frequency, outbound_ctr, outbound_clicks, landing_page_views, adds_to_cart, "
+    "atc_per_lpv, or video_3s_views"
+)
 
 server = Server("creative-tagger")
 
@@ -111,8 +122,8 @@ def _infer_strategy_template(
     explicit = str(report_template or "").strip()
     if explicit:
         return explicit
-    row_value = str(rows or "").strip()
-    col_value = str(columns or "").strip()
+    row_value = _normalize_strategy_axis(rows)
+    col_value = _normalize_strategy_axis(columns)
     if not row_value or not col_value:
         return ""
     demographic_axes = [
@@ -140,6 +151,34 @@ def _infer_strategy_template(
             return "hook-audience-fit"
         return ""
     return ""
+
+
+def _normalize_strategy_axis(value: Any) -> str:
+    axis = str(value or "").strip().lower().replace("-", "_")
+    aliases = {
+        "creative_type": "ad_type",
+        "visual_format": "ad_type",
+        "asset_type": "ad_type",
+        "ad": "ad_type",
+        "adtype": "ad_type",
+        "creative": "ad_type",
+        "angle": "messaging_angle",
+        "message_angle": "messaging_angle",
+        "message": "messaging_angle",
+        "hook_type": "hook",
+        "offer": "offer_type",
+        "age": "demographic_age",
+        "audience_age": "demographic_age",
+        "demographic_age_range": "demographic_age",
+        "gender": "demographic_gender",
+        "audience_gender": "demographic_gender",
+        "segment": "demographic_segment",
+        "audience_segment": "demographic_segment",
+        "demographic": "demographic_segment",
+        "signal": "demographic_signal",
+        "audience_signal": "demographic_signal",
+    }
+    return aliases.get(axis, axis)
 
 
 def _strategy_params(args: dict) -> dict[str, Any]:
@@ -1021,20 +1060,14 @@ async def list_tools() -> list[Tool]:
                     "watch_group_by": {
                         "type": "string",
                         "default": "messaging_angle",
-                        "description": (
-                            "Timeseries grouping for watch/fatigue learnings: "
-                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
-                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
-                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
-                        ),
+                        "description": "Timeseries grouping for watch/fatigue learnings: "
+                        + TIMESERIES_GROUP_BY_DESCRIPTION,
                     },
                     "watch_metric": {
                         "type": "string",
                         "default": "roas",
-                        "description": (
-                            "Timeseries metric used for watch/fatigue learnings: "
-                            "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
-                        ),
+                        "description": "Timeseries metric used for watch/fatigue learnings: "
+                        + TIMESERIES_METRIC_DESCRIPTION,
                     },
                     "watch_signal_focus": {
                         "type": "string",
@@ -1163,20 +1196,14 @@ async def list_tools() -> list[Tool]:
                     "watch_group_by": {
                         "type": "string",
                         "default": "messaging_angle",
-                        "description": (
-                            "Timeseries grouping for watch/fatigue learnings: "
-                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
-                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
-                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
-                        ),
+                        "description": "Timeseries grouping for watch/fatigue learnings: "
+                        + TIMESERIES_GROUP_BY_DESCRIPTION,
                     },
                     "watch_metric": {
                         "type": "string",
                         "default": "roas",
-                        "description": (
-                            "Timeseries metric used for watch/fatigue learnings: "
-                            "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
-                        ),
+                        "description": "Timeseries metric used for watch/fatigue learnings: "
+                        + TIMESERIES_METRIC_DESCRIPTION,
                     },
                     "watch_signal_focus": {
                         "type": "string",
@@ -1305,20 +1332,14 @@ async def list_tools() -> list[Tool]:
                     "watch_group_by": {
                         "type": "string",
                         "default": "messaging_angle",
-                        "description": (
-                            "Timeseries grouping for watch/fatigue learnings: "
-                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
-                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
-                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
-                        ),
+                        "description": "Timeseries grouping for watch/fatigue learnings: "
+                        + TIMESERIES_GROUP_BY_DESCRIPTION,
                     },
                     "watch_metric": {
                         "type": "string",
                         "default": "roas",
-                        "description": (
-                            "Timeseries metric used for watch/fatigue learnings: "
-                            "roas, cpa, ctr, cpm, thumbstop_rate, video_completion_rate, funnel_score, etc."
-                        ),
+                        "description": "Timeseries metric used for watch/fatigue learnings: "
+                        + TIMESERIES_METRIC_DESCRIPTION,
                     },
                     "watch_signal_focus": {
                         "type": "string",
@@ -1406,13 +1427,15 @@ async def list_tools() -> list[Tool]:
             name="get_performance_timeseries",
             description=(
                 "Return saved performance time series for creative or campaign fatigue "
-                "checks. Use this to inspect dated ROAS, CPA, CTR, CPM, thumbstop, "
-                "completion, or funnel trends per creative, campaign, landing page, "
+                "checks. Use this to inspect dated ROAS, CPA, CTR, CPM, CVR, "
+                "thumbstop, hook, hold, video quartile, delivery, outbound, "
+                "mid-funnel, or funnel trends per creative, campaign, landing page, "
                 "hook, angle, ad type, format, visual style, CTA, analysis id, or "
                 "audience slice, plus the same fatigue decay signal the strategy "
                 "matrix uses. Supports trajectory filters for worsening, improving, "
                 "flat, or insufficient-data reads, plus coverage-risk filters for "
-                "gappy, short-window, or call-ready histories."
+                "gappy, short-window, insufficient-point, windowed-history, or "
+                "call-ready histories."
             ),
             inputSchema={
                 "type": "object",
@@ -1426,19 +1449,12 @@ async def list_tools() -> list[Tool]:
                     "group_by": {
                         "type": "string",
                         "default": "ad_name",
-                        "description": (
-                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
-                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
-                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
-                        ),
+                        "description": TIMESERIES_GROUP_BY_DESCRIPTION,
                     },
                     "metric": {
                         "type": "string",
                         "default": "roas",
-                        "description": (
-                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, "
-                            "video_completion_rate, or funnel_score"
-                        ),
+                        "description": TIMESERIES_METRIC_DESCRIPTION,
                     },
                     "signal_focus": {
                         "type": "string",
@@ -1528,19 +1544,12 @@ async def list_tools() -> list[Tool]:
                     "group_by": {
                         "type": "string",
                         "default": "ad_name",
-                        "description": (
-                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
-                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
-                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
-                        ),
+                        "description": TIMESERIES_GROUP_BY_DESCRIPTION,
                     },
                     "metric": {
                         "type": "string",
                         "default": "roas",
-                        "description": (
-                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, "
-                            "video_completion_rate, or funnel_score"
-                        ),
+                        "description": TIMESERIES_METRIC_DESCRIPTION,
                     },
                     "signal_focus": {
                         "type": "string",
