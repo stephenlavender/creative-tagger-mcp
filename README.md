@@ -325,7 +325,8 @@ hero learning, concise stories, and an `agent_context` payload for the next
 brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
 such as `conclusion`, `working,audience`, or `watch`. Add
 `conclusion_statuses` to narrow conclusion stories to `winner`, `fatigued`, or
-`loser` outcomes only. Use `watch_group_by`, `watch_metric`,
+`loser` outcomes only, and `conclusion_recency_days` to keep only the most
+recent conclusion window. Use `watch_group_by`, `watch_metric`,
 `watch_signal_focus`, `watch_trajectory_focus`, `watch_coverage_focus`,
 `watch_minimum_points`, `watch_minimum_calendar_days`, `watch_sources`, and
 `fatigue_decay_threshold` when the watchouts should be written from a different
@@ -339,6 +340,7 @@ CTR by hook, or stable ROAS by `demographic_segment`.
   "learning_spend": 1500,
   "kinds": "conclusion,watch",
   "conclusion_statuses": "winner,fatigued",
+  "conclusion_recency_days": 21,
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
   "watch_signal_focus": "fatigued",
@@ -365,6 +367,7 @@ user wants the best current learnings saved back into reusable strategist contex
   "learning_spend": 1500,
   "kinds": "conclusion,watch",
   "conclusion_statuses": "winner,fatigued",
+  "conclusion_recency_days": 21,
   "watch_group_by": "ad_type",
   "watch_metric": "cpa",
   "watch_signal_focus": "fatigued",

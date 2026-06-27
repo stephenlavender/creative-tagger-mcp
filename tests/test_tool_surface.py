@@ -502,7 +502,12 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(brain_export_schema["fatigue_decay_threshold"]["default"], 0.18)
         self.assertEqual(brain_export_schema["audience_signal_focus"]["default"], "all")
         self.assertEqual(brain_export_schema["audience_limit"]["default"], 3)
+        self.assertEqual(brain_export_schema["conclusion_recency_days"]["default"], 0)
         self.assertIn("conclusion, working, watch, audience, gap", brain_export_schema["kinds"]["description"])
+        self.assertIn(
+            "report end date",
+            brain_export_schema["conclusion_recency_days"]["description"],
+        )
         self.assertIn("demographic_segment", brain_export_schema["watch_group_by"]["description"])
         self.assertIn("thumbstop_rate", brain_export_schema["watch_metric"]["description"])
         self.assertIn("worsening", brain_export_schema["watch_trajectory_focus"]["description"])
@@ -525,8 +530,13 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(brain_save_schema["fatigue_decay_threshold"]["default"], 0.18)
         self.assertEqual(brain_save_schema["audience_signal_focus"]["default"], "all")
         self.assertEqual(brain_save_schema["audience_limit"]["default"], 3)
+        self.assertEqual(brain_save_schema["conclusion_recency_days"]["default"], 0)
         self.assertIn("winner", brain_save_schema["conclusion_statuses"]["description"])
         self.assertIn("fatigued", brain_save_schema["conclusion_statuses"]["description"])
+        self.assertIn(
+            "report end date",
+            brain_save_schema["conclusion_recency_days"]["description"],
+        )
         self.assertIn("opportunity", brain_save_schema["audience_signal_focus"]["description"])
         self.assertIn("waste", brain_save_schema["audience_signal_focus"]["description"])
         self.assertIn("strategy", brain_save_schema["watch_sources"]["description"])
@@ -550,8 +560,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(brain_schema["fatigue_decay_threshold"]["default"], 0.18)
         self.assertEqual(brain_schema["audience_signal_focus"]["default"], "all")
         self.assertEqual(brain_schema["audience_limit"]["default"], 3)
+        self.assertEqual(brain_schema["conclusion_recency_days"]["default"], 0)
         self.assertIn("loser", brain_schema["conclusion_statuses"]["description"])
         self.assertIn("all", brain_schema["conclusion_statuses"]["description"])
+        self.assertIn("report end date", brain_schema["conclusion_recency_days"]["description"])
         self.assertIn("opportunity", brain_schema["audience_signal_focus"]["description"])
         self.assertIn("waste", brain_schema["audience_signal_focus"]["description"])
         self.assertIn("visual_style", brain_schema["watch_group_by"]["description"])
@@ -692,6 +704,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"watch_maximum_gap_days"', source)
         self.assertIn('"watch_sources"', source)
         self.assertIn('"conclusion_statuses"', source)
+        self.assertIn('"conclusion_recency_days"', source)
         self.assertIn('"audience_signal_focus"', source)
         self.assertIn('"audience_limit"', source)
         self.assertIn('"minimum_points": args.get("minimum_points", 0)', source)

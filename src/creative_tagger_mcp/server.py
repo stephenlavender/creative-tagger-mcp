@@ -1095,6 +1095,11 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
                     },
+                    "conclusion_recency_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Optional recency filter for conclusion stories relative to the report end date",
+                    },
                     "audience_signal_focus": {
                         "type": "string",
                         "default": "all",
@@ -1232,6 +1237,11 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
                     },
+                    "conclusion_recency_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Optional recency filter for conclusion stories relative to the report end date",
+                    },
                     "audience_signal_focus": {
                         "type": "string",
                         "default": "all",
@@ -1368,6 +1378,11 @@ async def list_tools() -> list[Tool]:
                     "conclusion_statuses": {
                         "type": "string",
                         "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
+                    },
+                    "conclusion_recency_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Optional recency filter for conclusion stories relative to the report end date",
                     },
                     "audience_signal_focus": {
                         "type": "string",
@@ -2616,6 +2631,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "fatigue_decay_threshold",
         "kinds",
         "conclusion_statuses",
+        "conclusion_recency_days",
         "audience_signal_focus",
         "audience_limit",
     ):
@@ -2667,6 +2683,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "fatigue_decay_threshold",
         "kinds",
         "conclusion_statuses",
+        "conclusion_recency_days",
         "audience_signal_focus",
         "audience_limit",
     ):
