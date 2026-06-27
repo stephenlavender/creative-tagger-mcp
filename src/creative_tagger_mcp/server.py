@@ -1915,6 +1915,40 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="export_demographics_context",
+            description=(
+                "Return an agent-ready audience context payload from saved age x "
+                "gender performance memory. Use this when another agent or workflow "
+                "needs the top opportunity and waste segments, account totals, "
+                "summary text, and a prompt-ready audience decision queue without "
+                "opening the dashboard."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum opportunity and waste segments to include in the exported context",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="generate_brand_taxonomy",
             description=(
                 "Auto-build a brand's ENTIRE custom taxonomy from trends in its analyzed "
@@ -2153,6 +2187,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _predict_creative(arguments)
         if name == "get_demographics_performance":
             return await _get_demographics_performance(arguments)
+        if name == "export_demographics_context":
+            return await _export_demographics_context(arguments)
         if name == "generate_brand_taxonomy":
             return await _generate_brand_taxonomy(arguments)
         if name == "scan_competitor":
@@ -2984,6 +3020,89 @@ async def _get_demographics_performance(args: dict) -> list[TextContent]:
         )
         resp.raise_for_status()
         return _text(resp.json())
+
+
+def _demographic_segment_label(segment: dict[str, Any]) -> str:
+    age = str(segment.get("age") or "unknown").strip() or "unknown"
+    gender = str(segment.get("gender") or "unknown").strip() or "unknown"
+    return f"{age} / {gender}"
+
+
+def _compact_demographic_segment(segment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "segment": _demographic_segment_label(segment),
+        "signal": segment.get("signal") or "neutral",
+        "spend": segment.get("spend", 0),
+        "revenue": segment.get("revenue", 0),
+        "roas": segment.get("roas", 0),
+        "ctr": segment.get("ctr", 0),
+        "cpa": segment.get("cpa", 0),
+        "conversions": segment.get("conversions", 0),
+        "lpv_rate": segment.get("lpv_rate", 0),
+        "atc_per_lpv": segment.get("atc_per_lpv", 0),
+        "goodness": segment.get("goodness"),
+    }
+
+
+async def _export_demographics_context(args: dict) -> list[TextContent]:
+    payload = await _get_demographics_performance(args)
+    if not payload:
+        return payload
+    raw = getattr(payload[0], "text", "")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return payload
+    if not isinstance(parsed, dict):
+        return payload
+
+    requested_limit = args.get("limit", 3)
+    try:
+        limit = max(1, int(requested_limit))
+    except (TypeError, ValueError):
+        return _err("limit must be an integer")
+
+    opportunities = [
+        _compact_demographic_segment(segment)
+        for segment in list(parsed.get("opportunities") or [])[:limit]
+        if isinstance(segment, dict)
+    ]
+    waste = [
+        _compact_demographic_segment(segment)
+        for segment in list(parsed.get("waste") or [])[:limit]
+        if isinstance(segment, dict)
+    ]
+    totals = dict(parsed.get("totals") or {})
+    date_window = parsed.get("date_window") or "All time"
+    brand_name = parsed.get("brand_name", args.get("brand_name", ""))
+    summary_text = (
+        f"{brand_name or 'Audience read'}: {len(opportunities)} opportunity "
+        f"segment{'s' if len(opportunities) != 1 else ''}, {len(waste)} waste "
+        f"segment{'s' if len(waste) != 1 else ''}, "
+        f"{totals.get('roas', 0)}x blended ROAS on ${totals.get('spend', 0)} spend "
+        f"for {date_window}."
+    )
+    export = {
+        "tool": "export_demographics_context",
+        "brand_name": brand_name,
+        "date_preset": parsed.get("date_preset", args.get("date_preset", "all_time")),
+        "start_date": parsed.get("start_date", args.get("start_date", "")),
+        "end_date": parsed.get("end_date", args.get("end_date", "")),
+        "date_window": date_window,
+        "total_segments": parsed.get("total_segments", 0),
+        "totals": totals,
+        "opportunity_count": len(parsed.get("opportunities") or []),
+        "waste_count": len(parsed.get("waste") or []),
+        "top_opportunities": opportunities,
+        "top_waste": waste,
+        "summary_text": summary_text,
+        "prompt": (
+            "Use these audience signals as the source of truth for the next "
+            "creative or targeting decision. Scale the strongest opportunity "
+            "segments, cut or isolate waste, and call out what evidence is still missing."
+        ),
+    }
+    return _text(export)
 
 
 async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:

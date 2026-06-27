@@ -536,6 +536,18 @@ isolate a specific audience window.
 }
 ```
 
+### `export_demographics_context`
+Return an agent-ready audience context payload from the saved demographics read.
+Use this when another agent needs the top audience opportunities and waste
+segments, blended totals, and a prompt-ready summary without the full wrapper.
+```
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30_days",
+  "limit": 3
+}
+```
+
 ### `generate_brand_taxonomy`
 Generate brand-specific messaging themes and intended audiences from the analyzed
 creative library, then optionally save them to Brand Taxonomy Studio.

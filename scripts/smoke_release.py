@@ -66,6 +66,7 @@ EXPECTED_TOOLS = {
     "delete_custom_report",
     "predict_creative",
     "get_demographics_performance",
+    "export_demographics_context",
     "generate_brand_taxonomy",
     "scan_competitor",
     "get_competitor_scan_history",

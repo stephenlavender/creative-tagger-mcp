@@ -54,6 +54,7 @@ PUBLIC_EXPECTED_TOOLS = {
     "delete_custom_report",
     "predict_creative",
     "get_demographics_performance",
+    "export_demographics_context",
     "generate_brand_taxonomy",
     "scan_competitor",
     "get_competitor_scan_history",
@@ -438,6 +439,7 @@ class ToolSurfaceTest(unittest.TestCase):
         timeseries_desc = tools["get_performance_timeseries"]["description"]
         timeseries_export_desc = tools["export_performance_timeseries_context"]["description"]
         demographics_desc = tools["get_demographics_performance"]["description"]
+        demographics_export_desc = tools["export_demographics_context"]["description"]
         competitor_desc = tools["scan_competitor"]["description"]
         competitor_history_desc = tools["get_competitor_scan_history"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
@@ -727,6 +729,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("video_3s_views", timeseries_export_schema["metric"]["description"])
         self.assertIn("windowed_history", timeseries_export_schema["coverage_focus"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_desc)
+        self.assertIn("agent-ready audience context payload", demographics_export_desc)
+        self.assertIn("top opportunity and waste segments", demographics_export_desc)
         demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
         self.assertEqual(demographics_schema["date_preset"]["default"], "all_time")
         self.assertIn("last_30_days", demographics_schema["date_preset"]["description"])
@@ -734,6 +738,12 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("end_date", demographics_schema)
         self.assertIn("YYYY-MM-DD", demographics_schema["start_date"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_schema["end_date"]["description"])
+        demographics_export_schema = tools["export_demographics_context"]["inputSchema"]["properties"]
+        self.assertEqual(demographics_export_schema["date_preset"]["default"], "all_time")
+        self.assertEqual(demographics_export_schema["limit"]["default"], 3)
+        self.assertIn("last_30_days", demographics_export_schema["date_preset"]["description"])
+        self.assertIn("YYYY-MM-DD", demographics_export_schema["start_date"]["description"])
+        self.assertIn("YYYY-MM-DD", demographics_export_schema["end_date"]["description"])
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)
@@ -827,6 +837,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('f"{API_URL}/performance/by-taxonomy"', source)
         self.assertIn('f"{API_URL}/reports/prebuilt"', source)
         self.assertIn('f"{API_URL}/performance/demographics"', source)
+        self.assertIn('if name == "export_demographics_context":', source)
+        self.assertIn("async def _export_demographics_context(args: dict)", source)
+        self.assertIn('payload = await _get_demographics_performance(args)', source)
+        self.assertIn('"tool": "export_demographics_context"', source)
         self.assertIn('if name == "get_competitor_scan_history":', source)
         self.assertIn('f"{API_URL}/competitors/history"', source)
         self.assertIn('if name == "save_brain_learnings":', source)
