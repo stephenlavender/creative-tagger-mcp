@@ -1342,7 +1342,7 @@ async def list_tools() -> list[Tool]:
                 "brief-ready prompt seed plus the filtered learnings, evidence "
                 "thresholds, saved Brand Brain context, and active watch or audience "
                 "filters without the full response wrapper, including strategy queries "
-                "for the next matrix view and "
+                "for the next matrix view, time-series follow-up queries, and "
                 "watch_coverage_focus for time-series sync-quality reads."
             ),
             inputSchema={
@@ -2860,6 +2860,60 @@ async def _export_brain_learnings_context(args: dict) -> list[TextContent]:
             date_preset=str(summary.get("date_preset") or args.get("date_preset") or "all_time"),
             start_date=str(summary.get("start_date") or args.get("start_date") or ""),
             end_date=str(summary.get("end_date") or args.get("end_date") or ""),
+            watch_metric=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("metric")
+                or summary.get("watch_metric")
+                or args.get("watch_metric")
+                or "roas"
+            ),
+            watch_signal_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("signal_focus")
+                or summary.get("watch_signal_focus")
+                or args.get("watch_signal_focus")
+                or "all"
+            ),
+            watch_trajectory_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("trajectory_focus")
+                or summary.get("watch_trajectory_focus")
+                or args.get("watch_trajectory_focus")
+                or "all"
+            ),
+            watch_coverage_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("coverage_focus")
+                or summary.get("watch_coverage_focus")
+                or args.get("watch_coverage_focus")
+                or "all"
+            ),
+            watch_minimum_points=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("minimum_points")
+                or summary.get("watch_minimum_points")
+                or args.get("watch_minimum_points")
+                or 2
+            ),
+            watch_minimum_calendar_days=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "minimum_calendar_days"
+                )
+                or summary.get("watch_minimum_calendar_days")
+                or args.get("watch_minimum_calendar_days")
+                or 0
+            ),
+            watch_maximum_gap_days=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "maximum_gap_days"
+                )
+                or summary.get("watch_maximum_gap_days")
+                or args.get("watch_maximum_gap_days")
+                or 0
+            ),
+            fatigue_decay_threshold=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "fatigue_decay_threshold"
+                )
+                or summary.get("fatigue_decay_threshold")
+                or args.get("fatigue_decay_threshold")
+                or 0.18
+            ),
             limit=limit,
         ),
         "suggested_strategy_views": _build_brain_learning_strategy_views(
@@ -2868,6 +2922,68 @@ async def _export_brain_learnings_context(args: dict) -> list[TextContent]:
             date_preset=str(summary.get("date_preset") or args.get("date_preset") or "all_time"),
             start_date=str(summary.get("start_date") or args.get("start_date") or ""),
             end_date=str(summary.get("end_date") or args.get("end_date") or ""),
+            limit=limit,
+        ),
+        "suggested_timeseries_views": _build_brain_learning_timeseries_views(
+            learnings=learnings,
+            brand_name=brand_name,
+            date_preset=str(summary.get("date_preset") or args.get("date_preset") or "all_time"),
+            start_date=str(summary.get("start_date") or args.get("start_date") or ""),
+            end_date=str(summary.get("end_date") or args.get("end_date") or ""),
+            watch_metric=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("metric")
+                or summary.get("watch_metric")
+                or args.get("watch_metric")
+                or "roas"
+            ),
+            watch_signal_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("signal_focus")
+                or summary.get("watch_signal_focus")
+                or args.get("watch_signal_focus")
+                or "all"
+            ),
+            watch_trajectory_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("trajectory_focus")
+                or summary.get("watch_trajectory_focus")
+                or args.get("watch_trajectory_focus")
+                or "all"
+            ),
+            watch_coverage_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("coverage_focus")
+                or summary.get("watch_coverage_focus")
+                or args.get("watch_coverage_focus")
+                or "all"
+            ),
+            watch_minimum_points=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("minimum_points")
+                or summary.get("watch_minimum_points")
+                or args.get("watch_minimum_points")
+                or 2
+            ),
+            watch_minimum_calendar_days=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "minimum_calendar_days"
+                )
+                or summary.get("watch_minimum_calendar_days")
+                or args.get("watch_minimum_calendar_days")
+                or 0
+            ),
+            watch_maximum_gap_days=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "maximum_gap_days"
+                )
+                or summary.get("watch_maximum_gap_days")
+                or args.get("watch_maximum_gap_days")
+                or 0
+            ),
+            fatigue_decay_threshold=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "fatigue_decay_threshold"
+                )
+                or summary.get("fatigue_decay_threshold")
+                or args.get("fatigue_decay_threshold")
+                or 0.18
+            ),
             limit=limit,
         ),
     }
@@ -3369,6 +3485,52 @@ def _brain_learning_strategy_query(
     return query
 
 
+def _brain_learning_timeseries_query(
+    *,
+    learning: dict[str, Any],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    watch_metric: str,
+    watch_signal_focus: str,
+    watch_trajectory_focus: str,
+    watch_coverage_focus: str,
+    watch_minimum_points: Any,
+    watch_minimum_calendar_days: Any,
+    watch_maximum_gap_days: Any,
+    fatigue_decay_threshold: Any,
+) -> dict[str, Any]:
+    evidence = learning.get("evidence") or {}
+    kind = str(learning.get("kind") or "").strip().lower()
+    source = str(learning.get("source") or "").strip().lower()
+    if kind != "watch" or source != "timeseries":
+        return {}
+    group_by = _normalize_strategy_axis(evidence.get("dimension"))
+    if not group_by or group_by in {"matrix_cell", "creative_conclusion"}:
+        return {}
+    query = {
+        "tool": "get_performance_timeseries",
+        "brand_name": brand_name,
+        "group_by": group_by,
+        "metric": str(evidence.get("timeseries_metric") or watch_metric or "roas"),
+        "date_preset": date_preset or "last_30d",
+        "signal_focus": watch_signal_focus or "all",
+        "trajectory_focus": watch_trajectory_focus or "all",
+        "coverage_focus": watch_coverage_focus or "all",
+        "minimum_points": watch_minimum_points,
+        "minimum_calendar_days": watch_minimum_calendar_days,
+        "maximum_gap_days": watch_maximum_gap_days,
+        "fatigue_decay_threshold": fatigue_decay_threshold,
+        "focus_value": evidence.get("value") or "",
+    }
+    if start_date:
+        query["start_date"] = start_date
+    if end_date:
+        query["end_date"] = end_date
+    return query
+
+
 def _build_brain_learning_decision_queue(
     *,
     learnings: list[dict[str, Any]],
@@ -3376,6 +3538,14 @@ def _build_brain_learning_decision_queue(
     date_preset: str,
     start_date: str,
     end_date: str,
+    watch_metric: str = "roas",
+    watch_signal_focus: str = "all",
+    watch_trajectory_focus: str = "all",
+    watch_coverage_focus: str = "all",
+    watch_minimum_points: Any = 0,
+    watch_minimum_calendar_days: Any = 0,
+    watch_maximum_gap_days: Any = 0,
+    fatigue_decay_threshold: Any = 0.18,
     limit: int,
 ) -> list[dict[str, Any]]:
     queue = []
@@ -3410,6 +3580,21 @@ def _build_brain_learning_decision_queue(
                     start_date=start_date,
                     end_date=end_date,
                 ),
+                "timeseries_query": _brain_learning_timeseries_query(
+                    learning=learning,
+                    brand_name=brand_name,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date,
+                    watch_metric=watch_metric,
+                    watch_signal_focus=watch_signal_focus,
+                    watch_trajectory_focus=watch_trajectory_focus,
+                    watch_coverage_focus=watch_coverage_focus,
+                    watch_minimum_points=watch_minimum_points,
+                    watch_minimum_calendar_days=watch_minimum_calendar_days,
+                    watch_maximum_gap_days=watch_maximum_gap_days,
+                    fatigue_decay_threshold=fatigue_decay_threshold,
+                ),
             }
         )
     return queue
@@ -3441,6 +3626,56 @@ def _build_brain_learning_strategy_views(
                     start_date=start_date,
                     end_date=end_date,
                 ),
+            }
+        )
+    return views
+
+
+def _build_brain_learning_timeseries_views(
+    *,
+    learnings: list[dict[str, Any]],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    watch_metric: str,
+    watch_signal_focus: str,
+    watch_trajectory_focus: str,
+    watch_coverage_focus: str,
+    watch_minimum_points: Any,
+    watch_minimum_calendar_days: Any,
+    watch_maximum_gap_days: Any,
+    fatigue_decay_threshold: Any,
+    limit: int,
+) -> list[dict[str, Any]]:
+    views = []
+    for learning in list(learnings or [])[:limit]:
+        query = _brain_learning_timeseries_query(
+            learning=learning,
+            brand_name=brand_name,
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+            watch_metric=watch_metric,
+            watch_signal_focus=watch_signal_focus,
+            watch_trajectory_focus=watch_trajectory_focus,
+            watch_coverage_focus=watch_coverage_focus,
+            watch_minimum_points=watch_minimum_points,
+            watch_minimum_calendar_days=watch_minimum_calendar_days,
+            watch_maximum_gap_days=watch_maximum_gap_days,
+            fatigue_decay_threshold=fatigue_decay_threshold,
+        )
+        if not query:
+            continue
+        evidence = learning.get("evidence") or {}
+        views.append(
+            {
+                "learning_id": learning.get("id") or "",
+                "kind": learning.get("kind") or "",
+                "title": learning.get("title") or "",
+                "focus_value": evidence.get("value") or "",
+                "why": learning.get("action") or learning.get("summary") or "",
+                "timeseries_query": query,
             }
         )
     return views

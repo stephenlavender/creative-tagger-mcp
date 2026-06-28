@@ -409,8 +409,10 @@ class ToolSurfaceTest(unittest.TestCase):
                 "_build_demographics_strategy_query",
                 "_brain_learning_status_action",
                 "_brain_learning_strategy_query",
+                "_brain_learning_timeseries_query",
                 "_build_brain_learning_decision_queue",
                 "_build_brain_learning_strategy_views",
+                "_build_brain_learning_timeseries_views",
             }
         )
 
@@ -430,6 +432,7 @@ class ToolSurfaceTest(unittest.TestCase):
                 "summary": "This audience slice is weakening.",
                 "action": "Refresh this segment before adding more spend.",
                 "evidence": {"dimension": "demographic_segment", "value": "25-34 / female"},
+                "source": "timeseries",
             },
             {
                 "id": "conclusion:winner:founder-proof",
@@ -455,6 +458,14 @@ class ToolSurfaceTest(unittest.TestCase):
             date_preset="custom",
             start_date="2026-05-01",
             end_date="2026-05-31",
+            watch_metric="roas",
+            watch_signal_focus="fatigued",
+            watch_trajectory_focus="worsening",
+            watch_coverage_focus="gappy",
+            watch_minimum_points=3,
+            watch_minimum_calendar_days=7,
+            watch_maximum_gap_days=4,
+            fatigue_decay_threshold=0.24,
             limit=4,
         )
         self.assertEqual([item["rank"] for item in queue], [1, 2, 3, 4])
@@ -464,6 +475,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(queue[1]["action"], "refresh")
         self.assertEqual(queue[1]["strategy_query"]["report_template"], "angle-audience-fit")
         self.assertEqual(queue[1]["strategy_query"]["columns"], "demographic_segment")
+        self.assertEqual(queue[1]["timeseries_query"]["tool"], "get_performance_timeseries")
+        self.assertEqual(queue[1]["timeseries_query"]["group_by"], "demographic_segment")
+        self.assertEqual(queue[1]["timeseries_query"]["signal_focus"], "fatigued")
+        self.assertEqual(queue[1]["timeseries_query"]["coverage_focus"], "gappy")
+        self.assertEqual(queue[1]["timeseries_query"]["focus_value"], "25-34 / female")
         self.assertEqual(queue[2]["action"], "scale")
         self.assertEqual(queue[2]["strategy_query"]["report_template"], "creative-winners")
         self.assertEqual(queue[2]["strategy_query"]["focus_status"], "winner")
@@ -485,6 +501,28 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(views[0]["learning_id"], "working:hook_type:question")
         self.assertEqual(views[0]["strategy_query"]["focus_value"], "Question")
         self.assertEqual(views[1]["strategy_query"]["report_template"], "angle-audience-fit")
+
+        timeseries_views = namespace["_build_brain_learning_timeseries_views"](
+            learnings=learnings,
+            brand_name="Acme",
+            date_preset="custom",
+            start_date="2026-05-01",
+            end_date="2026-05-31",
+            watch_metric="roas",
+            watch_signal_focus="fatigued",
+            watch_trajectory_focus="worsening",
+            watch_coverage_focus="gappy",
+            watch_minimum_points=3,
+            watch_minimum_calendar_days=7,
+            watch_maximum_gap_days=4,
+            fatigue_decay_threshold=0.24,
+            limit=4,
+        )
+        self.assertEqual(len(timeseries_views), 1)
+        self.assertEqual(timeseries_views[0]["learning_id"], "watch:demographic_segment:25-34-female")
+        self.assertEqual(timeseries_views[0]["timeseries_query"]["group_by"], "demographic_segment")
+        self.assertEqual(timeseries_views[0]["timeseries_query"]["maximum_gap_days"], 4)
+        self.assertEqual(timeseries_views[0]["timeseries_query"]["fatigue_decay_threshold"], 0.24)
 
     def test_analyze_creative_declares_carousel_and_version_inputs(self) -> None:
         tools = _declared_tools()
@@ -707,6 +745,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("agent_context payload", brain_export_desc)
         self.assertIn("brief-ready prompt seed", brain_export_desc)
         self.assertIn("saved Brand Brain context", brain_export_desc)
+        self.assertIn("time-series follow-up queries", brain_export_desc)
         self.assertIn("watch_coverage_focus", brain_export_desc)
         self.assertIn("strategy queries", brain_export_desc)
         brain_export_schema = tools["export_brain_learnings_context"]["inputSchema"]["properties"]
@@ -1016,6 +1055,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('parsed.get("agent_context")', source)
         self.assertIn('"decision_queue": _build_brain_learning_decision_queue(', source)
         self.assertIn('"suggested_strategy_views": _build_brain_learning_strategy_views(', source)
+        self.assertIn('"suggested_timeseries_views": _build_brain_learning_timeseries_views(', source)
+        self.assertIn('"timeseries_query": _brain_learning_timeseries_query(', source)
         self.assertIn('if name == "export_performance_timeseries_context":', source)
         self.assertIn("async def _export_performance_timeseries_context(args: dict)", source)
         self.assertIn('payload = await _get_performance_timeseries(args)', source)
