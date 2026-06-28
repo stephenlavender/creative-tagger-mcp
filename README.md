@@ -539,7 +539,8 @@ isolate a specific audience window.
 ### `export_demographics_context`
 Return an agent-ready audience context payload from the saved demographics read.
 Use this when another agent needs the top audience opportunities and waste
-segments, blended totals, and a prompt-ready summary without the full wrapper.
+segments, blended totals, per-segment mixed creative x audience views, and a
+prompt-ready summary without the full wrapper.
 ```
 {
   "brand_name": "Acme",

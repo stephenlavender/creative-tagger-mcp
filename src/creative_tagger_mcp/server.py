@@ -3091,6 +3091,70 @@ def _build_demographics_decision_queue(opportunities, waste, *, limit):
     return queue
 
 
+def _build_demographic_focus_views(
+    segments,
+    *,
+    brand_name: str = "",
+    date_preset: str = "all_time",
+    start_date: str = "",
+    end_date: str = "",
+    limit: int = 2,
+):
+    capped_limit = max(1, min(int(limit or 2), 4))
+    focus_views = []
+    view_specs = [
+        {
+            "label_prefix": "Angles for",
+            "report_template": "angle-audience-fit",
+            "rows": "messaging_angle",
+            "columns": "demographic_segment",
+            "fill_metric": "roas",
+            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
+            "why": "Open the audience-segment column first, then compare which messaging angles win inside that pocket.",
+        },
+        {
+            "label_prefix": "Hooks for",
+            "report_template": "hook-audience-fit",
+            "rows": "hook",
+            "columns": "demographic_segment",
+            "fill_metric": "hook_rate",
+            "metrics": ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"],
+            "why": "Open the same audience-segment column to see whether the opening pattern, not the whole concept, needs to change.",
+        },
+    ]
+    for segment in list(segments or [])[:capped_limit]:
+        compact = _compact_demographic_segment(segment)
+        item = {
+            **compact,
+            "evidence_summary": _format_demographic_evidence(compact),
+            "strategy_views": [],
+        }
+        for spec in view_specs:
+            query = _build_demographics_strategy_query(
+                brand_name=brand_name,
+                report_template=spec["report_template"],
+                rows=spec["rows"],
+                columns=spec["columns"],
+                fill_metric=spec["fill_metric"],
+                metrics=spec["metrics"],
+                date_preset=date_preset,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            query["focus_segment"] = compact["segment"]
+            item["strategy_views"].append(
+                {
+                    "label": f"{spec['label_prefix']} {compact['segment']}",
+                    "focus_segment": compact["segment"],
+                    "signal": compact["signal"],
+                    "why": spec["why"],
+                    "strategy_query": query,
+                }
+            )
+        focus_views.append(item)
+    return focus_views
+
+
 def _build_demographics_strategy_query(
     *,
     brand_name: str,
@@ -3240,6 +3304,24 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
         "top_opportunities": opportunities,
         "top_waste": waste,
         "decision_queue": decision_queue,
+        "segment_strategy_views": {
+            "opportunities": _build_demographic_focus_views(
+                parsed.get("opportunities") or [],
+                brand_name=brand_name,
+                date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+                start_date=parsed.get("start_date", args.get("start_date", "")),
+                end_date=parsed.get("end_date", args.get("end_date", "")),
+                limit=limit,
+            ),
+            "waste": _build_demographic_focus_views(
+                parsed.get("waste") or [],
+                brand_name=brand_name,
+                date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+                start_date=parsed.get("start_date", args.get("start_date", "")),
+                end_date=parsed.get("end_date", args.get("end_date", "")),
+                limit=limit,
+            ),
+        },
         "suggested_strategy_views": _build_demographics_strategy_views(
             brand_name=brand_name,
             date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
@@ -3250,7 +3332,7 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
         "prompt": (
             "Use these audience signals as the source of truth for the next "
             "creative or targeting decision. Scale the strongest opportunity "
-            "segments, cut or isolate waste, then open the suggested mixed "
+            "segments, cut or isolate waste, then open the per-segment mixed "
             "creative x audience views to see which hooks or angles fit each pocket."
         ),
     }

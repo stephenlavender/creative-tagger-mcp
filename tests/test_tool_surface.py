@@ -916,6 +916,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("async def _export_demographics_context(args: dict)", source)
         self.assertIn('payload = await _get_demographics_performance(args)', source)
         self.assertIn('"decision_queue": decision_queue', source)
+        self.assertIn('"segment_strategy_views": {', source)
+        self.assertIn('query["focus_segment"] = compact["segment"]', source)
         self.assertIn('"suggested_strategy_views": _build_demographics_strategy_views(', source)
         self.assertIn('"strategy_query"] = _build_demographics_strategy_query(', source)
         self.assertIn('"tool": "export_demographics_context"', source)
@@ -943,6 +945,52 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"filters": args.get("filters") or []', source)
         self.assertIn('"sort": args.get("sort", "desc")', source)
         self.assertIn('"saved_metric_preset": args.get("saved_metric_preset", "")', source)
+
+    def test_demographic_focus_views_include_segment_specific_mixed_queries(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_demographic_segment_label",
+                "_compact_demographic_segment",
+                "_format_demographic_evidence",
+                "_build_demographics_strategy_query",
+                "_build_demographic_focus_views",
+            }
+        )
+
+        focus_views = namespace["_build_demographic_focus_views"](
+            [
+                {
+                    "age": "25-34",
+                    "gender": "female",
+                    "signal": "opportunity",
+                    "spend": 420,
+                    "revenue": 1680,
+                    "roas": 4.0,
+                    "ctr": 2.6,
+                    "cpa": 35,
+                    "conversions": 12,
+                }
+            ],
+            brand_name="Acme",
+            date_preset="last_30_days",
+            limit=1,
+        )
+
+        self.assertEqual(len(focus_views), 1)
+        first = focus_views[0]
+        self.assertEqual(first["segment"], "25-34 / female")
+        self.assertEqual(first["signal"], "opportunity")
+        self.assertIn("$420 spend", first["evidence_summary"])
+        self.assertEqual(len(first["strategy_views"]), 2)
+        labels = {view["label"] for view in first["strategy_views"]}
+        self.assertEqual(labels, {"Angles for 25-34 / female", "Hooks for 25-34 / female"})
+        for view in first["strategy_views"]:
+            query = view["strategy_query"]
+            self.assertEqual(query["tool"], "get_creative_strategy_report")
+            self.assertEqual(query["brand_name"], "Acme")
+            self.assertEqual(query["date_preset"], "last_30_days")
+            self.assertEqual(query["focus_segment"], "25-34 / female")
+            self.assertEqual(query["columns"], "demographic_segment")
 
     def test_competitor_import_tool_is_positioned_as_gated_backfill(self) -> None:
         tools = _declared_tools()
