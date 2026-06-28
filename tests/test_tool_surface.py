@@ -328,6 +328,61 @@ class ToolSurfaceTest(unittest.TestCase):
         )
         self.assertNotIn("report_template", creative_only)
 
+    def test_demographics_export_helpers_build_decision_queue_and_strategy_views(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_demographic_segment_label",
+                "_compact_demographic_segment",
+                "_format_demographic_evidence",
+                "_build_demographics_decision_queue",
+                "_build_demographics_strategy_views",
+            }
+        )
+
+        queue = namespace["_build_demographics_decision_queue"](
+            [
+                {
+                    "age": "25-34",
+                    "gender": "female",
+                    "signal": "opportunity",
+                    "spend": 1250,
+                    "roas": 4.2,
+                    "ctr": 2.7,
+                    "cpa": 32.5,
+                    "conversions": 18,
+                }
+            ],
+            [
+                {
+                    "age": "45-54",
+                    "gender": "male",
+                    "signal": "waste",
+                    "spend": 980,
+                    "roas": 0.9,
+                    "ctr": 0.8,
+                    "cpa": 140,
+                    "conversions": 7,
+                }
+            ],
+            limit=3,
+        )
+
+        self.assertEqual(len(queue), 2)
+        self.assertEqual(queue[0]["rank"], 1)
+        self.assertEqual(queue[0]["action"], "scale")
+        self.assertIn("25-34 / female", queue[0]["recommendation"])
+        self.assertIn("$1250 spend", queue[0]["evidence_summary"])
+        self.assertEqual(queue[1]["action"], "cut_or_fix")
+        self.assertIn("45-54 / male", queue[1]["recommendation"])
+        self.assertIn("0.90x ROAS", queue[1]["evidence_summary"])
+
+        views = namespace["_build_demographics_strategy_views"]()
+        self.assertEqual(views[0]["report_template"], "demographic-read")
+        self.assertEqual(views[1]["rows"], "messaging_angle")
+        self.assertEqual(views[1]["columns"], "demographic_segment")
+        self.assertEqual(views[2]["rows"], "hook_type")
+        self.assertEqual(views[2]["fill_metric"], "hook_rate")
+
     def test_analyze_creative_declares_carousel_and_version_inputs(self) -> None:
         tools = _declared_tools()
         analyze = tools["analyze_creative"]
@@ -731,6 +786,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("YYYY-MM-DD", demographics_desc)
         self.assertIn("agent-ready audience context payload", demographics_export_desc)
         self.assertIn("top opportunity and waste segments", demographics_export_desc)
+        self.assertIn("mixed creative x audience pivots", demographics_export_desc)
         demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
         self.assertEqual(demographics_schema["date_preset"]["default"], "all_time")
         self.assertIn("last_30_days", demographics_schema["date_preset"]["description"])
@@ -840,6 +896,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('if name == "export_demographics_context":', source)
         self.assertIn("async def _export_demographics_context(args: dict)", source)
         self.assertIn('payload = await _get_demographics_performance(args)', source)
+        self.assertIn('"decision_queue": decision_queue', source)
+        self.assertIn('"suggested_strategy_views": _build_demographics_strategy_views()', source)
         self.assertIn('"tool": "export_demographics_context"', source)
         self.assertIn('if name == "get_competitor_scan_history":', source)
         self.assertIn('f"{API_URL}/competitors/history"', source)

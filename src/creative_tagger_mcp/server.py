@@ -1920,8 +1920,8 @@ async def list_tools() -> list[Tool]:
                 "Return an agent-ready audience context payload from saved age x "
                 "gender performance memory. Use this when another agent or workflow "
                 "needs the top opportunity and waste segments, account totals, "
-                "summary text, and a prompt-ready audience decision queue without "
-                "opening the dashboard."
+                "summary text, a prompt-ready audience decision queue, and suggested "
+                "mixed creative x audience pivots without opening the dashboard."
             ),
             inputSchema={
                 "type": "object",
@@ -3044,6 +3044,82 @@ def _compact_demographic_segment(segment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_demographic_evidence(segment):
+    spend = float(segment.get("spend") or 0)
+    roas = float(segment.get("roas") or 0)
+    ctr = float(segment.get("ctr") or 0)
+    cpa = float(segment.get("cpa") or 0)
+    conversions = float(segment.get("conversions") or 0)
+    return (
+        f"${spend:.0f} spend, {roas:.2f}x ROAS, {ctr:.2f}% CTR, "
+        f"${cpa:.2f} CPA, {conversions:.0f} conversions"
+    )
+
+
+def _build_demographics_decision_queue(opportunities, waste, *, limit):
+    capped_limit = max(1, min(int(limit or 3), 6))
+    queue = []
+    for segment in list(opportunities or [])[:capped_limit]:
+        compact = _compact_demographic_segment(segment)
+        queue.append(
+            {
+                **compact,
+                "action": "scale",
+                "recommendation": (
+                    f"Scale or brief more creative for {compact['segment']} because it is "
+                    "efficient relative to the rest of the account."
+                ),
+                "evidence_summary": _format_demographic_evidence(compact),
+            }
+        )
+    remaining = max(1, capped_limit - len(queue))
+    for segment in list(waste or [])[:remaining]:
+        compact = _compact_demographic_segment(segment)
+        queue.append(
+            {
+                **compact,
+                "action": "cut_or_fix",
+                "recommendation": (
+                    f"Cut spend or isolate a different creative for {compact['segment']} "
+                    "before it keeps burning budget."
+                ),
+                "evidence_summary": _format_demographic_evidence(compact),
+            }
+        )
+    for index, item in enumerate(queue, start=1):
+        item["rank"] = index
+    return queue
+
+
+def _build_demographics_strategy_views():
+    return [
+        {
+            "label": "Audience matrix",
+            "report_template": "demographic-read",
+            "rows": "demographic_age",
+            "columns": "demographic_gender",
+            "fill_metric": "roas",
+            "why": "Start with the age x gender matrix to confirm where efficiency clusters.",
+        },
+        {
+            "label": "Angle x audience",
+            "report_template": "next-tests",
+            "rows": "messaging_angle",
+            "columns": "demographic_segment",
+            "fill_metric": "roas",
+            "why": "Compare which messaging angles win inside each audience pocket before briefing the next test.",
+        },
+        {
+            "label": "Hook x audience",
+            "report_template": "next-tests",
+            "rows": "hook_type",
+            "columns": "demographic_segment",
+            "fill_metric": "hook_rate",
+            "why": "Check whether the opening pattern changes by audience segment before rewriting the whole ad.",
+        },
+    ]
+
+
 async def _export_demographics_context(args: dict) -> list[TextContent]:
     payload = await _get_demographics_performance(args)
     if not payload:
@@ -3075,6 +3151,11 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
     totals = dict(parsed.get("totals") or {})
     date_window = parsed.get("date_window") or "All time"
     brand_name = parsed.get("brand_name", args.get("brand_name", ""))
+    decision_queue = _build_demographics_decision_queue(
+        parsed.get("opportunities") or [],
+        parsed.get("waste") or [],
+        limit=limit,
+    )
     summary_text = (
         f"{brand_name or 'Audience read'}: {len(opportunities)} opportunity "
         f"segment{'s' if len(opportunities) != 1 else ''}, {len(waste)} waste "
@@ -3095,11 +3176,14 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
         "waste_count": len(parsed.get("waste") or []),
         "top_opportunities": opportunities,
         "top_waste": waste,
+        "decision_queue": decision_queue,
+        "suggested_strategy_views": _build_demographics_strategy_views(),
         "summary_text": summary_text,
         "prompt": (
             "Use these audience signals as the source of truth for the next "
             "creative or targeting decision. Scale the strongest opportunity "
-            "segments, cut or isolate waste, and call out what evidence is still missing."
+            "segments, cut or isolate waste, then open the suggested mixed "
+            "creative x audience views to see which hooks or angles fit each pocket."
         ),
     }
     return _text(export)
