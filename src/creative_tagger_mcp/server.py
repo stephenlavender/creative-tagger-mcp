@@ -3141,6 +3141,15 @@ def _build_demographics_strategy_views(
             "why": "Start with the age x gender matrix to confirm where efficiency clusters.",
         },
         {
+            "label": "Audience signals",
+            "report_template": "audience-signals",
+            "rows": "demographic_segment",
+            "columns": "demographic_signal",
+            "fill_metric": "roas",
+            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
+            "why": "Separate the strongest opportunity pockets from waste before mixing in creative angles or hooks.",
+        },
+        {
             "label": "Angle x audience",
             "report_template": "angle-audience-fit",
             "rows": "messaging_angle",
