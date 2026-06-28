@@ -1920,8 +1920,8 @@ async def list_tools() -> list[Tool]:
                 "Return an agent-ready audience context payload from saved age x "
                 "gender performance memory. Use this when another agent or workflow "
                 "needs the top opportunity and waste segments, account totals, "
-                "summary text, a prompt-ready audience decision queue, and suggested "
-                "mixed creative x audience pivots without opening the dashboard."
+                "summary text, a prompt-ready audience decision queue, and date-scoped "
+                "mixed creative x audience strategy queries without opening the dashboard."
             ),
             inputSchema={
                 "type": "object",
@@ -3091,33 +3091,87 @@ def _build_demographics_decision_queue(opportunities, waste, *, limit):
     return queue
 
 
-def _build_demographics_strategy_views():
-    return [
+def _build_demographics_strategy_query(
+    *,
+    brand_name: str,
+    report_template: str,
+    rows: str,
+    columns: str,
+    fill_metric: str,
+    metrics: list[str],
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    query = {
+        "tool": "get_creative_strategy_report",
+        "brand_name": brand_name,
+        "report_template": report_template,
+        "rows": rows,
+        "columns": columns,
+        "status_focus": "all",
+        "metric_preset": "custom",
+        "metrics": list(metrics),
+        "date_preset": date_preset or "all_time",
+    }
+    if fill_metric not in query["metrics"]:
+        query["metrics"].append(fill_metric)
+    if start_date:
+        query["start_date"] = start_date
+    if end_date:
+        query["end_date"] = end_date
+    return query
+
+
+def _build_demographics_strategy_views(
+    *,
+    brand_name: str = "",
+    date_preset: str = "all_time",
+    start_date: str = "",
+    end_date: str = "",
+):
+    views = [
         {
             "label": "Audience matrix",
             "report_template": "demographic-read",
             "rows": "demographic_age",
             "columns": "demographic_gender",
             "fill_metric": "roas",
+            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
             "why": "Start with the age x gender matrix to confirm where efficiency clusters.",
         },
         {
             "label": "Angle x audience",
-            "report_template": "next-tests",
+            "report_template": "angle-audience-fit",
             "rows": "messaging_angle",
             "columns": "demographic_segment",
             "fill_metric": "roas",
+            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
             "why": "Compare which messaging angles win inside each audience pocket before briefing the next test.",
         },
         {
             "label": "Hook x audience",
-            "report_template": "next-tests",
-            "rows": "hook_type",
+            "report_template": "hook-audience-fit",
+            "rows": "hook",
             "columns": "demographic_segment",
             "fill_metric": "hook_rate",
+            "metrics": ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"],
             "why": "Check whether the opening pattern changes by audience segment before rewriting the whole ad.",
         },
     ]
+    for view in views:
+        view["strategy_query"] = _build_demographics_strategy_query(
+            brand_name=brand_name,
+            report_template=view["report_template"],
+            rows=view["rows"],
+            columns=view["columns"],
+            fill_metric=view["fill_metric"],
+            metrics=view["metrics"],
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    return views
 
 
 async def _export_demographics_context(args: dict) -> list[TextContent]:
@@ -3177,7 +3231,12 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
         "top_opportunities": opportunities,
         "top_waste": waste,
         "decision_queue": decision_queue,
-        "suggested_strategy_views": _build_demographics_strategy_views(),
+        "suggested_strategy_views": _build_demographics_strategy_views(
+            brand_name=brand_name,
+            date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+            start_date=parsed.get("start_date", args.get("start_date", "")),
+            end_date=parsed.get("end_date", args.get("end_date", "")),
+        ),
         "summary_text": summary_text,
         "prompt": (
             "Use these audience signals as the source of truth for the next "
