@@ -402,6 +402,90 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(views[3]["fill_metric"], "hook_rate")
         self.assertIn("hook_rate", views[3]["strategy_query"]["metrics"])
 
+    def test_brain_export_helpers_build_strategy_queries_and_queue(self) -> None:
+        namespace = _load_pure_helpers(
+            {
+                "_normalize_strategy_axis",
+                "_build_demographics_strategy_query",
+                "_brain_learning_status_action",
+                "_brain_learning_strategy_query",
+                "_build_brain_learning_decision_queue",
+                "_build_brain_learning_strategy_views",
+            }
+        )
+
+        learnings = [
+            {
+                "id": "working:hook_type:question",
+                "kind": "working",
+                "title": "Question is a proven hook type",
+                "summary": "Question is clearing the account benchmark.",
+                "action": "Keep Question fixed and iterate the adjacent hook, offer, or format.",
+                "evidence": {"dimension": "hook_type", "value": "Question"},
+            },
+            {
+                "id": "watch:demographic_segment:25-34-female",
+                "kind": "watch",
+                "title": "25-34 / female is fatiguing",
+                "summary": "This audience slice is weakening.",
+                "action": "Refresh this segment before adding more spend.",
+                "evidence": {"dimension": "demographic_segment", "value": "25-34 / female"},
+            },
+            {
+                "id": "conclusion:winner:founder-proof",
+                "kind": "conclusion",
+                "title": "Founder proof just cleared learning as a winner",
+                "summary": "Founder proof moved from learning to winner.",
+                "action": "Use founder proof as the control and brief adjacent variants.",
+                "evidence": {"dimension": "creative_conclusion", "value": "Founder proof", "current_status": "winner"},
+            },
+            {
+                "id": "gap:hook_type:contrarian",
+                "kind": "gap",
+                "title": "Contrarian is still untested",
+                "summary": "No measured creative has tested Contrarian yet.",
+                "action": "Brief one controlled test that isolates Contrarian.",
+                "evidence": {"dimension": "hook_type", "value": "Contrarian"},
+            },
+        ]
+
+        queue = namespace["_build_brain_learning_decision_queue"](
+            learnings=learnings,
+            brand_name="Acme",
+            date_preset="custom",
+            start_date="2026-05-01",
+            end_date="2026-05-31",
+            limit=4,
+        )
+        self.assertEqual([item["rank"] for item in queue], [1, 2, 3, 4])
+        self.assertEqual(queue[0]["action"], "scale")
+        self.assertEqual(queue[0]["strategy_query"]["report_template"], "hook-performance")
+        self.assertEqual(queue[0]["strategy_query"]["rows"], "hook")
+        self.assertEqual(queue[1]["action"], "refresh")
+        self.assertEqual(queue[1]["strategy_query"]["report_template"], "angle-audience-fit")
+        self.assertEqual(queue[1]["strategy_query"]["columns"], "demographic_segment")
+        self.assertEqual(queue[2]["action"], "scale")
+        self.assertEqual(queue[2]["strategy_query"]["report_template"], "creative-winners")
+        self.assertEqual(queue[2]["strategy_query"]["focus_status"], "winner")
+        self.assertEqual(queue[3]["action"], "test")
+        self.assertEqual(queue[3]["strategy_query"]["report_template"], "coverage-gaps")
+        self.assertEqual(queue[3]["strategy_query"]["date_preset"], "custom")
+        self.assertEqual(queue[3]["strategy_query"]["start_date"], "2026-05-01")
+        self.assertEqual(queue[3]["strategy_query"]["end_date"], "2026-05-31")
+
+        views = namespace["_build_brain_learning_strategy_views"](
+            learnings=learnings,
+            brand_name="Acme",
+            date_preset="custom",
+            start_date="2026-05-01",
+            end_date="2026-05-31",
+            limit=2,
+        )
+        self.assertEqual(len(views), 2)
+        self.assertEqual(views[0]["learning_id"], "working:hook_type:question")
+        self.assertEqual(views[0]["strategy_query"]["focus_value"], "Question")
+        self.assertEqual(views[1]["strategy_query"]["report_template"], "angle-audience-fit")
+
     def test_analyze_creative_declares_carousel_and_version_inputs(self) -> None:
         tools = _declared_tools()
         analyze = tools["analyze_creative"]
@@ -624,6 +708,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("brief-ready prompt seed", brain_export_desc)
         self.assertIn("saved Brand Brain context", brain_export_desc)
         self.assertIn("watch_coverage_focus", brain_export_desc)
+        self.assertIn("strategy queries", brain_export_desc)
         brain_export_schema = tools["export_brain_learnings_context"]["inputSchema"]["properties"]
         self.assertEqual(brain_export_schema["limit"]["default"], 8)
         self.assertEqual(brain_export_schema["date_preset"]["default"], "all_time")
@@ -929,6 +1014,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("async def _export_brain_learnings_context(args: dict)", source)
         self.assertIn('payload = await _get_brain_learnings(args)', source)
         self.assertIn('parsed.get("agent_context")', source)
+        self.assertIn('"decision_queue": _build_brain_learning_decision_queue(', source)
+        self.assertIn('"suggested_strategy_views": _build_brain_learning_strategy_views(', source)
         self.assertIn('if name == "export_performance_timeseries_context":', source)
         self.assertIn("async def _export_performance_timeseries_context(args: dict)", source)
         self.assertIn('payload = await _get_performance_timeseries(args)', source)

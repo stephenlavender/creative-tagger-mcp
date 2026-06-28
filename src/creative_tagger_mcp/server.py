@@ -1341,7 +1341,8 @@ async def list_tools() -> list[Tool]:
                 "Brain learnings. Use this when another agent or workflow needs a "
                 "brief-ready prompt seed plus the filtered learnings, evidence "
                 "thresholds, saved Brand Brain context, and active watch or audience "
-                "filters without the full response wrapper, including "
+                "filters without the full response wrapper, including strategy queries "
+                "for the next matrix view and "
                 "watch_coverage_focus for time-series sync-quality reads."
             ),
             inputSchema={
@@ -2832,14 +2833,43 @@ async def _export_brain_learnings_context(args: dict) -> list[TextContent]:
     context = parsed.get("agent_context")
     if not isinstance(context, dict):
         return _err("Brain learnings response did not include agent_context")
+    summary = parsed.get("summary") or {}
+    requested_limit = summary.get("requested_limit", args.get("limit", 8))
+    try:
+        limit = max(1, int(requested_limit))
+    except (TypeError, ValueError):
+        return _err("limit must be an integer")
+    brand_name = parsed.get("brand_name", args.get("brand_name", ""))
+    learnings = [
+        item
+        for item in list(parsed.get("learnings") or [])[:limit]
+        if isinstance(item, dict)
+    ]
     export = {
         **context,
-        "brand_name": parsed.get("brand_name", args.get("brand_name", "")),
+        "brand_name": brand_name,
         "generated_at": parsed.get("generated_at", ""),
         "hero": parsed.get("hero") or {},
-        "summary": parsed.get("summary") or {},
+        "summary": summary,
         "controls": parsed.get("controls") or {},
         "source_summary": parsed.get("source_summary") or {},
+        "learnings": learnings,
+        "decision_queue": _build_brain_learning_decision_queue(
+            learnings=learnings,
+            brand_name=brand_name,
+            date_preset=str(summary.get("date_preset") or args.get("date_preset") or "all_time"),
+            start_date=str(summary.get("start_date") or args.get("start_date") or ""),
+            end_date=str(summary.get("end_date") or args.get("end_date") or ""),
+            limit=limit,
+        ),
+        "suggested_strategy_views": _build_brain_learning_strategy_views(
+            learnings=learnings,
+            brand_name=brand_name,
+            date_preset=str(summary.get("date_preset") or args.get("date_preset") or "all_time"),
+            start_date=str(summary.get("start_date") or args.get("start_date") or ""),
+            end_date=str(summary.get("end_date") or args.get("end_date") or ""),
+            limit=limit,
+        ),
     }
     return _text(export)
 
@@ -3243,6 +3273,175 @@ def _build_demographics_strategy_views(
             date_preset=date_preset,
             start_date=start_date,
             end_date=end_date,
+        )
+    return views
+
+
+def _brain_learning_status_action(status: str) -> tuple[str, str]:
+    normalized = str(status or "").strip().lower()
+    if normalized == "winner":
+        return "scale", "Scale what just cleared the learning threshold."
+    if normalized in {"fatigued", "loser"}:
+        return "refresh", "Refresh or cut the slice that just fell below the threshold."
+    return "investigate", "Inspect the underlying slice before you brief the next move."
+
+
+def _brain_learning_strategy_query(
+    *,
+    learning: dict[str, Any],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    evidence = learning.get("evidence") or {}
+    dimension = _normalize_strategy_axis(evidence.get("dimension"))
+    kind = str(learning.get("kind") or "").strip().lower()
+    current_status = str(evidence.get("current_status") or "").strip().lower()
+    report_template = "next-tests"
+    rows = "ad_type"
+    columns = "messaging_angle"
+    fill_metric = "roas"
+    metrics = ["spend", "roas", "ctr", "cpa", "conversions", "revenue"]
+
+    if kind == "conclusion":
+        if current_status == "winner":
+            report_template = "creative-winners"
+        elif current_status in {"fatigued", "loser"}:
+            report_template = "fatigue-watch"
+    elif kind == "working":
+        if dimension == "hook":
+            report_template = "hook-performance"
+            rows = "hook"
+            columns = "ad_type"
+            fill_metric = "hook_rate"
+            metrics = ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"]
+        elif dimension == "persona":
+            report_template = "persona-read"
+            rows = "persona"
+            columns = "messaging_angle"
+        elif dimension in {"messaging_angle", "ad_type", "offer_type"}:
+            rows = dimension
+            columns = "ad_type" if dimension != "ad_type" else "messaging_angle"
+    elif kind == "watch":
+        report_template = "fatigue-watch"
+        if dimension in {
+            "demographic_age",
+            "demographic_gender",
+            "demographic_segment",
+            "demographic_signal",
+        }:
+            report_template = "angle-audience-fit"
+            rows = "messaging_angle"
+            columns = "demographic_segment"
+        elif dimension == "hook":
+            rows = "hook"
+            columns = "ad_type"
+            fill_metric = "hook_rate"
+            metrics = ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"]
+        elif dimension:
+            rows = dimension
+            columns = "ad_type" if dimension != "ad_type" else "messaging_angle"
+    elif kind == "audience":
+        report_template = "angle-audience-fit"
+        rows = "messaging_angle"
+        columns = "demographic_segment"
+    elif kind == "gap":
+        report_template = "coverage-gaps"
+        if dimension in {"hook", "persona", "offer_type", "messaging_angle", "ad_type"}:
+            rows = dimension
+            columns = "ad_type" if dimension != "ad_type" else "messaging_angle"
+
+    query = _build_demographics_strategy_query(
+        brand_name=brand_name,
+        report_template=report_template,
+        rows=rows,
+        columns=columns,
+        fill_metric=fill_metric,
+        metrics=metrics,
+        date_preset=date_preset,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    query["focus_value"] = evidence.get("value") or ""
+    if current_status:
+        query["focus_status"] = current_status
+    return query
+
+
+def _build_brain_learning_decision_queue(
+    *,
+    learnings: list[dict[str, Any]],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    queue = []
+    for rank, learning in enumerate(list(learnings or [])[:limit], start=1):
+        evidence = learning.get("evidence") or {}
+        kind = str(learning.get("kind") or "").strip().lower()
+        if kind == "conclusion":
+            action, why = _brain_learning_status_action(evidence.get("current_status") or "")
+        elif kind == "working":
+            action, why = "scale", "Double down on the pattern that is already clearing benchmark."
+        elif kind == "watch":
+            action, why = "refresh", "Open the fatigue view before this pattern absorbs more spend."
+        elif kind == "audience":
+            action, why = "segment", "Open the mixed audience matrix before broadening spend."
+        elif kind == "gap":
+            action, why = "test", "Brief the missing pattern instead of repeating a covered cell."
+        else:
+            action, why = "investigate", "Inspect the learning in Strategy before acting."
+        queue.append(
+            {
+                "rank": rank,
+                "kind": kind,
+                "action": action,
+                "title": learning.get("title") or "",
+                "recommendation": learning.get("action") or learning.get("summary") or "",
+                "evidence_summary": learning.get("summary") or "",
+                "why": why,
+                "strategy_query": _brain_learning_strategy_query(
+                    learning=learning,
+                    brand_name=brand_name,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date,
+                ),
+            }
+        )
+    return queue
+
+
+def _build_brain_learning_strategy_views(
+    *,
+    learnings: list[dict[str, Any]],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    views = []
+    for learning in list(learnings or [])[:limit]:
+        evidence = learning.get("evidence") or {}
+        views.append(
+            {
+                "learning_id": learning.get("id") or "",
+                "kind": learning.get("kind") or "",
+                "title": learning.get("title") or "",
+                "focus_value": evidence.get("value") or "",
+                "why": learning.get("action") or learning.get("summary") or "",
+                "strategy_query": _brain_learning_strategy_query(
+                    learning=learning,
+                    brand_name=brand_name,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date,
+                ),
+            }
         )
     return views
 
