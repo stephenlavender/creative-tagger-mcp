@@ -41,8 +41,13 @@ def _headers() -> dict:
 
 
 def _auth_params() -> dict:
-    """Some endpoints take api_key as a query param rather than header."""
-    return {"api_key": API_KEY} if API_KEY else {}
+    """Auth moved to the X-API-Key header (set client-wide in _headers()).
+
+    Query-param keys leaked into access logs and proxies. Kept as an
+    empty-dict shim so call sites stay simple. Requires an API deploy
+    that accepts header auth on /auth/* routes.
+    """
+    return {}
 
 
 def _text(payload: Any) -> list[TextContent]:
@@ -2228,7 +2233,7 @@ async def _analyze_creative(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "Brand")
     data = _analysis_form_data(args, brand_name)
 
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=180.0, headers=_headers()) as client:
         if file_paths:
             if not isinstance(file_paths, list):
                 return _err("file_paths must be a list of local image paths")
@@ -2304,7 +2309,7 @@ def _analysis_form_data(args: dict, brand_name: str) -> dict[str, str]:
 
 async def _get_taxonomy(args: dict) -> list[TextContent]:
     dimension = args.get("dimension")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/openapi.json", headers=_headers())
         resp.raise_for_status()
         spec = resp.json()
@@ -2349,14 +2354,14 @@ async def _list_library(args: dict) -> list[TextContent]:
     ):
         if args.get(k) is not None:
             params[k] = args[k]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/library", params=params)
         resp.raise_for_status()
         return _text(resp.json())
 
 
 async def _get_library_patterns(args: dict) -> list[TextContent]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/auth/library/patterns", params=_auth_params()
         )
@@ -2368,7 +2373,7 @@ async def _get_analysis(args: dict) -> list[TextContent]:
     analysis_id = args.get("analysis_id")
     if not analysis_id:
         return _err("analysis_id is required")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/auth/library/{analysis_id}", params=_auth_params()
         )
@@ -2381,7 +2386,7 @@ async def _recommend(args: dict) -> list[TextContent]:
     question = args.get("question", "")
     if not brand_name or not question:
         return _err("brand_name and question are required")
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/strategist/recommend",
             data={"brand_name": brand_name, "question": question},
@@ -2395,7 +2400,7 @@ async def _analyze_gaps(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "")
     if not brand_name:
         return _err("brand_name is required")
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/strategist/gaps",
             data={"brand_name": brand_name},
@@ -2410,7 +2415,7 @@ async def _get_brand_context(args: dict) -> list[TextContent]:
     if not brand_name:
         return _err("brand_name is required")
     params = {**_auth_params(), "brand_name": brand_name}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/brand-context", params=params)
         if resp.status_code == 404:
             return _text(
@@ -2432,7 +2437,7 @@ async def _set_brand_context(args: dict) -> list[TextContent]:
         "anti_patterns": args.get("anti_patterns") or [],
         "notes": args.get("notes", ""),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/auth/brand-context",
             params=_auth_params(),
@@ -2447,7 +2452,7 @@ async def _get_brand_taxonomy(args: dict) -> list[TextContent]:
     if not brand_name:
         return _err("brand_name is required")
     params = {**_auth_params(), "brand_name": brand_name}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/brand-taxonomy", params=params)
         resp.raise_for_status()
         return _text(resp.json())
@@ -2466,7 +2471,7 @@ async def _set_brand_taxonomy_value(args: dict) -> list[TextContent]:
         "description": args.get("description", ""),
         "aliases": args.get("aliases") or [],
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/auth/brand-taxonomy/values",
             params=_auth_params(),
@@ -2488,7 +2493,7 @@ async def _delete_brand_taxonomy_value(args: dict) -> list[TextContent]:
         "dimension": dimension,
         "value": value,
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.delete(f"{API_URL}/auth/brand-taxonomy/values", params=params)
         resp.raise_for_status()
         return _text(resp.json())
@@ -2507,7 +2512,7 @@ async def _set_brand_entity(args: dict) -> list[TextContent]:
         "description": args.get("description", ""),
         "aliases": args.get("aliases") or [],
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/auth/brand-taxonomy/entities",
             params=_auth_params(),
@@ -2529,21 +2534,21 @@ async def _delete_brand_entity(args: dict) -> list[TextContent]:
         "entity_type": entity_type,
         "name": name,
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.delete(f"{API_URL}/auth/brand-taxonomy/entities", params=params)
         resp.raise_for_status()
         return _text(resp.json())
 
 
 async def _get_naming_variables(args: dict) -> list[TextContent]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/naming/variables")
         resp.raise_for_status()
         return _text(resp.json())
 
 
 async def _list_naming_templates(args: dict) -> list[TextContent]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/auth/naming/templates", params=_auth_params()
         )
@@ -2560,7 +2565,7 @@ async def _save_naming_template(args: dict) -> list[TextContent]:
         "name": args.get("name", "default"),
         "separator": args.get("separator", "_"),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/auth/naming/templates",
             params=_auth_params(),
@@ -2572,7 +2577,7 @@ async def _save_naming_template(args: dict) -> list[TextContent]:
 
 async def _delete_naming_template(args: dict) -> list[TextContent]:
     params = {**_auth_params(), "name": args.get("name", "default")}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.delete(f"{API_URL}/auth/naming/templates", params=params)
         resp.raise_for_status()
         return _text(resp.json())
@@ -2587,14 +2592,14 @@ async def _preview_naming_template(args: dict) -> list[TextContent]:
         "name": args.get("name", "default"),
         "separator": args.get("separator", "_"),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(f"{API_URL}/auth/naming/preview", json=body)
         resp.raise_for_status()
         return _text(resp.json())
 
 
 async def _get_meta_status(args: dict) -> list[TextContent]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/meta/status", headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
@@ -2607,7 +2612,7 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
         "date_preset": args.get("date_preset", "last_30d"),
         "attribution_windows": _string_list_arg(args.get("attribution_windows")),
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/meta/sync", json=body, headers=_headers()
         )
@@ -2624,7 +2629,7 @@ async def _import_meta_performance(args: dict) -> list[TextContent]:
         "rows": rows,
         "source": args.get("source", "meta_mcp"),
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(f"{API_URL}/meta/import", json=body, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
@@ -2638,7 +2643,7 @@ async def _get_meta_performance_summary(args: dict) -> list[TextContent]:
         params["start_date"] = args["start_date"]
     if args.get("end_date"):
         params["end_date"] = args["end_date"]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/meta/performance/summary",
             params=params,
@@ -2659,7 +2664,7 @@ async def _predict_creative(args: dict) -> list[TextContent]:
         import json as _json
 
         data["attributes"] = _json.dumps(args["attributes"])
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=60.0, headers=_headers()) as client:
         resp = await client.post(f"{API_URL}/predict", data=data, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
@@ -2678,7 +2683,7 @@ async def _get_taxonomy_performance(args: dict) -> list[TextContent]:
         params["start_date"] = args["start_date"]
     if args.get("end_date"):
         params["end_date"] = args["end_date"]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/performance/by-taxonomy",
             params=params,
@@ -2700,7 +2705,7 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
         params["start_date"] = args["start_date"]
     if args.get("end_date"):
         params["end_date"] = args["end_date"]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/prebuilt",
             params=params,
@@ -2712,7 +2717,7 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
 
 async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
     params = _strategy_params(args)
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/creative-strategy",
             params=params,
@@ -2758,7 +2763,7 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
             continue
         if args.get(key) not in (None, ""):
             params[key] = args[key]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/brain/learnings",
             params=params,
@@ -2810,7 +2815,7 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
             continue
         if args.get(key) not in (None, ""):
             body[key] = args[key]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/brain/learnings/save",
             json=body,
@@ -3010,7 +3015,7 @@ async def _get_performance_timeseries(args: dict) -> list[TextContent]:
     for key in ("start_date", "end_date"):
         if args.get(key) not in (None, ""):
             params[key] = args[key]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/performance/timeseries",
             params=params,
@@ -3063,7 +3068,7 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
     for key in ("start_date", "end_date"):
         if args.get(key) not in (None, ""):
             payload[key] = args[key]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/reports/custom",
             json=payload,
@@ -3075,7 +3080,7 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
 
 async def _list_custom_reports(args: dict) -> list[TextContent]:
     params = {"brand_name": args.get("brand_name", "")}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/custom/saved",
             params=params,
@@ -3116,7 +3121,7 @@ async def _save_custom_report(args: dict) -> list[TextContent]:
     for key in ("start_date", "end_date"):
         if args.get(key) not in (None, ""):
             payload[key] = args[key]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/reports/custom/saved",
             json=payload,
@@ -3130,7 +3135,7 @@ async def _run_saved_custom_report(args: dict) -> list[TextContent]:
     report_id = args.get("report_id")
     if not report_id:
         return _err("report_id is required")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/custom/saved/{report_id}/run",
             headers=_headers(),
@@ -3143,7 +3148,7 @@ async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
     report_id = args.get("report_id")
     if not report_id:
         return _err("report_id is required")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.delete(
             f"{API_URL}/reports/custom/saved/{report_id}",
             headers=_headers(),
@@ -3159,7 +3164,7 @@ async def _get_demographics_performance(args: dict) -> list[TextContent]:
         "start_date": args.get("start_date", ""),
         "end_date": args.get("end_date", ""),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/performance/demographics",
             params=params,
@@ -3930,7 +3935,7 @@ async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
         "brand_name": brand_name,
         "persist": str(args.get("persist", True)).lower(),
     }
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=180.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/brand-taxonomy/generate",
             data=data,
@@ -3950,7 +3955,7 @@ async def _scan_competitor(args: dict) -> list[TextContent]:
         "limit": args.get("limit", 25),
         "analyze_creatives": args.get("analyze_creatives", True),
     }
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=300.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/competitors/scan", json=body, headers=_headers()
         )
@@ -3963,7 +3968,7 @@ async def _get_competitor_scan_history(args: dict) -> list[TextContent]:
         "brand_name": args.get("brand_name", ""),
         "limit": args.get("limit", 10),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/competitors/history", params=params, headers=_headers()
         )
@@ -3983,7 +3988,7 @@ async def _import_competitor_ads(args: dict) -> list[TextContent]:
         "ads": ads,
         "analyses": analyses,
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/competitors/import", json=body, headers=_headers()
         )
