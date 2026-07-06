@@ -337,6 +337,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 "_build_demographics_decision_queue",
                 "_build_demographics_strategy_query",
                 "_build_demographics_strategy_views",
+                "_build_demographic_timeseries_query",
+                "_build_demographic_timeseries_views",
             }
         )
 
@@ -401,6 +403,20 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(views[3]["report_template"], "hook-audience-fit")
         self.assertEqual(views[3]["fill_metric"], "hook_rate")
         self.assertIn("hook_rate", views[3]["strategy_query"]["metrics"])
+
+        timeseries_views = namespace["_build_demographic_timeseries_views"](
+            brand_name="Acme",
+            date_preset="custom",
+            start_date="2026-05-01",
+            end_date="2026-05-31",
+        )
+        self.assertEqual(len(timeseries_views), 2)
+        self.assertEqual(timeseries_views[0]["label"], "Audience trend watch")
+        self.assertEqual(timeseries_views[0]["timeseries_query"]["tool"], "get_performance_timeseries")
+        self.assertEqual(timeseries_views[0]["timeseries_query"]["brand_name"], "Acme")
+        self.assertEqual(timeseries_views[0]["timeseries_query"]["group_by"], "demographic_segment")
+        self.assertEqual(timeseries_views[0]["timeseries_query"]["date_preset"], "custom")
+        self.assertEqual(timeseries_views[1]["timeseries_query"]["group_by"], "demographic_signal")
 
     def test_brain_export_helpers_build_strategy_queries_and_queue(self) -> None:
         namespace = _load_pure_helpers(
@@ -930,6 +946,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("agent-ready audience context payload", demographics_export_desc)
         self.assertIn("top opportunity and waste segments", demographics_export_desc)
         self.assertIn("mixed creative x audience strategy queries", demographics_export_desc)
+        self.assertIn("time-series follow-up queries", demographics_export_desc)
         demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
         self.assertEqual(demographics_schema["date_preset"]["default"], "all_time")
         self.assertIn("last_30_days", demographics_schema["date_preset"]["description"])
@@ -1041,8 +1058,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('payload = await _get_demographics_performance(args)', source)
         self.assertIn('"decision_queue": decision_queue', source)
         self.assertIn('"segment_strategy_views": {', source)
+        self.assertIn('"segment_timeseries_views": {', source)
         self.assertIn('query["focus_segment"] = compact["segment"]', source)
         self.assertIn('"suggested_strategy_views": _build_demographics_strategy_views(', source)
+        self.assertIn('"suggested_timeseries_views": _build_demographic_timeseries_views(', source)
         self.assertIn('"strategy_query"] = _build_demographics_strategy_query(', source)
         self.assertIn('"tool": "export_demographics_context"', source)
         self.assertIn('if name == "get_competitor_scan_history":', source)
@@ -1082,6 +1101,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 "_format_demographic_evidence",
                 "_build_demographics_strategy_query",
                 "_build_demographic_focus_views",
+                "_build_demographic_timeseries_query",
+                "_build_demographic_segment_timeseries_views",
             }
         )
 
@@ -1119,6 +1140,37 @@ class ToolSurfaceTest(unittest.TestCase):
             self.assertEqual(query["date_preset"], "last_30_days")
             self.assertEqual(query["focus_segment"], "25-34 / female")
             self.assertEqual(query["columns"], "demographic_segment")
+
+        timeseries_views = namespace["_build_demographic_segment_timeseries_views"](
+            [
+                {
+                    "age": "25-34",
+                    "gender": "female",
+                    "signal": "opportunity",
+                    "spend": 420,
+                    "revenue": 1680,
+                    "roas": 4.0,
+                    "ctr": 2.6,
+                    "cpa": 35,
+                    "conversions": 12,
+                }
+            ],
+            brand_name="Acme",
+            date_preset="last_30_days",
+            limit=1,
+        )
+
+        self.assertEqual(len(timeseries_views), 1)
+        timeseries_item = timeseries_views[0]
+        self.assertEqual(timeseries_item["segment"], "25-34 / female")
+        self.assertEqual(len(timeseries_item["timeseries_views"]), 1)
+        trend = timeseries_item["timeseries_views"][0]
+        self.assertEqual(trend["label"], "Trend for 25-34 / female")
+        self.assertEqual(trend["timeseries_query"]["tool"], "get_performance_timeseries")
+        self.assertEqual(trend["timeseries_query"]["brand_name"], "Acme")
+        self.assertEqual(trend["timeseries_query"]["group_by"], "demographic_segment")
+        self.assertEqual(trend["timeseries_query"]["focus_value"], "25-34 / female")
+        self.assertEqual(trend["timeseries_query"]["date_preset"], "last_30_days")
 
     def test_competitor_import_tool_is_positioned_as_gated_backfill(self) -> None:
         tools = _declared_tools()

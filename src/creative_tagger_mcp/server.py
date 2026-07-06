@@ -1922,7 +1922,8 @@ async def list_tools() -> list[Tool]:
                 "gender performance memory. Use this when another agent or workflow "
                 "needs the top opportunity and waste segments, account totals, "
                 "summary text, a prompt-ready audience decision queue, and date-scoped "
-                "mixed creative x audience strategy queries without opening the dashboard."
+                "mixed creative x audience strategy queries plus time-series "
+                "follow-up queries without opening the dashboard."
             ),
             inputSchema={
                 "type": "object",
@@ -3301,6 +3302,129 @@ def _build_demographic_focus_views(
     return focus_views
 
 
+def _build_demographic_timeseries_query(
+    *,
+    brand_name: str,
+    group_by: str,
+    metric: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    signal_focus: str = "all",
+    trajectory_focus: str = "all",
+    coverage_focus: str = "all",
+    minimum_spend: float = 0,
+    minimum_points: int = 2,
+    minimum_calendar_days: int = 0,
+    maximum_gap_days: int = 0,
+    fatigue_decay_threshold: float = 0.18,
+    focus_value: str = "",
+) -> dict[str, Any]:
+    query = {
+        "tool": "get_performance_timeseries",
+        "brand_name": brand_name,
+        "group_by": group_by,
+        "metric": metric,
+        "date_preset": date_preset or "all_time",
+        "signal_focus": signal_focus or "all",
+        "trajectory_focus": trajectory_focus or "all",
+        "coverage_focus": coverage_focus or "all",
+        "minimum_spend": minimum_spend,
+        "minimum_points": minimum_points,
+        "minimum_calendar_days": minimum_calendar_days,
+        "maximum_gap_days": maximum_gap_days,
+        "fatigue_decay_threshold": fatigue_decay_threshold,
+    }
+    if focus_value:
+        query["focus_value"] = focus_value
+    if start_date:
+        query["start_date"] = start_date
+    if end_date:
+        query["end_date"] = end_date
+    return query
+
+
+def _build_demographic_timeseries_views(
+    *,
+    brand_name: str = "",
+    date_preset: str = "all_time",
+    start_date: str = "",
+    end_date: str = "",
+):
+    views = [
+        {
+            "label": "Audience trend watch",
+            "group_by": "demographic_segment",
+            "metric": "roas",
+            "signal_focus": "all",
+            "trajectory_focus": "all",
+            "coverage_focus": "all",
+            "why": "Track which audience pockets are improving, fatiguing, or still too sparse before you scale spend.",
+        },
+        {
+            "label": "Audience signal trend",
+            "group_by": "demographic_signal",
+            "metric": "roas",
+            "signal_focus": "all",
+            "trajectory_focus": "all",
+            "coverage_focus": "all",
+            "why": "Watch whether opportunity and waste buckets are holding their edge across repeated sync windows.",
+        },
+    ]
+    for view in views:
+        view["timeseries_query"] = _build_demographic_timeseries_query(
+            brand_name=brand_name,
+            group_by=view["group_by"],
+            metric=view["metric"],
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+            signal_focus=view["signal_focus"],
+            trajectory_focus=view["trajectory_focus"],
+            coverage_focus=view["coverage_focus"],
+        )
+    return views
+
+
+def _build_demographic_segment_timeseries_views(
+    segments,
+    *,
+    brand_name: str = "",
+    date_preset: str = "all_time",
+    start_date: str = "",
+    end_date: str = "",
+    limit: int = 2,
+):
+    capped_limit = max(1, min(int(limit or 2), 4))
+    focus_views = []
+    for segment in list(segments or [])[:capped_limit]:
+        compact = _compact_demographic_segment(segment)
+        focus_views.append(
+            {
+                **compact,
+                "evidence_summary": _format_demographic_evidence(compact),
+                "timeseries_views": [
+                    {
+                        "label": f"Trend for {compact['segment']}",
+                        "focus_segment": compact["segment"],
+                        "signal": compact["signal"],
+                        "why": "Confirm whether this audience pocket is strengthening, flattening, or decaying across repeated sync windows.",
+                        "timeseries_query": _build_demographic_timeseries_query(
+                            brand_name=brand_name,
+                            group_by="demographic_segment",
+                            metric="roas",
+                            date_preset=date_preset,
+                            start_date=start_date,
+                            end_date=end_date,
+                            focus_value=compact["segment"],
+                        ),
+                    }
+                ],
+            }
+        )
+    return focus_views
+
+
 def _build_demographics_strategy_query(
     *,
     brand_name: str,
@@ -3756,7 +3880,31 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
                 limit=limit,
             ),
         },
+        "segment_timeseries_views": {
+            "opportunities": _build_demographic_segment_timeseries_views(
+                parsed.get("opportunities") or [],
+                brand_name=brand_name,
+                date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+                start_date=parsed.get("start_date", args.get("start_date", "")),
+                end_date=parsed.get("end_date", args.get("end_date", "")),
+                limit=limit,
+            ),
+            "waste": _build_demographic_segment_timeseries_views(
+                parsed.get("waste") or [],
+                brand_name=brand_name,
+                date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+                start_date=parsed.get("start_date", args.get("start_date", "")),
+                end_date=parsed.get("end_date", args.get("end_date", "")),
+                limit=limit,
+            ),
+        },
         "suggested_strategy_views": _build_demographics_strategy_views(
+            brand_name=brand_name,
+            date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+            start_date=parsed.get("start_date", args.get("start_date", "")),
+            end_date=parsed.get("end_date", args.get("end_date", "")),
+        ),
+        "suggested_timeseries_views": _build_demographic_timeseries_views(
             brand_name=brand_name,
             date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
             start_date=parsed.get("start_date", args.get("start_date", "")),
@@ -3767,7 +3915,8 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
             "Use these audience signals as the source of truth for the next "
             "creative or targeting decision. Scale the strongest opportunity "
             "segments, cut or isolate waste, then open the per-segment mixed "
-            "creative x audience views to see which hooks or angles fit each pocket."
+            "creative x audience views and audience trend queries to see which "
+            "hooks or angles fit each pocket and whether the signal is holding."
         ),
     }
     return _text(export)
