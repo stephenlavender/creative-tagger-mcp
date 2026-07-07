@@ -30,7 +30,16 @@ API_URL = os.environ.get("CREATIVE_TAGGER_URL", "https://api.creativetagger.ai")
 API_KEY = os.environ.get("CREATIVE_TAGGER_API_KEY", "")
 INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
 
-server = Server("creative-tagger")
+PLAYBOOK_INSTRUCTIONS = """Creative Tagger: taxonomy-tagged Meta ad performance for creative strategy.
+
+ANALYTICAL PLAYBOOK — follow this order every session:
+1. SESSION ORDER: call get_taxonomy and get_brand_context first to anchor on the workspace's vocabulary, voice, and goal; then get_meta_status and get_meta_performance_summary to see whether performance memory exists and how spend distributes.
+2. SPEND FIRST: interpret every other metric against spend and the spend_threshold. A 10x ROAS on $12 of spend is noise; tags below the threshold are 'unproven', not winners or losers.
+3. MULTI-METRIC RULE: single-metric views lie. Before recommending, cross-reference the performance summary, get_taxonomy_performance (significance-gated tags + coverage gaps), and get_creative_strategy_report (winner/loser/fatigued/untested matrix); add get_demographics_performance for audience questions.
+4. GOAL METRIC: if the user has not stated what success looks like and results are ambiguous (e.g. ROAS reads 0 on awareness/traffic accounts), ASK what metric matters (hook rate, CTR, CPA, ROAS, custom) instead of defaulting to ROAS.
+5. NEVER INVENT NUMBERS: only state figures a tool actually returned. When a response carries insufficient_data, say so — do not extrapolate from thin samples."""
+
+server = Server("creative-tagger", instructions=PLAYBOOK_INSTRUCTIONS)
 
 
 def _headers() -> dict:
@@ -434,6 +443,16 @@ async def list_tools() -> list[Tool]:
                             "performance when it exists."
                         ),
                     },
+                    "response_format": {
+                        "type": "string",
+                        "default": "detailed",
+                        "enum": ["concise", "detailed"],
+                        "description": (
+                            "'concise' returns name + key tags + core metrics "
+                            "per item and drops facets/media (~3x fewer "
+                            "tokens); 'detailed' returns everything."
+                        ),
+                    },
                 },
             },
         ),
@@ -816,7 +835,10 @@ async def list_tools() -> list[Tool]:
                 "gaps. Use this to find which taxonomy values scale, which are "
                 "unproven, and which standard values have never been tried. Rows include "
                 "ROAS, CTR, thumbstop, and funnel_score when performance memory exists. "
-                "Supports the same date presets as the main performance summary."
+                "Supports the same date presets as the main performance summary. "
+                "When the sample is thin the response carries insufficient_data + "
+                "an 'insufficient data (n=X, spend=$Y)' detail — treat that as the "
+                "answer, never extrapolate from it."
             ),
             inputSchema={
                 "type": "object",
@@ -2354,10 +2376,25 @@ async def _list_library(args: dict) -> list[TextContent]:
     ):
         if args.get(k) is not None:
             params[k] = args[k]
+    concise = args.get("response_format") == "concise"
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/library", params=params)
         resp.raise_for_status()
-        return _text(resp.json())
+        payload = resp.json()
+    if concise and isinstance(payload, dict):
+        keys = (
+            "id", "filename", "naming_default", "format", "hook_type",
+            "messaging_angle", "emotion", "has_performance", "spend", "roas",
+            "cpa", "ctr", "hook_rate",
+        )
+        payload = {
+            "total": payload.get("total"),
+            "items": [
+                {k: item.get(k) for k in keys if k in item}
+                for item in payload.get("items") or []
+            ],
+        }
+    return _text(payload)
 
 
 async def _get_library_patterns(args: dict) -> list[TextContent]:

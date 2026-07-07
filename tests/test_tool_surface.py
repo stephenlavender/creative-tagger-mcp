@@ -1240,3 +1240,29 @@ def _load_pure_helpers(wanted: set[str]) -> dict:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlaybookHygieneTest(unittest.TestCase):
+    """ST2.1: analytical playbook + token hygiene on the tool surface."""
+
+    def test_server_ships_analytical_playbook_instructions(self) -> None:
+        source = SERVER.read_text()
+
+        self.assertIn("PLAYBOOK_INSTRUCTIONS", source)
+        self.assertIn('Server("creative-tagger", instructions=PLAYBOOK_INSTRUCTIONS)', source)
+        self.assertIn("SPEND FIRST", source)
+        self.assertIn("MULTI-METRIC RULE", source)
+        self.assertIn("NEVER INVENT NUMBERS", source)
+        self.assertIn("ASK what metric matters", source)
+
+    def test_list_library_supports_concise_response_format(self) -> None:
+        source = SERVER.read_text()
+
+        self.assertIn('"response_format"', source)
+        self.assertIn('args.get("response_format") == "concise"', source)
+
+    def test_taxonomy_performance_documents_insufficient_data(self) -> None:
+        source = SERVER.read_text()
+
+        self.assertIn("insufficient_data", source)
+        self.assertIn("insufficient data (n=X, spend=$Y)", source)
