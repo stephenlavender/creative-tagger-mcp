@@ -2033,6 +2033,25 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_competitor_scan_detail",
+            description=(
+                "Return one saved competitor Market scan/import with the stored ads, "
+                "analyses, query, and aggregate strategy breakdown. Use this to reopen "
+                "a past market read for grounded follow-up briefing without re-running "
+                "Meta Ad Library access."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["scan_id"],
+                "properties": {
+                    "scan_id": {
+                        "type": "integer",
+                        "description": "Saved competitor scan/import id from get_competitor_scan_history",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="import_competitor_ads",
             description=(
                 "Import normalized competitor Meta Ad Library rows for internal "
@@ -2202,6 +2221,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _scan_competitor(arguments)
         if name == "get_competitor_scan_history":
             return await _get_competitor_scan_history(arguments)
+        if name == "get_competitor_scan_detail":
+            return await _get_competitor_scan_detail(arguments)
         if name == "import_competitor_ads":
             return await _import_competitor_ads(arguments)
         if name == "generate_naming":
@@ -3971,6 +3992,18 @@ async def _get_competitor_scan_history(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/competitors/history", params=params, headers=_headers()
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_competitor_scan_detail(args: dict) -> list[TextContent]:
+    scan_id = args.get("scan_id")
+    if scan_id in (None, ""):
+        return _err("scan_id is required")
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(
+            f"{API_URL}/competitors/history/{scan_id}", headers=_headers()
         )
         resp.raise_for_status()
         return _text(resp.json())
