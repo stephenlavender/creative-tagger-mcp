@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "src" / "creative_tagger_mcp" / "server.py"
 
-EXPECTED_TOOLS = {
+PUBLIC_EXPECTED_TOOLS = {
     "analyze_creative",
     "get_taxonomy",
     "list_library",
@@ -38,10 +38,10 @@ EXPECTED_TOOLS = {
     "preview_naming_template",
     "get_meta_status",
     "sync_meta_performance",
-    "import_meta_performance",
     "get_meta_performance_summary",
     "get_taxonomy_performance",
     "get_prebuilt_reports",
+    "get_creative_strategy_report",
     "create_custom_report",
     "list_custom_reports",
     "save_custom_report",
@@ -51,21 +51,30 @@ EXPECTED_TOOLS = {
     "get_demographics_performance",
     "generate_brand_taxonomy",
     "scan_competitor",
-    "import_competitor_ads",
     "generate_naming",
 }
+INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
+EXPECTED_DECLARED_TOOLS = PUBLIC_EXPECTED_TOOLS | INTERNAL_BACKFILL_TOOLS
 
 
 class ToolSurfaceTest(unittest.TestCase):
     def test_v1_tools_are_declared(self) -> None:
         names = _declared_tool_names()
 
-        self.assertEqual(names, EXPECTED_TOOLS)
+        self.assertEqual(names, EXPECTED_DECLARED_TOOLS)
+
+    def test_public_tool_surface_excludes_internal_backfills_by_default(self) -> None:
+        source = SERVER.read_text()
+
+        self.assertIn("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", source)
+        self.assertIn("INTERNAL_BACKFILL_TOOLS", source)
+        self.assertIn("_visible_tools", source)
+        self.assertIn("not _is_internal_backfill_enabled()", source)
 
     def test_every_declared_tool_is_dispatched(self) -> None:
         source = SERVER.read_text()
 
-        for name in EXPECTED_TOOLS:
+        for name in EXPECTED_DECLARED_TOOLS:
             self.assertIn(f'if name == "{name}":', source)
 
     def test_package_version_matches_v2_surface(self) -> None:
@@ -173,6 +182,7 @@ class ToolSurfaceTest(unittest.TestCase):
         summary_desc = tools["get_meta_performance_summary"]["description"]
         taxonomy_desc = tools["get_taxonomy_performance"]["description"]
         prebuilt_desc = tools["get_prebuilt_reports"]["description"]
+        strategy_desc = tools["get_creative_strategy_report"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
         import_rows = (
@@ -185,6 +195,17 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("thumbstop", taxonomy_desc)
         self.assertIn("best hooks", prebuilt_desc)
         self.assertIn("landing pages", prebuilt_desc)
+        self.assertIn("strategist matrix", strategy_desc)
+        self.assertIn("agent_context", strategy_desc)
+        self.assertIn("hook", strategy_desc)
+        self.assertIn("hold", strategy_desc)
+        strategy_schema = tools["get_creative_strategy_report"]["inputSchema"]["properties"]
+        self.assertIn("messaging_angle", strategy_schema["rows"]["description"])
+        self.assertEqual(
+            strategy_schema["metrics"]["default"],
+            "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
+        )
+        self.assertIn("hook_rate", strategy_schema["metrics"]["description"])
         self.assertIn("custom performance report", custom_desc)
         self.assertIn("dimension combinations", custom_desc)
         self.assertIn("hook x landing_page x offer_type", custom_desc)
@@ -198,12 +219,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("hook_type x landing_page x offer_type", saved_desc)
         self.assertIn("video_p100", import_rows["description"])
 
-    def test_competitor_import_tool_documents_approval_workaround(self) -> None:
+    def test_competitor_import_tool_is_positioned_as_gated_backfill(self) -> None:
         tools = _declared_tools()
         import_tool = tools["import_competitor_ads"]
         props = import_tool["inputSchema"]["properties"]
 
-        self.assertIn("native Meta Ad Library token/app approval", import_tool["description"])
+        self.assertIn("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", SERVER.read_text())
+        self.assertIn("internal backfills", import_tool["description"])
+        self.assertIn("scan_competitor", import_tool["description"])
         self.assertIn("ads", import_tool["inputSchema"]["required"])
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
