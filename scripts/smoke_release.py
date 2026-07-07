@@ -54,6 +54,11 @@ EXPECTED_TOOLS = {
     "get_taxonomy_performance",
     "get_prebuilt_reports",
     "get_creative_strategy_report",
+    "get_brain_learnings",
+    "export_brain_learnings_context",
+    "get_performance_timeseries",
+    "export_performance_timeseries_context",
+    "save_brain_learnings",
     "create_custom_report",
     "list_custom_reports",
     "save_custom_report",
@@ -61,8 +66,10 @@ EXPECTED_TOOLS = {
     "delete_custom_report",
     "predict_creative",
     "get_demographics_performance",
+    "export_demographics_context",
     "generate_brand_taxonomy",
     "scan_competitor",
+    "get_competitor_scan_history",
     "generate_naming",
 }
 INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}

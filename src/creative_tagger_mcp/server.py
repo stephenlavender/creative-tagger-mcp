@@ -41,8 +41,13 @@ def _headers() -> dict:
 
 
 def _auth_params() -> dict:
-    """Some endpoints take api_key as a query param rather than header."""
-    return {"api_key": API_KEY} if API_KEY else {}
+    """Auth moved to the X-API-Key header (set client-wide in _headers()).
+
+    Query-param keys leaked into access logs and proxies. Kept as an
+    empty-dict shim so call sites stay simple. Requires an API deploy
+    that accepts header auth on /auth/* routes.
+    """
+    return {}
 
 
 def _text(payload: Any) -> list[TextContent]:
@@ -54,6 +59,197 @@ def _text(payload: Any) -> list[TextContent]:
 
 def _err(msg: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Error: {msg}")]
+
+
+def _coerce_bool(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"", "default"}:
+            return default
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+    return bool(value)
+
+
+def _csv_arg(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        parts = [str(item).strip() for item in value if str(item or "").strip()]
+        return ",".join(parts)
+    return str(value).strip()
+
+
+def _string_list_arg(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        parts = [item.strip() for item in value.split(",") if item.strip()]
+        return parts or None
+    if isinstance(value, (list, tuple, set)):
+        parts = [str(item).strip() for item in value if str(item or "").strip()]
+        return parts or None
+    text = str(value).strip()
+    return [text] if text else None
+
+
+def _infer_strategy_template(
+    report_template: Any,
+    *,
+    rows: Any,
+    columns: Any,
+) -> str:
+    template_aliases = {
+        "audience": "demographic-read",
+        "audience_read": "demographic-read",
+        "demographic": "demographic-read",
+        "demographic_read": "demographic-read",
+        "demographics": "demographic-read",
+        "audience_signal": "audience-signals",
+        "audience_signals": "audience-signals",
+        "signal": "audience-signals",
+        "signals": "audience-signals",
+        "angle_audience": "angle-audience-fit",
+        "angle_audience_fit": "angle-audience-fit",
+        "mixed_audience": "angle-audience-fit",
+        "hook_audience": "hook-audience-fit",
+        "hook_audience_fit": "hook-audience-fit",
+        "next": "next-tests",
+        "next_tests": "next-tests",
+        "winner": "creative-winners",
+        "winners": "creative-winners",
+        "creative_winners": "creative-winners",
+        "fatigue": "fatigue-watch",
+        "watch": "fatigue-watch",
+        "fatigue_watch": "fatigue-watch",
+        "gap": "coverage-gaps",
+        "gaps": "coverage-gaps",
+        "coverage": "coverage-gaps",
+        "coverage_gaps": "coverage-gaps",
+        "hook": "hook-performance",
+        "hooks": "hook-performance",
+        "hook_performance": "hook-performance",
+        "persona": "persona-read",
+        "personas": "persona-read",
+        "persona_read": "persona-read",
+    }
+    demographic_dimensions = {
+        "demographic_age",
+        "demographic_gender",
+        "demographic_segment",
+        "demographic_signal",
+    }
+    explicit = str(report_template or "").strip()
+    if explicit:
+        normalized = explicit.lower().replace("-", "_").replace(" ", "_")
+        return template_aliases.get(normalized, explicit)
+    row_value = _normalize_strategy_axis(rows)
+    col_value = _normalize_strategy_axis(columns)
+    if not row_value or not col_value:
+        return ""
+    demographic_axes = [
+        axis
+        for axis in (row_value, col_value)
+        if axis in demographic_dimensions
+    ]
+    if len(demographic_axes) == 2:
+        pair = frozenset(demographic_axes)
+        if pair == {"demographic_segment", "demographic_signal"}:
+            return "audience-signals"
+        return "demographic-read"
+    if len(demographic_axes) == 1:
+        creative_axis = next(
+            (
+                axis
+                for axis in (row_value, col_value)
+                if axis not in demographic_dimensions
+            ),
+            "",
+        )
+        if creative_axis == "messaging_angle":
+            return "angle-audience-fit"
+        if creative_axis == "hook":
+            return "hook-audience-fit"
+        return ""
+    return ""
+
+
+def _normalize_strategy_axis(value: Any) -> str:
+    axis = str(value or "").strip().lower().replace("-", "_")
+    aliases = {
+        "creative_type": "ad_type",
+        "visual_format": "ad_type",
+        "asset_type": "ad_type",
+        "ad": "ad_type",
+        "adtype": "ad_type",
+        "creative": "ad_type",
+        "angle": "messaging_angle",
+        "message_angle": "messaging_angle",
+        "message": "messaging_angle",
+        "hook_type": "hook",
+        "offer": "offer_type",
+        "age": "demographic_age",
+        "audience_age": "demographic_age",
+        "demographic_age_range": "demographic_age",
+        "gender": "demographic_gender",
+        "audience_gender": "demographic_gender",
+        "segment": "demographic_segment",
+        "audience_segment": "demographic_segment",
+        "demographic": "demographic_segment",
+        "signal": "demographic_signal",
+        "audience_signal": "demographic_signal",
+    }
+    return aliases.get(axis, axis)
+
+
+def _strategy_params(args: dict) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "all_time"),
+        "start_date": args.get("start_date", ""),
+        "end_date": args.get("end_date", ""),
+        "limit": args.get("limit", 10),
+    }
+    report_template = _infer_strategy_template(
+        args.get("report_template"),
+        rows=args.get("rows"),
+        columns=args.get("columns"),
+    )
+    if report_template:
+        params["report_template"] = report_template
+    for key in ("rows", "columns", "status_focus", "metric_preset"):
+        if args.get(key) not in (None, ""):
+            params[key] = args[key]
+    metrics = _csv_arg(args.get("metrics"))
+    if metrics:
+        params["metrics"] = metrics
+    for key in (
+        "cpa_target",
+        "roas_target",
+        "minimum_spend",
+        "learning_spend",
+        "fatigue_minimum_calendar_days",
+        "watch_group_by",
+        "watch_metric",
+        "watch_signal_focus",
+        "watch_trajectory_focus",
+        "watch_coverage_focus",
+        "watch_minimum_points",
+        "watch_minimum_calendar_days",
+        "watch_maximum_gap_days",
+        "watch_limit",
+    ):
+        if args.get(key) is not None:
+            params[key] = args[key]
+    return params
 
 
 def _is_internal_backfill_enabled() -> bool:
@@ -170,8 +366,9 @@ async def list_tools() -> list[Tool]:
                 "Browse the authenticated user's saved analysis library (memory). "
                 "Every analyze_creative call is automatically saved. Use this to "
                 "recall what has been analyzed before — search by filename, hook, "
-                "or filter by format/hook type. Returns items in reverse-chronological "
-                "order."
+                "angle, emotion, CTA, talent, offer, audio, season, or format, "
+                "then sort by recency or joined performance (spend, reach, "
+                "frequency, ROAS, CTR, CPM, CPA)."
             ),
             inputSchema={
                 "type": "object",
@@ -189,6 +386,53 @@ async def list_tools() -> list[Tool]:
                     "hook": {
                         "type": "string",
                         "description": "Filter by hook type (UGC, Demo, TalkHead, etc.)",
+                    },
+                    "angle": {
+                        "type": "string",
+                        "description": "Filter by messaging angle",
+                    },
+                    "emotion": {
+                        "type": "string",
+                        "description": "Filter by emotion",
+                    },
+                    "cta": {
+                        "type": "string",
+                        "description": "Filter by CTA",
+                    },
+                    "talent": {
+                        "type": "string",
+                        "description": "Filter by talent classification",
+                    },
+                    "offer": {
+                        "type": "string",
+                        "description": "Filter by offer type",
+                    },
+                    "audio": {
+                        "type": "string",
+                        "description": "Filter by audio type",
+                    },
+                    "season": {
+                        "type": "string",
+                        "description": "Filter by seasonality",
+                    },
+                    "sort": {
+                        "type": "string",
+                        "default": "recent",
+                        "enum": [
+                            "recent",
+                            "spend",
+                            "reach",
+                            "roas",
+                            "ctr",
+                            "frequency",
+                            "cpm",
+                            "cpa",
+                        ],
+                        "description": (
+                            "Sort by recent, spend, reach, roas, ctr, frequency, "
+                            "cpm, or cpa. Performance sorts use joined Meta "
+                            "performance when it exists."
+                        ),
                     },
                 },
             },
@@ -486,7 +730,9 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Trigger a read-only Meta ads performance sync for a brand. Syncs ad "
                 "performance rows and reports summaries by standard and brand-custom "
-                "taxonomy values. Does not create campaigns or edit budgets."
+                "taxonomy values. Supports explicit attribution/lookback windows so "
+                "agents can match the buyer's Ads Manager view. Does not create "
+                "campaigns or edit budgets."
             ),
             inputSchema={
                 "type": "object",
@@ -494,6 +740,15 @@ async def list_tools() -> list[Tool]:
                     "brand_name": {"type": "string"},
                     "account_id": {"type": "string"},
                     "date_preset": {"type": "string", "default": "last_30d"},
+                    "attribution_windows": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Optional Meta attribution/lookback windows such as "
+                            "7d_click and 1d_view. Defaults to Meta's standard "
+                            "7d_click + 1d_view reporting if omitted."
+                        ),
+                    },
                 },
             },
         ),
@@ -530,12 +785,27 @@ async def list_tools() -> list[Tool]:
                 "Read the saved Meta performance memory for a brand without triggering "
                 "a sync. Returns totals plus winners/losers by standard taxonomy and "
                 "brand-custom taxonomy values, including explainable funnel_score "
-                "signals for capture, hold, bring-to-site, and convert stages."
+                "signals for capture, hold, bring-to-site, and convert stages. "
+                "Supports all_time, last_7_days, last_30_days, last_90_days, or "
+                "custom date windows."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
                 },
             },
         ),
@@ -545,7 +815,8 @@ async def list_tools() -> list[Tool]:
                 "Return tag-level performance with significance gating and coverage "
                 "gaps. Use this to find which taxonomy values scale, which are "
                 "unproven, and which standard values have never been tried. Rows include "
-                "ROAS, CTR, thumbstop, and funnel_score when performance memory exists."
+                "ROAS, CTR, thumbstop, and funnel_score when performance memory exists. "
+                "Supports the same date presets as the main performance summary."
             ),
             inputSchema={
                 "type": "object",
@@ -560,6 +831,19 @@ async def list_tools() -> list[Tool]:
                         "default": 500,
                         "description": "Spend floor before a tag is treated as proven",
                     },
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
                 },
             },
         ),
@@ -569,7 +853,8 @@ async def list_tools() -> list[Tool]:
                 "Return Motion-style prebuilt creative reports for a brand: best hooks, "
                 "landing pages, messaging angles, audiences, offers, CTAs, visual formats, "
                 "and brand-custom values. Rows include ROAS, spend, CTR, thumbstop, "
-                "and funnel_score when performance memory exists."
+                "and funnel_score when performance memory exists. Optional start_date/"
+                "end_date (YYYY-MM-DD) scope the report window."
             ),
             inputSchema={
                 "type": "object",
@@ -587,6 +872,14 @@ async def list_tools() -> list[Tool]:
                         "default": 500,
                         "description": "Spend floor before a row is treated as proven",
                     },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
                     "limit": {
                         "type": "integer",
                         "default": 8,
@@ -599,32 +892,57 @@ async def list_tools() -> list[Tool]:
             name="get_creative_strategy_report",
             description=(
                 "Return the strategist matrix for deciding what to test next on Meta. "
-                "Defaults to messaging_angle rows by ad_type columns, with text and "
+                "Defaults to ad_type rows by messaging_angle columns, with text and "
                 "color-coded states for next tests, live learning, winners, losers, "
-                "fatigue, and gaps. Includes the decision queue, report table, and "
-                "agent_context payload so an LLM can brief next tests from the same "
-                "source of truth as the Creative Tagger UI. Supports CTR, thumbstop, "
-                "hook, hold, video milestone, CPA, CVR, ROAS, revenue, spend, and "
-                "funnel metrics."
+                "fatigue, and gaps. Also supports audience-mode matrices with "
+                "demographic_age, demographic_gender, demographic_segment, and "
+                "demographic_signal axes, plus mixed creative x audience reads such "
+                "as messaging_angle by demographic_segment. Includes the decision "
+                "queue, report table, and agent_context payload so an LLM can brief "
+                "next tests from the same source of truth as the Creative Tagger UI. "
+                "Supports CTR, thumbstop, hook, hold, video milestone, CPA, CVR, "
+                "ROAS, revenue, spend, and funnel metrics."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
                     "report_template": {
                         "type": "string",
                         "default": "next-tests",
-                        "description": "next-tests, creative-winners, fatigue-watch, etc.",
+                        "description": (
+                            "Template preset: next-tests, creative-winners, fatigue-watch, "
+                            "coverage-gaps, hook-performance, persona-read, demographic-read, "
+                            "or audience-signals. You can also skip the preset and request a "
+                            "mixed creative x audience cut via rows/columns such as "
+                            "messaging_angle by demographic_segment."
+                        ),
                     },
                     "rows": {
                         "type": "string",
-                        "default": "messaging_angle",
-                        "description": "Matrix row dimension, e.g. messaging_angle, hook, persona",
+                        "default": "ad_type",
+                        "description": (
+                            "Matrix row dimension, e.g. ad_type, messaging_angle, format, "
+                            "hook, persona, offer_type, demographic_age, demographic_gender, "
+                            "demographic_segment, or demographic_signal. Combine a creative "
+                            "dimension here with a demographic column for mixed audience reads."
+                        ),
                     },
                     "columns": {
                         "type": "string",
-                        "default": "ad_type",
-                        "description": "Matrix column dimension, e.g. ad_type, format, funnel_stage",
+                        "default": "messaging_angle",
+                        "description": (
+                            "Matrix column dimension, e.g. messaging_angle, ad_type, format, "
+                            "hook, persona, offer_type, demographic_gender, demographic_age, "
+                            "demographic_segment, or demographic_signal. Set one axis to a "
+                            "creative tag and the other to a demographic axis for a mixed "
+                            "creative x audience matrix."
+                        ),
                     },
                     "status_focus": {
                         "type": "string",
@@ -639,10 +957,738 @@ async def list_tools() -> list[Tool]:
                             "thumbstop_rate,hook_rate,hold_rate,cpa"
                         ),
                     },
+                    "metric_preset": {
+                        "type": "string",
+                        "description": "Optional metric preset key: diagnostics, conversion, delivery, video, scale, or all",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
                     "cpa_target": {"type": "number"},
+                    "roas_target": {"type": "number"},
                     "minimum_spend": {"type": "number"},
                     "learning_spend": {"type": "number"},
+                    "fatigue_minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days before a fatigue read is treated as meaningful",
+                    },
+                    "watch_group_by": {
+                        "type": "string",
+                        "default": "",
+                        "description": (
+                            "Optional fatigue watch grouping for the strategy report: "
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "watch_metric": {
+                        "type": "string",
+                        "default": "",
+                        "description": (
+                            "Optional fatigue watch metric for the strategy report: "
+                            "roas, cpa, ctr, spend, hook_rate, hold_rate, thumbstop_rate, "
+                            "or demographic-safe metrics such as conversions and revenue"
+                        ),
+                    },
+                    "watch_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional fatigue watch signal filter for the strategy report: "
+                            "all, fatigued, stable, or insufficient_data"
+                        ),
+                    },
+                    "watch_trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional fatigue watch trend filter for the strategy report: "
+                            "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional coverage-risk filter for the strategy report watch: "
+                            "all, call_ready, gappy, insufficient_points, short_window, or windowed_history"
+                        ),
+                    },
+                    "watch_minimum_points": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "Minimum observed timeseries points before a fatigue watch group is eligible",
+                    },
+                    "watch_minimum_calendar_days": {
+                        "type": "integer",
+                        "description": "Optional elapsed calendar-day gate for fatigue watch groups; defaults to the report fatigue cadence gate",
+                    },
+                    "watch_maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days before a fatigue watch group is eligible",
+                    },
+                    "watch_limit": {
+                        "type": "integer",
+                        "default": 5,
+                        "description": "Maximum fatigue watch groups to rank in the strategy report",
+                    },
                     "limit": {"type": "integer", "default": 10},
+                },
+            },
+        ),
+        Tool(
+            name="get_brain_learnings",
+            description=(
+                "Return auto-written Brand Brain learnings from saved performance, "
+                "strategy, taxonomy, and audience data. Use this when an agent needs "
+                "the current test conclusions, working patterns, watchouts, audience "
+                "opportunities, fatigue, and gap learnings plus an agent_context "
+                "brief seed. Supports focused reads like conclusion-only, "
+                "working-only, or audience-only learnings, including audience "
+                "fatigue reads grouped by demographic_age, demographic_gender, "
+                "demographic_segment, or demographic_signal. Audience filters can "
+                "also isolate opportunities-only or waste-only learnings, and "
+                "watch_coverage_focus can isolate call-ready, gappy, short-window, "
+                "insufficient-point, or windowed-history time-series reads."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "description": "Spend floor before a pattern is treated as significant",
+                    },
+                    "learning_spend": {
+                        "type": "number",
+                        "description": "Spend target before a cell graduates from live learning",
+                    },
+                    "cpa_target": {"type": "number"},
+                    "roas_target": {"type": "number"},
+                    "watch_group_by": {
+                        "type": "string",
+                        "default": "messaging_angle",
+                        "description": (
+                            "Timeseries grouping for watch/fatigue learnings: "
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "watch_metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "Timeseries metric used for watch/fatigue learnings: "
+                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, hook_rate, hold_rate, "
+                            "video_completion_rate, video_50_rate, video_75_rate, funnel_score, "
+                            "frequency, outbound_ctr, outbound_clicks, landing_page_views, adds_to_cart, "
+                            "atc_per_lpv, or video_3s_views"
+                        ),
+                    },
+                    "watch_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional signal filter for watch/fatigue learnings: "
+                            "all, fatigued, stable, or insufficient_data"
+                        ),
+                    },
+                    "watch_trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter for watch/fatigue learnings: "
+                            "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional coverage-risk filter for watch/fatigue learnings: "
+                            "all, call_ready, gappy, insufficient_points, short_window, or windowed_history"
+                        ),
+                    },
+                    "watch_minimum_points": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "Minimum observed timeseries points before a watch group is eligible",
+                    },
+                    "watch_minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days before a watch group is eligible",
+                    },
+                    "watch_maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days before a watch group is eligible",
+                    },
+                    "watch_sources": {
+                        "type": "string",
+                        "description": (
+                            "Optional comma-separated watch sources: timeseries, "
+                            "strategy, patterns, or all"
+                        ),
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a watch trend to fatigued",
+                    },
+                    "kinds": {
+                        "type": "string",
+                        "description": "Optional comma-separated kinds: conclusion, working, watch, audience, gap, or all",
+                    },
+                    "conclusion_statuses": {
+                        "type": "string",
+                        "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
+                    },
+                    "conclusion_recency_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Optional recency filter for conclusion stories relative to the report end date",
+                    },
+                    "audience_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                    },
+                    "audience_limit": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum audience learning stories to return when audience signals are included",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 8,
+                        "description": "Maximum learning stories to return",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="save_brain_learnings",
+            description=(
+                "Persist the current auto-written Brand Brain learnings into saved "
+                "Brand Brain notes for a brand. Use this after reviewing a filtered "
+                "learning set when the user wants those conclusions, working "
+                "patterns, watchouts, audience signals, or gaps saved as reusable "
+                "strategist context, including audience watchouts grouped by "
+                "demographic_age, demographic_gender, demographic_segment, or "
+                "demographic_signal. Audience filters can isolate opportunities-only "
+                "or waste-only learnings before saving, and watch_coverage_focus can "
+                "save only gappy, short-window, insufficient-point, or "
+                "windowed-history watchouts."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["brand_name"],
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "description": "Spend floor before a pattern is treated as significant",
+                    },
+                    "learning_spend": {
+                        "type": "number",
+                        "description": "Spend target before a cell graduates from live learning",
+                    },
+                    "cpa_target": {"type": "number"},
+                    "roas_target": {"type": "number"},
+                    "watch_group_by": {
+                        "type": "string",
+                        "default": "messaging_angle",
+                        "description": (
+                            "Timeseries grouping for watch/fatigue learnings: "
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "watch_metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "Timeseries metric used for watch/fatigue learnings: "
+                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, hook_rate, hold_rate, "
+                            "video_completion_rate, video_50_rate, video_75_rate, funnel_score, "
+                            "frequency, outbound_ctr, outbound_clicks, landing_page_views, adds_to_cart, "
+                            "atc_per_lpv, or video_3s_views"
+                        ),
+                    },
+                    "watch_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional signal filter for watch/fatigue learnings: "
+                            "all, fatigued, stable, or insufficient_data"
+                        ),
+                    },
+                    "watch_trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter for watch/fatigue learnings: "
+                            "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional coverage-risk filter for watch/fatigue learnings: "
+                            "all, call_ready, gappy, insufficient_points, short_window, or windowed_history"
+                        ),
+                    },
+                    "watch_minimum_points": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "Minimum observed timeseries points before a watch group is eligible",
+                    },
+                    "watch_minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days before a watch group is eligible",
+                    },
+                    "watch_maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days before a watch group is eligible",
+                    },
+                    "watch_sources": {
+                        "type": "string",
+                        "description": (
+                            "Optional comma-separated watch sources: timeseries, "
+                            "strategy, patterns, or all"
+                        ),
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a watch trend to fatigued",
+                    },
+                    "kinds": {
+                        "type": "string",
+                        "description": "Optional comma-separated kinds: conclusion, working, watch, audience, gap, or all",
+                    },
+                    "conclusion_statuses": {
+                        "type": "string",
+                        "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
+                    },
+                    "conclusion_recency_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Optional recency filter for conclusion stories relative to the report end date",
+                    },
+                    "audience_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                    },
+                    "audience_limit": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum audience learning stories to persist when audience signals are included",
+                    },
+                    "include_gaps_in_notes": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Keep gap learnings in the persisted notes block",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 8,
+                        "description": "Maximum learning stories to persist",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="export_brain_learnings_context",
+            description=(
+                "Return the reusable agent_context payload from auto-written Brand "
+                "Brain learnings. Use this when another agent or workflow needs a "
+                "brief-ready prompt seed plus the filtered learnings, evidence "
+                "thresholds, saved Brand Brain context, and active watch or audience "
+                "filters without the full response wrapper, including strategy queries "
+                "for the next matrix view, time-series follow-up queries, and "
+                "watch_coverage_focus for time-series sync-quality reads."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "description": "Spend floor before a pattern is treated as significant",
+                    },
+                    "learning_spend": {
+                        "type": "number",
+                        "description": "Spend target before a cell graduates from live learning",
+                    },
+                    "cpa_target": {"type": "number"},
+                    "roas_target": {"type": "number"},
+                    "watch_group_by": {
+                        "type": "string",
+                        "default": "messaging_angle",
+                        "description": (
+                            "Timeseries grouping for watch/fatigue learnings: "
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "watch_metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "Timeseries metric used for watch/fatigue learnings: "
+                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, hook_rate, hold_rate, "
+                            "video_completion_rate, video_50_rate, video_75_rate, funnel_score, "
+                            "frequency, outbound_ctr, outbound_clicks, landing_page_views, adds_to_cart, "
+                            "atc_per_lpv, or video_3s_views"
+                        ),
+                    },
+                    "watch_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional signal filter for watch/fatigue learnings: "
+                            "all, fatigued, stable, or insufficient_data"
+                        ),
+                    },
+                    "watch_trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter for watch/fatigue learnings: "
+                            "all, worsening, improving, flat, or insufficient_data"
+                        ),
+                    },
+                    "watch_coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional coverage-risk filter for watch/fatigue learnings: "
+                            "all, call_ready, gappy, insufficient_points, short_window, or windowed_history"
+                        ),
+                    },
+                    "watch_minimum_points": {
+                        "type": "integer",
+                        "default": 2,
+                        "description": "Minimum observed timeseries points before a watch group is eligible",
+                    },
+                    "watch_minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days before a watch group is eligible",
+                    },
+                    "watch_maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days before a watch group is eligible",
+                    },
+                    "watch_sources": {
+                        "type": "string",
+                        "description": (
+                            "Optional comma-separated watch sources: timeseries, "
+                            "strategy, patterns, or all"
+                        ),
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a watch trend to fatigued",
+                    },
+                    "kinds": {
+                        "type": "string",
+                        "description": "Optional comma-separated kinds: conclusion, working, watch, audience, gap, or all",
+                    },
+                    "conclusion_statuses": {
+                        "type": "string",
+                        "description": "Optional comma-separated conclusion statuses when kinds includes conclusion: winner, fatigued, loser, or all",
+                    },
+                    "conclusion_recency_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Optional recency filter for conclusion stories relative to the report end date",
+                    },
+                    "audience_signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                    },
+                    "audience_limit": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum audience learning stories to include in the exported context",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 8,
+                        "description": "Maximum learning stories to include in the exported context",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_performance_timeseries",
+            description=(
+                "Return saved performance time series for creative or campaign fatigue "
+                "checks. Use this to inspect dated ROAS, CPA, CTR, CPM, CVR, "
+                "thumbstop, hook, hold, video quartile, delivery, outbound, "
+                "mid-funnel, or funnel trends per creative, campaign, landing page, "
+                "hook, angle, ad type, format, visual style, CTA, analysis id, or "
+                "audience slice, plus the same fatigue decay signal the strategy "
+                "matrix uses. Supports trajectory filters for worsening, improving, "
+                "flat, or insufficient-data reads, plus coverage-risk filters for "
+                "gappy, short-window, insufficient-point, windowed-history, or "
+                "call-ready histories."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "last_30d",
+                        "description": "Optional date window preset: all_time, last_7d, last_30d, last_90d, maximum, or custom",
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "default": "ad_name",
+                        "description": (
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, hook_rate, hold_rate, "
+                            "video_completion_rate, video_50_rate, video_75_rate, funnel_score, "
+                            "frequency, outbound_ctr, outbound_clicks, landing_page_views, adds_to_cart, "
+                            "atc_per_lpv, or video_3s_views"
+                        ),
+                    },
+                    "signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional fatigue filter: all, fatigued, stable, "
+                            "or insufficient_data"
+                        ),
+                    },
+                    "trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter: all, worsening, improving, "
+                            "flat, or insufficient_data"
+                        ),
+                    },
+                    "coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional sync coverage filter: all, call_ready, "
+                            "gappy, insufficient_points, short_window, or "
+                            "windowed_history"
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Maximum grouped series to return",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "default": 500,
+                        "description": "Spend floor before fatigue is treated as meaningful",
+                    },
+                    "minimum_points": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum observed points required before a grouped series is returned",
+                    },
+                    "minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days required before a grouped series is returned",
+                    },
+                    "maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days allowed before a grouped series is returned",
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a series to fatigued",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="export_performance_timeseries_context",
+            description=(
+                "Return the reusable agent_context payload from saved performance "
+                "time series so another agent can decide what to refresh, watch, "
+                "scale, hold, or sync more data without opening the dashboard. "
+                "Exports the decision queue, summary text, action mix, top fatigue "
+                "or coverage-risk groups, and the prompt-ready context built from "
+                "the same fatigue/time-series logic as the Creative Tagger UI."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "last_30d",
+                        "description": "Optional date window preset: all_time, last_7d, last_30d, last_90d, maximum, or custom",
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "default": "ad_name",
+                        "description": (
+                            "ad_name, campaign_name, landing_page_domain, analysis_id, "
+                            "hook_type, messaging_angle, ad_type, format, visual_style, cta, emotion, "
+                            "demographic_age, demographic_gender, demographic_segment, or demographic_signal"
+                        ),
+                    },
+                    "metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "description": (
+                            "roas, cpa, ctr, cpm, cvr, thumbstop_rate, hook_rate, hold_rate, "
+                            "video_completion_rate, video_50_rate, video_75_rate, funnel_score, "
+                            "frequency, outbound_ctr, outbound_clicks, landing_page_views, adds_to_cart, "
+                            "atc_per_lpv, or video_3s_views"
+                        ),
+                    },
+                    "signal_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional fatigue filter: all, fatigued, stable, "
+                            "or insufficient_data"
+                        ),
+                    },
+                    "trajectory_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional trend filter: all, worsening, improving, "
+                            "flat, or insufficient_data"
+                        ),
+                    },
+                    "coverage_focus": {
+                        "type": "string",
+                        "default": "all",
+                        "description": (
+                            "Optional sync coverage filter: all, call_ready, "
+                            "gappy, insufficient_points, short_window, or "
+                            "windowed_history"
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Maximum grouped series to return",
+                    },
+                    "minimum_spend": {
+                        "type": "number",
+                        "default": 500,
+                        "description": "Spend floor before fatigue is treated as meaningful",
+                    },
+                    "minimum_points": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum observed points required before a grouped series is returned",
+                    },
+                    "minimum_calendar_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Minimum elapsed calendar days required before a grouped series is returned",
+                    },
+                    "maximum_gap_days": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Maximum sync gap in calendar days allowed before a grouped series is returned",
+                    },
+                    "fatigue_decay_threshold": {
+                        "type": "number",
+                        "default": 0.18,
+                        "description": "Decay threshold that flips a series to fatigued",
+                    },
                 },
             },
         ),
@@ -654,8 +1700,10 @@ async def list_tools() -> list[Tool]:
                 "dimension combinations by ROAS, funnel_score, spend, CTR, or CPA. "
                 "Use this when the user asks for a custom Motion-style view like "
                 "hook x landing_page x offer_type, founder x hook, offer x audience, "
-                "or custom segments. Rows can include `parts` and `values` so the "
-                "agent can explain the winning combination."
+                "or custom segments. Optional start_date and end_date let an agent "
+                "isolate a specific test window before explaining the winning "
+                "combination. Rows can include `parts` and `values` so the agent "
+                "can explain the winning combination."
             ),
             inputSchema={
                 "type": "object",
@@ -681,6 +1729,14 @@ async def list_tools() -> list[Tool]:
                         "default": "roas",
                         "description": "roas, funnel_score, spend, ctr, cpa",
                     },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lookback start for the report window",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lookback end for the report window",
+                    },
                     "spend_threshold": {"type": "number", "default": 500},
                     "limit": {"type": "integer", "default": 12},
                 },
@@ -701,7 +1757,10 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Save or update a reusable custom report definition for a brand. "
                 "Use this when the user wants the same Motion-style combination "
-                "view available later, such as hook_type x landing_page x offer_type."
+                "view available later, such as hook_type x landing_page x offer_type, "
+                "including custom report windows scoped to a specific test period "
+                "or a richer dashboard preset with a saved view type, grouping, "
+                "metric set, filters, sort, and metric preset."
             ),
             inputSchema={
                 "type": "object",
@@ -727,6 +1786,54 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "default": "roas",
                         "description": "roas, funnel_score, spend, ctr, cpa",
+                    },
+                    "view_type": {
+                        "type": "string",
+                        "default": "table",
+                        "description": "Saved dashboard view mode: table, matrix, comparison, or cards",
+                    },
+                    "date_range": {
+                        "type": "string",
+                        "default": "last_30_days",
+                        "description": "Saved dashboard range preset: last_7_days, last_30_days, last_90_days, custom, or all_time",
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "default": "creative",
+                        "description": "Saved dashboard grouping mode such as creative, dimension, or matrix",
+                    },
+                    "metrics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional saved dashboard metric set, e.g. spend, roas, cpa, ctr",
+                    },
+                    "filters": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "field": {"type": "string"},
+                                "value": {"type": "string"},
+                            },
+                        },
+                        "description": "Optional saved dashboard filters as field/value pairs",
+                    },
+                    "sort": {
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Saved dashboard sort direction: asc or desc",
+                    },
+                    "saved_metric_preset": {
+                        "type": "string",
+                        "description": "Optional saved dashboard metric preset key such as diagnostics, conversion, delivery, video, scale, or all",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lookback start to persist with the saved report",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD lookback end to persist with the saved report",
                     },
                     "spend_threshold": {"type": "number", "default": 500},
                     "limit": {"type": "integer", "default": 12},
@@ -788,12 +1895,63 @@ async def list_tools() -> list[Tool]:
             name="get_demographics_performance",
             description=(
                 "Return saved age x gender performance memory with opportunity and "
-                "waste flags. Useful for audience strategy and Advantage+ diagnostics."
+                "waste flags. Useful for audience strategy and Advantage+ diagnostics. "
+                "Supports report date presets like last_30_days or a custom "
+                "start_date/end_date (YYYY-MM-DD) to scope the audience read to "
+                "a specific performance window."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional start date in YYYY-MM-DD format",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional end date in YYYY-MM-DD format",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="export_demographics_context",
+            description=(
+                "Return an agent-ready audience context payload from saved age x "
+                "gender performance memory. Use this when another agent or workflow "
+                "needs the top opportunity and waste segments, account totals, "
+                "summary text, a prompt-ready audience decision queue, and date-scoped "
+                "mixed creative x audience strategy queries plus time-series "
+                "follow-up queries without opening the dashboard."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "date_preset": {
+                        "type": "string",
+                        "default": "all_time",
+                        "description": "Optional date window preset: all_time, last_7_days, last_30_days, last_90_days, or custom",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start date",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end date",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum opportunity and waste segments to include in the exported context",
+                    },
                 },
             },
         ),
@@ -832,12 +1990,45 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "brand_name": {
+                        "type": "string",
+                        "description": (
+                            "Optional workspace brand to attach the scan to for saved "
+                            "Market history and follow-up briefing."
+                        ),
+                    },
                     "page_id": {"type": "string"},
                     "page_name": {"type": "string"},
                     "keyword": {"type": "string"},
                     "country": {"type": "string", "default": "US"},
                     "limit": {"type": "integer", "default": 25},
                     "analyze_creatives": {"type": "boolean", "default": True},
+                },
+            },
+        ),
+        Tool(
+            name="get_competitor_scan_history",
+            description=(
+                "Return saved competitor Market scans/imports for the current workspace "
+                "without re-running Meta Ad Library access. Useful for re-briefing past "
+                "market reads, checking the latest tagged competitor patterns, or "
+                "building strategy prompts from previously saved scans."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {
+                        "type": "string",
+                        "description": (
+                            "Optional workspace brand filter. When omitted, returns the "
+                            "latest saved scans across brands for the current account."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Maximum number of saved scans/imports to return",
+                    },
                 },
             },
         ),
@@ -979,6 +2170,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_prebuilt_reports(arguments)
         if name == "get_creative_strategy_report":
             return await _get_creative_strategy_report(arguments)
+        if name == "get_brain_learnings":
+            return await _get_brain_learnings(arguments)
+        if name == "save_brain_learnings":
+            return await _save_brain_learnings(arguments)
+        if name == "export_brain_learnings_context":
+            return await _export_brain_learnings_context(arguments)
+        if name == "get_performance_timeseries":
+            return await _get_performance_timeseries(arguments)
+        if name == "export_performance_timeseries_context":
+            return await _export_performance_timeseries_context(arguments)
         if name == "create_custom_report":
             return await _create_custom_report(arguments)
         if name == "list_custom_reports":
@@ -993,10 +2194,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _predict_creative(arguments)
         if name == "get_demographics_performance":
             return await _get_demographics_performance(arguments)
+        if name == "export_demographics_context":
+            return await _export_demographics_context(arguments)
         if name == "generate_brand_taxonomy":
             return await _generate_brand_taxonomy(arguments)
         if name == "scan_competitor":
             return await _scan_competitor(arguments)
+        if name == "get_competitor_scan_history":
+            return await _get_competitor_scan_history(arguments)
         if name == "import_competitor_ads":
             return await _import_competitor_ads(arguments)
         if name == "generate_naming":
@@ -1028,7 +2233,7 @@ async def _analyze_creative(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "Brand")
     data = _analysis_form_data(args, brand_name)
 
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=180.0, headers=_headers()) as client:
         if file_paths:
             if not isinstance(file_paths, list):
                 return _err("file_paths must be a list of local image paths")
@@ -1104,7 +2309,7 @@ def _analysis_form_data(args: dict, brand_name: str) -> dict[str, str]:
 
 async def _get_taxonomy(args: dict) -> list[TextContent]:
     dimension = args.get("dimension")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/openapi.json", headers=_headers())
         resp.raise_for_status()
         spec = resp.json()
@@ -1132,17 +2337,31 @@ async def _get_taxonomy(args: dict) -> list[TextContent]:
 
 async def _list_library(args: dict) -> list[TextContent]:
     params: dict[str, Any] = {**_auth_params()}
-    for k in ("limit", "offset", "search", "format", "hook"):
+    for k in (
+        "limit",
+        "offset",
+        "search",
+        "format",
+        "hook",
+        "angle",
+        "emotion",
+        "cta",
+        "talent",
+        "offer",
+        "audio",
+        "season",
+        "sort",
+    ):
         if args.get(k) is not None:
             params[k] = args[k]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/library", params=params)
         resp.raise_for_status()
         return _text(resp.json())
 
 
 async def _get_library_patterns(args: dict) -> list[TextContent]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/auth/library/patterns", params=_auth_params()
         )
@@ -1154,7 +2373,7 @@ async def _get_analysis(args: dict) -> list[TextContent]:
     analysis_id = args.get("analysis_id")
     if not analysis_id:
         return _err("analysis_id is required")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/auth/library/{analysis_id}", params=_auth_params()
         )
@@ -1167,7 +2386,7 @@ async def _recommend(args: dict) -> list[TextContent]:
     question = args.get("question", "")
     if not brand_name or not question:
         return _err("brand_name and question are required")
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/strategist/recommend",
             data={"brand_name": brand_name, "question": question},
@@ -1181,7 +2400,7 @@ async def _analyze_gaps(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "")
     if not brand_name:
         return _err("brand_name is required")
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/strategist/gaps",
             data={"brand_name": brand_name},
@@ -1196,7 +2415,7 @@ async def _get_brand_context(args: dict) -> list[TextContent]:
     if not brand_name:
         return _err("brand_name is required")
     params = {**_auth_params(), "brand_name": brand_name}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/brand-context", params=params)
         if resp.status_code == 404:
             return _text(
@@ -1218,7 +2437,7 @@ async def _set_brand_context(args: dict) -> list[TextContent]:
         "anti_patterns": args.get("anti_patterns") or [],
         "notes": args.get("notes", ""),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/auth/brand-context",
             params=_auth_params(),
@@ -1233,7 +2452,7 @@ async def _get_brand_taxonomy(args: dict) -> list[TextContent]:
     if not brand_name:
         return _err("brand_name is required")
     params = {**_auth_params(), "brand_name": brand_name}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/brand-taxonomy", params=params)
         resp.raise_for_status()
         return _text(resp.json())
@@ -1252,7 +2471,7 @@ async def _set_brand_taxonomy_value(args: dict) -> list[TextContent]:
         "description": args.get("description", ""),
         "aliases": args.get("aliases") or [],
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/auth/brand-taxonomy/values",
             params=_auth_params(),
@@ -1274,7 +2493,7 @@ async def _delete_brand_taxonomy_value(args: dict) -> list[TextContent]:
         "dimension": dimension,
         "value": value,
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.delete(f"{API_URL}/auth/brand-taxonomy/values", params=params)
         resp.raise_for_status()
         return _text(resp.json())
@@ -1293,7 +2512,7 @@ async def _set_brand_entity(args: dict) -> list[TextContent]:
         "description": args.get("description", ""),
         "aliases": args.get("aliases") or [],
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/auth/brand-taxonomy/entities",
             params=_auth_params(),
@@ -1315,21 +2534,21 @@ async def _delete_brand_entity(args: dict) -> list[TextContent]:
         "entity_type": entity_type,
         "name": name,
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.delete(f"{API_URL}/auth/brand-taxonomy/entities", params=params)
         resp.raise_for_status()
         return _text(resp.json())
 
 
 async def _get_naming_variables(args: dict) -> list[TextContent]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/naming/variables")
         resp.raise_for_status()
         return _text(resp.json())
 
 
 async def _list_naming_templates(args: dict) -> list[TextContent]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/auth/naming/templates", params=_auth_params()
         )
@@ -1346,7 +2565,7 @@ async def _save_naming_template(args: dict) -> list[TextContent]:
         "name": args.get("name", "default"),
         "separator": args.get("separator", "_"),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/auth/naming/templates",
             params=_auth_params(),
@@ -1358,7 +2577,7 @@ async def _save_naming_template(args: dict) -> list[TextContent]:
 
 async def _delete_naming_template(args: dict) -> list[TextContent]:
     params = {**_auth_params(), "name": args.get("name", "default")}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.delete(f"{API_URL}/auth/naming/templates", params=params)
         resp.raise_for_status()
         return _text(resp.json())
@@ -1373,14 +2592,14 @@ async def _preview_naming_template(args: dict) -> list[TextContent]:
         "name": args.get("name", "default"),
         "separator": args.get("separator", "_"),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(f"{API_URL}/auth/naming/preview", json=body)
         resp.raise_for_status()
         return _text(resp.json())
 
 
 async def _get_meta_status(args: dict) -> list[TextContent]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(f"{API_URL}/auth/meta/status", headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
@@ -1391,8 +2610,9 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
         "brand_name": args.get("brand_name", ""),
         "account_id": args.get("account_id", ""),
         "date_preset": args.get("date_preset", "last_30d"),
+        "attribution_windows": _string_list_arg(args.get("attribution_windows")),
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/meta/sync", json=body, headers=_headers()
         )
@@ -1409,7 +2629,7 @@ async def _import_meta_performance(args: dict) -> list[TextContent]:
         "rows": rows,
         "source": args.get("source", "meta_mcp"),
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(f"{API_URL}/meta/import", json=body, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
@@ -1417,7 +2637,13 @@ async def _import_meta_performance(args: dict) -> list[TextContent]:
 
 async def _get_meta_performance_summary(args: dict) -> list[TextContent]:
     params = {"brand_name": args.get("brand_name", "")}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    if args.get("date_preset"):
+        params["date_preset"] = args["date_preset"]
+    if args.get("start_date"):
+        params["start_date"] = args["start_date"]
+    if args.get("end_date"):
+        params["end_date"] = args["end_date"]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/meta/performance/summary",
             params=params,
@@ -1438,7 +2664,7 @@ async def _predict_creative(args: dict) -> list[TextContent]:
         import json as _json
 
         data["attributes"] = _json.dumps(args["attributes"])
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=60.0, headers=_headers()) as client:
         resp = await client.post(f"{API_URL}/predict", data=data, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
@@ -1451,7 +2677,13 @@ async def _get_taxonomy_performance(args: dict) -> list[TextContent]:
     }
     if args.get("dimension"):
         params["dimension"] = args["dimension"]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    if args.get("date_preset"):
+        params["date_preset"] = args["date_preset"]
+    if args.get("start_date"):
+        params["start_date"] = args["start_date"]
+    if args.get("end_date"):
+        params["end_date"] = args["end_date"]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/performance/by-taxonomy",
             params=params,
@@ -1469,7 +2701,11 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
     }
     if args.get("report_id"):
         params["report_id"] = args["report_id"]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    if args.get("start_date"):
+        params["start_date"] = args["start_date"]
+    if args.get("end_date"):
+        params["end_date"] = args["end_date"]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/prebuilt",
             params=params,
@@ -1480,19 +2716,8 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
 
 
 async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
-    params: dict[str, Any] = {
-        "brand_name": args.get("brand_name", ""),
-        "report_template": args.get("report_template", "next-tests"),
-        "rows": args.get("rows", "messaging_angle"),
-        "columns": args.get("columns", "ad_type"),
-        "status_focus": args.get("status_focus", "all"),
-        "metrics": args.get("metrics", "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"),
-        "limit": args.get("limit", 10),
-    }
-    for key in ("cpa_target", "minimum_spend", "learning_spend"):
-        if args.get(key) is not None:
-            params[key] = args[key]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    params = _strategy_params(args)
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/creative-strategy",
             params=params,
@@ -1500,6 +2725,328 @@ async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
         )
         resp.raise_for_status()
         return _text(resp.json())
+
+
+async def _get_brain_learnings(args: dict) -> list[TextContent]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "all_time"),
+        "limit": args.get("limit", 8),
+    }
+    for key in (
+        "start_date",
+        "end_date",
+        "minimum_spend",
+        "learning_spend",
+        "cpa_target",
+        "roas_target",
+        "watch_group_by",
+        "watch_metric",
+        "watch_signal_focus",
+        "watch_trajectory_focus",
+        "watch_coverage_focus",
+        "watch_minimum_points",
+        "watch_minimum_calendar_days",
+        "watch_maximum_gap_days",
+        "watch_sources",
+        "fatigue_decay_threshold",
+        "kinds",
+        "conclusion_statuses",
+        "conclusion_recency_days",
+        "audience_signal_focus",
+        "audience_limit",
+    ):
+        if key in {"watch_sources", "kinds", "conclusion_statuses"}:
+            value = _csv_arg(args.get(key))
+            if value:
+                params[key] = value
+            continue
+        if args.get(key) not in (None, ""):
+            params[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(
+            f"{API_URL}/brain/learnings",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _save_brain_learnings(args: dict) -> list[TextContent]:
+    brand_name = args.get("brand_name", "")
+    if not brand_name:
+        return _err("brand_name is required")
+    body: dict[str, Any] = {
+        "brand_name": brand_name,
+        "date_preset": args.get("date_preset", "all_time"),
+        "include_gaps_in_notes": _coerce_bool(
+            args.get("include_gaps_in_notes", False)
+        ),
+        "limit": args.get("limit", 8),
+    }
+    for key in (
+        "start_date",
+        "end_date",
+        "minimum_spend",
+        "learning_spend",
+        "cpa_target",
+        "roas_target",
+        "watch_group_by",
+        "watch_metric",
+        "watch_signal_focus",
+        "watch_trajectory_focus",
+        "watch_coverage_focus",
+        "watch_minimum_points",
+        "watch_minimum_calendar_days",
+        "watch_maximum_gap_days",
+        "watch_sources",
+        "fatigue_decay_threshold",
+        "kinds",
+        "conclusion_statuses",
+        "conclusion_recency_days",
+        "audience_signal_focus",
+        "audience_limit",
+    ):
+        if key in {"watch_sources", "kinds", "conclusion_statuses"}:
+            value = _csv_arg(args.get(key))
+            if value:
+                body[key] = value
+            continue
+        if args.get(key) not in (None, ""):
+            body[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.post(
+            f"{API_URL}/brain/learnings/save",
+            json=body,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _export_brain_learnings_context(args: dict) -> list[TextContent]:
+    payload = await _get_brain_learnings(args)
+    if not payload:
+        return payload
+    raw = getattr(payload[0], "text", "")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return payload
+    if not isinstance(parsed, dict):
+        return payload
+    context = parsed.get("agent_context")
+    if not isinstance(context, dict):
+        return _err("Brain learnings response did not include agent_context")
+    summary = parsed.get("summary") or {}
+    requested_limit = summary.get("requested_limit", args.get("limit", 8))
+    try:
+        limit = max(1, int(requested_limit))
+    except (TypeError, ValueError):
+        return _err("limit must be an integer")
+    brand_name = parsed.get("brand_name", args.get("brand_name", ""))
+    learnings = [
+        item
+        for item in list(parsed.get("learnings") or [])[:limit]
+        if isinstance(item, dict)
+    ]
+    export = {
+        **context,
+        "brand_name": brand_name,
+        "generated_at": parsed.get("generated_at", ""),
+        "hero": parsed.get("hero") or {},
+        "summary": summary,
+        "controls": parsed.get("controls") or {},
+        "source_summary": parsed.get("source_summary") or {},
+        "learnings": learnings,
+        "decision_queue": _build_brain_learning_decision_queue(
+            learnings=learnings,
+            brand_name=brand_name,
+            date_preset=str(summary.get("date_preset") or args.get("date_preset") or "all_time"),
+            start_date=str(summary.get("start_date") or args.get("start_date") or ""),
+            end_date=str(summary.get("end_date") or args.get("end_date") or ""),
+            watch_metric=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("metric")
+                or summary.get("watch_metric")
+                or args.get("watch_metric")
+                or "roas"
+            ),
+            watch_signal_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("signal_focus")
+                or summary.get("watch_signal_focus")
+                or args.get("watch_signal_focus")
+                or "all"
+            ),
+            watch_trajectory_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("trajectory_focus")
+                or summary.get("watch_trajectory_focus")
+                or args.get("watch_trajectory_focus")
+                or "all"
+            ),
+            watch_coverage_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("coverage_focus")
+                or summary.get("watch_coverage_focus")
+                or args.get("watch_coverage_focus")
+                or "all"
+            ),
+            watch_minimum_points=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("minimum_points")
+                or summary.get("watch_minimum_points")
+                or args.get("watch_minimum_points")
+                or 2
+            ),
+            watch_minimum_calendar_days=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "minimum_calendar_days"
+                )
+                or summary.get("watch_minimum_calendar_days")
+                or args.get("watch_minimum_calendar_days")
+                or 0
+            ),
+            watch_maximum_gap_days=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "maximum_gap_days"
+                )
+                or summary.get("watch_maximum_gap_days")
+                or args.get("watch_maximum_gap_days")
+                or 0
+            ),
+            fatigue_decay_threshold=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "fatigue_decay_threshold"
+                )
+                or summary.get("fatigue_decay_threshold")
+                or args.get("fatigue_decay_threshold")
+                or 0.18
+            ),
+            limit=limit,
+        ),
+        "suggested_strategy_views": _build_brain_learning_strategy_views(
+            learnings=learnings,
+            brand_name=brand_name,
+            date_preset=str(summary.get("date_preset") or args.get("date_preset") or "all_time"),
+            start_date=str(summary.get("start_date") or args.get("start_date") or ""),
+            end_date=str(summary.get("end_date") or args.get("end_date") or ""),
+            limit=limit,
+        ),
+        "suggested_timeseries_views": _build_brain_learning_timeseries_views(
+            learnings=learnings,
+            brand_name=brand_name,
+            date_preset=str(summary.get("date_preset") or args.get("date_preset") or "all_time"),
+            start_date=str(summary.get("start_date") or args.get("start_date") or ""),
+            end_date=str(summary.get("end_date") or args.get("end_date") or ""),
+            watch_metric=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("metric")
+                or summary.get("watch_metric")
+                or args.get("watch_metric")
+                or "roas"
+            ),
+            watch_signal_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("signal_focus")
+                or summary.get("watch_signal_focus")
+                or args.get("watch_signal_focus")
+                or "all"
+            ),
+            watch_trajectory_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("trajectory_focus")
+                or summary.get("watch_trajectory_focus")
+                or args.get("watch_trajectory_focus")
+                or "all"
+            ),
+            watch_coverage_focus=str(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("coverage_focus")
+                or summary.get("watch_coverage_focus")
+                or args.get("watch_coverage_focus")
+                or "all"
+            ),
+            watch_minimum_points=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get("minimum_points")
+                or summary.get("watch_minimum_points")
+                or args.get("watch_minimum_points")
+                or 2
+            ),
+            watch_minimum_calendar_days=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "minimum_calendar_days"
+                )
+                or summary.get("watch_minimum_calendar_days")
+                or args.get("watch_minimum_calendar_days")
+                or 0
+            ),
+            watch_maximum_gap_days=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "maximum_gap_days"
+                )
+                or summary.get("watch_maximum_gap_days")
+                or args.get("watch_maximum_gap_days")
+                or 0
+            ),
+            fatigue_decay_threshold=(
+                ((parsed.get("source_summary") or {}).get("timeseries") or {}).get(
+                    "fatigue_decay_threshold"
+                )
+                or summary.get("fatigue_decay_threshold")
+                or args.get("fatigue_decay_threshold")
+                or 0.18
+            ),
+            limit=limit,
+        ),
+    }
+    return _text(export)
+
+
+async def _get_performance_timeseries(args: dict) -> list[TextContent]:
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "last_30d"),
+        "group_by": args.get("group_by", "ad_name"),
+        "metric": args.get("metric", "roas"),
+        "signal_focus": args.get("signal_focus", "all"),
+        "trajectory_focus": args.get("trajectory_focus", "all"),
+        "coverage_focus": args.get("coverage_focus", "all"),
+        "limit": args.get("limit", 10),
+        "minimum_spend": args.get("minimum_spend", 500),
+        "minimum_points": args.get("minimum_points", 0),
+        "minimum_calendar_days": args.get("minimum_calendar_days", 0),
+        "maximum_gap_days": args.get("maximum_gap_days", 0),
+        "fatigue_decay_threshold": args.get("fatigue_decay_threshold", 0.18),
+    }
+    for key in ("start_date", "end_date"):
+        if args.get(key) not in (None, ""):
+            params[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(
+            f"{API_URL}/performance/timeseries",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _export_performance_timeseries_context(args: dict) -> list[TextContent]:
+    payload = await _get_performance_timeseries(args)
+    if not payload:
+        return payload
+    raw = getattr(payload[0], "text", "")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return payload
+    if not isinstance(parsed, dict):
+        return payload
+    context = parsed.get("agent_context")
+    if not isinstance(context, dict):
+        return _err("Performance timeseries response did not include agent_context")
+    export = {
+        **context,
+        "brand_name": parsed.get("brand_name", args.get("brand_name", "")),
+        "generated_at": parsed.get("generated_at", ""),
+        "summary": parsed.get("summary") or {},
+        "series": parsed.get("series") or [],
+    }
+    return _text(export)
 
 
 async def _create_custom_report(args: dict) -> list[TextContent]:
@@ -1518,7 +3065,10 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
         "spend_threshold": args.get("spend_threshold", 500),
         "limit": args.get("limit", 12),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    for key in ("start_date", "end_date"):
+        if args.get(key) not in (None, ""):
+            payload[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/reports/custom",
             json=payload,
@@ -1530,7 +3080,7 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
 
 async def _list_custom_reports(args: dict) -> list[TextContent]:
     params = {"brand_name": args.get("brand_name", "")}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/custom/saved",
             params=params,
@@ -1558,10 +3108,20 @@ async def _save_custom_report(args: dict) -> list[TextContent]:
         "dimensions": dimensions,
         "layer": args.get("layer", "standard"),
         "metric": args.get("metric", "roas"),
+        "view_type": args.get("view_type", "table"),
+        "date_range": args.get("date_range", "last_30_days"),
+        "group_by": args.get("group_by", "creative"),
+        "metrics": args.get("metrics") or [],
+        "filters": args.get("filters") or [],
+        "sort": args.get("sort", "desc"),
+        "saved_metric_preset": args.get("saved_metric_preset", ""),
         "spend_threshold": args.get("spend_threshold", 500),
         "limit": args.get("limit", 12),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    for key in ("start_date", "end_date"):
+        if args.get(key) not in (None, ""):
+            payload[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/reports/custom/saved",
             json=payload,
@@ -1575,7 +3135,7 @@ async def _run_saved_custom_report(args: dict) -> list[TextContent]:
     report_id = args.get("report_id")
     if not report_id:
         return _err("report_id is required")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/custom/saved/{report_id}/run",
             headers=_headers(),
@@ -1588,7 +3148,7 @@ async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
     report_id = args.get("report_id")
     if not report_id:
         return _err("report_id is required")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.delete(
             f"{API_URL}/reports/custom/saved/{report_id}",
             headers=_headers(),
@@ -1598,8 +3158,13 @@ async def _delete_saved_custom_report(args: dict) -> list[TextContent]:
 
 
 async def _get_demographics_performance(args: dict) -> list[TextContent]:
-    params = {"brand_name": args.get("brand_name", "")}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    params = {
+        "brand_name": args.get("brand_name", ""),
+        "date_preset": args.get("date_preset", "all_time"),
+        "start_date": args.get("start_date", ""),
+        "end_date": args.get("end_date", ""),
+    }
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/performance/demographics",
             params=params,
@@ -1607,6 +3172,759 @@ async def _get_demographics_performance(args: dict) -> list[TextContent]:
         )
         resp.raise_for_status()
         return _text(resp.json())
+
+
+def _demographic_segment_label(segment: dict[str, Any]) -> str:
+    age = str(segment.get("age") or "unknown").strip() or "unknown"
+    gender = str(segment.get("gender") or "unknown").strip() or "unknown"
+    return f"{age} / {gender}"
+
+
+def _compact_demographic_segment(segment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "segment": _demographic_segment_label(segment),
+        "signal": segment.get("signal") or "neutral",
+        "spend": segment.get("spend", 0),
+        "revenue": segment.get("revenue", 0),
+        "roas": segment.get("roas", 0),
+        "ctr": segment.get("ctr", 0),
+        "cpa": segment.get("cpa", 0),
+        "conversions": segment.get("conversions", 0),
+        "lpv_rate": segment.get("lpv_rate", 0),
+        "atc_per_lpv": segment.get("atc_per_lpv", 0),
+        "goodness": segment.get("goodness"),
+    }
+
+
+def _format_demographic_evidence(segment):
+    spend = float(segment.get("spend") or 0)
+    roas = float(segment.get("roas") or 0)
+    ctr = float(segment.get("ctr") or 0)
+    cpa = float(segment.get("cpa") or 0)
+    conversions = float(segment.get("conversions") or 0)
+    return (
+        f"${spend:.0f} spend, {roas:.2f}x ROAS, {ctr:.2f}% CTR, "
+        f"${cpa:.2f} CPA, {conversions:.0f} conversions"
+    )
+
+
+def _build_demographics_decision_queue(opportunities, waste, *, limit):
+    capped_limit = max(1, min(int(limit or 3), 6))
+    queue = []
+    for segment in list(opportunities or [])[:capped_limit]:
+        compact = _compact_demographic_segment(segment)
+        queue.append(
+            {
+                **compact,
+                "action": "scale",
+                "recommendation": (
+                    f"Scale or brief more creative for {compact['segment']} because it is "
+                    "efficient relative to the rest of the account."
+                ),
+                "evidence_summary": _format_demographic_evidence(compact),
+            }
+        )
+    remaining = max(1, capped_limit - len(queue))
+    for segment in list(waste or [])[:remaining]:
+        compact = _compact_demographic_segment(segment)
+        queue.append(
+            {
+                **compact,
+                "action": "cut_or_fix",
+                "recommendation": (
+                    f"Cut spend or isolate a different creative for {compact['segment']} "
+                    "before it keeps burning budget."
+                ),
+                "evidence_summary": _format_demographic_evidence(compact),
+            }
+        )
+    for index, item in enumerate(queue, start=1):
+        item["rank"] = index
+    return queue
+
+
+def _build_demographic_focus_views(
+    segments,
+    *,
+    brand_name: str = "",
+    date_preset: str = "all_time",
+    start_date: str = "",
+    end_date: str = "",
+    limit: int = 2,
+):
+    capped_limit = max(1, min(int(limit or 2), 4))
+    focus_views = []
+    view_specs = [
+        {
+            "label_prefix": "Angles for",
+            "report_template": "angle-audience-fit",
+            "rows": "messaging_angle",
+            "columns": "demographic_segment",
+            "fill_metric": "roas",
+            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
+            "why": "Open the audience-segment column first, then compare which messaging angles win inside that pocket.",
+        },
+        {
+            "label_prefix": "Hooks for",
+            "report_template": "hook-audience-fit",
+            "rows": "hook",
+            "columns": "demographic_segment",
+            "fill_metric": "hook_rate",
+            "metrics": ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"],
+            "why": "Open the same audience-segment column to see whether the opening pattern, not the whole concept, needs to change.",
+        },
+    ]
+    for segment in list(segments or [])[:capped_limit]:
+        compact = _compact_demographic_segment(segment)
+        item = {
+            **compact,
+            "evidence_summary": _format_demographic_evidence(compact),
+            "strategy_views": [],
+        }
+        for spec in view_specs:
+            query = _build_demographics_strategy_query(
+                brand_name=brand_name,
+                report_template=spec["report_template"],
+                rows=spec["rows"],
+                columns=spec["columns"],
+                fill_metric=spec["fill_metric"],
+                metrics=spec["metrics"],
+                date_preset=date_preset,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            query["focus_segment"] = compact["segment"]
+            item["strategy_views"].append(
+                {
+                    "label": f"{spec['label_prefix']} {compact['segment']}",
+                    "focus_segment": compact["segment"],
+                    "signal": compact["signal"],
+                    "why": spec["why"],
+                    "strategy_query": query,
+                }
+            )
+        focus_views.append(item)
+    return focus_views
+
+
+def _build_demographic_timeseries_query(
+    *,
+    brand_name: str,
+    group_by: str,
+    metric: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    signal_focus: str = "all",
+    trajectory_focus: str = "all",
+    coverage_focus: str = "all",
+    minimum_spend: float = 0,
+    minimum_points: int = 2,
+    minimum_calendar_days: int = 0,
+    maximum_gap_days: int = 0,
+    fatigue_decay_threshold: float = 0.18,
+    focus_value: str = "",
+) -> dict[str, Any]:
+    query = {
+        "tool": "get_performance_timeseries",
+        "brand_name": brand_name,
+        "group_by": group_by,
+        "metric": metric,
+        "date_preset": date_preset or "all_time",
+        "signal_focus": signal_focus or "all",
+        "trajectory_focus": trajectory_focus or "all",
+        "coverage_focus": coverage_focus or "all",
+        "minimum_spend": minimum_spend,
+        "minimum_points": minimum_points,
+        "minimum_calendar_days": minimum_calendar_days,
+        "maximum_gap_days": maximum_gap_days,
+        "fatigue_decay_threshold": fatigue_decay_threshold,
+    }
+    if focus_value:
+        query["focus_value"] = focus_value
+    if start_date:
+        query["start_date"] = start_date
+    if end_date:
+        query["end_date"] = end_date
+    return query
+
+
+def _build_demographic_timeseries_views(
+    *,
+    brand_name: str = "",
+    date_preset: str = "all_time",
+    start_date: str = "",
+    end_date: str = "",
+):
+    views = [
+        {
+            "label": "Audience trend watch",
+            "group_by": "demographic_segment",
+            "metric": "roas",
+            "signal_focus": "all",
+            "trajectory_focus": "all",
+            "coverage_focus": "all",
+            "why": "Track which audience pockets are improving, fatiguing, or still too sparse before you scale spend.",
+        },
+        {
+            "label": "Audience signal trend",
+            "group_by": "demographic_signal",
+            "metric": "roas",
+            "signal_focus": "all",
+            "trajectory_focus": "all",
+            "coverage_focus": "all",
+            "why": "Watch whether opportunity and waste buckets are holding their edge across repeated sync windows.",
+        },
+    ]
+    for view in views:
+        view["timeseries_query"] = _build_demographic_timeseries_query(
+            brand_name=brand_name,
+            group_by=view["group_by"],
+            metric=view["metric"],
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+            signal_focus=view["signal_focus"],
+            trajectory_focus=view["trajectory_focus"],
+            coverage_focus=view["coverage_focus"],
+        )
+    return views
+
+
+def _build_demographic_segment_timeseries_views(
+    segments,
+    *,
+    brand_name: str = "",
+    date_preset: str = "all_time",
+    start_date: str = "",
+    end_date: str = "",
+    limit: int = 2,
+):
+    capped_limit = max(1, min(int(limit or 2), 4))
+    focus_views = []
+    for segment in list(segments or [])[:capped_limit]:
+        compact = _compact_demographic_segment(segment)
+        focus_views.append(
+            {
+                **compact,
+                "evidence_summary": _format_demographic_evidence(compact),
+                "timeseries_views": [
+                    {
+                        "label": f"Trend for {compact['segment']}",
+                        "focus_segment": compact["segment"],
+                        "signal": compact["signal"],
+                        "why": "Confirm whether this audience pocket is strengthening, flattening, or decaying across repeated sync windows.",
+                        "timeseries_query": _build_demographic_timeseries_query(
+                            brand_name=brand_name,
+                            group_by="demographic_segment",
+                            metric="roas",
+                            date_preset=date_preset,
+                            start_date=start_date,
+                            end_date=end_date,
+                            focus_value=compact["segment"],
+                        ),
+                    }
+                ],
+            }
+        )
+    return focus_views
+
+
+def _build_demographics_strategy_query(
+    *,
+    brand_name: str,
+    report_template: str,
+    rows: str,
+    columns: str,
+    fill_metric: str,
+    metrics: list[str],
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    query = {
+        "tool": "get_creative_strategy_report",
+        "brand_name": brand_name,
+        "report_template": report_template,
+        "rows": rows,
+        "columns": columns,
+        "status_focus": "all",
+        "metric_preset": "custom",
+        "metrics": list(metrics),
+        "date_preset": date_preset or "all_time",
+    }
+    if fill_metric not in query["metrics"]:
+        query["metrics"].append(fill_metric)
+    if start_date:
+        query["start_date"] = start_date
+    if end_date:
+        query["end_date"] = end_date
+    return query
+
+
+def _build_demographics_strategy_views(
+    *,
+    brand_name: str = "",
+    date_preset: str = "all_time",
+    start_date: str = "",
+    end_date: str = "",
+):
+    views = [
+        {
+            "label": "Audience matrix",
+            "report_template": "demographic-read",
+            "rows": "demographic_age",
+            "columns": "demographic_gender",
+            "fill_metric": "roas",
+            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
+            "why": "Start with the age x gender matrix to confirm where efficiency clusters.",
+        },
+        {
+            "label": "Audience signals",
+            "report_template": "audience-signals",
+            "rows": "demographic_segment",
+            "columns": "demographic_signal",
+            "fill_metric": "roas",
+            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
+            "why": "Separate the strongest opportunity pockets from waste before mixing in creative angles or hooks.",
+        },
+        {
+            "label": "Angle x audience",
+            "report_template": "angle-audience-fit",
+            "rows": "messaging_angle",
+            "columns": "demographic_segment",
+            "fill_metric": "roas",
+            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
+            "why": "Compare which messaging angles win inside each audience pocket before briefing the next test.",
+        },
+        {
+            "label": "Hook x audience",
+            "report_template": "hook-audience-fit",
+            "rows": "hook",
+            "columns": "demographic_segment",
+            "fill_metric": "hook_rate",
+            "metrics": ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"],
+            "why": "Check whether the opening pattern changes by audience segment before rewriting the whole ad.",
+        },
+    ]
+    for view in views:
+        view["strategy_query"] = _build_demographics_strategy_query(
+            brand_name=brand_name,
+            report_template=view["report_template"],
+            rows=view["rows"],
+            columns=view["columns"],
+            fill_metric=view["fill_metric"],
+            metrics=view["metrics"],
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    return views
+
+
+def _brain_learning_status_action(status: str) -> tuple[str, str]:
+    normalized = str(status or "").strip().lower()
+    if normalized == "winner":
+        return "scale", "Scale what just cleared the learning threshold."
+    if normalized in {"fatigued", "loser"}:
+        return "refresh", "Refresh or cut the slice that just fell below the threshold."
+    return "investigate", "Inspect the underlying slice before you brief the next move."
+
+
+def _brain_learning_strategy_query(
+    *,
+    learning: dict[str, Any],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    evidence = learning.get("evidence") or {}
+    dimension = _normalize_strategy_axis(evidence.get("dimension"))
+    kind = str(learning.get("kind") or "").strip().lower()
+    current_status = str(evidence.get("current_status") or "").strip().lower()
+    report_template = "next-tests"
+    rows = "ad_type"
+    columns = "messaging_angle"
+    fill_metric = "roas"
+    metrics = ["spend", "roas", "ctr", "cpa", "conversions", "revenue"]
+
+    if kind == "conclusion":
+        if current_status == "winner":
+            report_template = "creative-winners"
+        elif current_status in {"fatigued", "loser"}:
+            report_template = "fatigue-watch"
+    elif kind == "working":
+        if dimension == "hook":
+            report_template = "hook-performance"
+            rows = "hook"
+            columns = "ad_type"
+            fill_metric = "hook_rate"
+            metrics = ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"]
+        elif dimension == "persona":
+            report_template = "persona-read"
+            rows = "persona"
+            columns = "messaging_angle"
+        elif dimension in {"messaging_angle", "ad_type", "offer_type"}:
+            rows = dimension
+            columns = "ad_type" if dimension != "ad_type" else "messaging_angle"
+    elif kind == "watch":
+        report_template = "fatigue-watch"
+        if dimension in {
+            "demographic_age",
+            "demographic_gender",
+            "demographic_segment",
+            "demographic_signal",
+        }:
+            report_template = "angle-audience-fit"
+            rows = "messaging_angle"
+            columns = "demographic_segment"
+        elif dimension == "hook":
+            rows = "hook"
+            columns = "ad_type"
+            fill_metric = "hook_rate"
+            metrics = ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"]
+        elif dimension:
+            rows = dimension
+            columns = "ad_type" if dimension != "ad_type" else "messaging_angle"
+    elif kind == "audience":
+        report_template = "angle-audience-fit"
+        rows = "messaging_angle"
+        columns = "demographic_segment"
+    elif kind == "gap":
+        report_template = "coverage-gaps"
+        if dimension in {"hook", "persona", "offer_type", "messaging_angle", "ad_type"}:
+            rows = dimension
+            columns = "ad_type" if dimension != "ad_type" else "messaging_angle"
+
+    query = _build_demographics_strategy_query(
+        brand_name=brand_name,
+        report_template=report_template,
+        rows=rows,
+        columns=columns,
+        fill_metric=fill_metric,
+        metrics=metrics,
+        date_preset=date_preset,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    query["focus_value"] = evidence.get("value") or ""
+    if current_status:
+        query["focus_status"] = current_status
+    return query
+
+
+def _brain_learning_timeseries_query(
+    *,
+    learning: dict[str, Any],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    watch_metric: str,
+    watch_signal_focus: str,
+    watch_trajectory_focus: str,
+    watch_coverage_focus: str,
+    watch_minimum_points: Any,
+    watch_minimum_calendar_days: Any,
+    watch_maximum_gap_days: Any,
+    fatigue_decay_threshold: Any,
+) -> dict[str, Any]:
+    evidence = learning.get("evidence") or {}
+    kind = str(learning.get("kind") or "").strip().lower()
+    source = str(learning.get("source") or "").strip().lower()
+    if kind != "watch" or source != "timeseries":
+        return {}
+    group_by = _normalize_strategy_axis(evidence.get("dimension"))
+    if not group_by or group_by in {"matrix_cell", "creative_conclusion"}:
+        return {}
+    query = {
+        "tool": "get_performance_timeseries",
+        "brand_name": brand_name,
+        "group_by": group_by,
+        "metric": str(evidence.get("timeseries_metric") or watch_metric or "roas"),
+        "date_preset": date_preset or "last_30d",
+        "signal_focus": watch_signal_focus or "all",
+        "trajectory_focus": watch_trajectory_focus or "all",
+        "coverage_focus": watch_coverage_focus or "all",
+        "minimum_points": watch_minimum_points,
+        "minimum_calendar_days": watch_minimum_calendar_days,
+        "maximum_gap_days": watch_maximum_gap_days,
+        "fatigue_decay_threshold": fatigue_decay_threshold,
+        "focus_value": evidence.get("value") or "",
+    }
+    if start_date:
+        query["start_date"] = start_date
+    if end_date:
+        query["end_date"] = end_date
+    return query
+
+
+def _build_brain_learning_decision_queue(
+    *,
+    learnings: list[dict[str, Any]],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    watch_metric: str = "roas",
+    watch_signal_focus: str = "all",
+    watch_trajectory_focus: str = "all",
+    watch_coverage_focus: str = "all",
+    watch_minimum_points: Any = 0,
+    watch_minimum_calendar_days: Any = 0,
+    watch_maximum_gap_days: Any = 0,
+    fatigue_decay_threshold: Any = 0.18,
+    limit: int,
+) -> list[dict[str, Any]]:
+    queue = []
+    for rank, learning in enumerate(list(learnings or [])[:limit], start=1):
+        evidence = learning.get("evidence") or {}
+        kind = str(learning.get("kind") or "").strip().lower()
+        if kind == "conclusion":
+            action, why = _brain_learning_status_action(evidence.get("current_status") or "")
+        elif kind == "working":
+            action, why = "scale", "Double down on the pattern that is already clearing benchmark."
+        elif kind == "watch":
+            action, why = "refresh", "Open the fatigue view before this pattern absorbs more spend."
+        elif kind == "audience":
+            action, why = "segment", "Open the mixed audience matrix before broadening spend."
+        elif kind == "gap":
+            action, why = "test", "Brief the missing pattern instead of repeating a covered cell."
+        else:
+            action, why = "investigate", "Inspect the learning in Strategy before acting."
+        queue.append(
+            {
+                "rank": rank,
+                "kind": kind,
+                "action": action,
+                "title": learning.get("title") or "",
+                "recommendation": learning.get("action") or learning.get("summary") or "",
+                "evidence_summary": learning.get("summary") or "",
+                "why": why,
+                "strategy_query": _brain_learning_strategy_query(
+                    learning=learning,
+                    brand_name=brand_name,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date,
+                ),
+                "timeseries_query": _brain_learning_timeseries_query(
+                    learning=learning,
+                    brand_name=brand_name,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date,
+                    watch_metric=watch_metric,
+                    watch_signal_focus=watch_signal_focus,
+                    watch_trajectory_focus=watch_trajectory_focus,
+                    watch_coverage_focus=watch_coverage_focus,
+                    watch_minimum_points=watch_minimum_points,
+                    watch_minimum_calendar_days=watch_minimum_calendar_days,
+                    watch_maximum_gap_days=watch_maximum_gap_days,
+                    fatigue_decay_threshold=fatigue_decay_threshold,
+                ),
+            }
+        )
+    return queue
+
+
+def _build_brain_learning_strategy_views(
+    *,
+    learnings: list[dict[str, Any]],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    views = []
+    for learning in list(learnings or [])[:limit]:
+        evidence = learning.get("evidence") or {}
+        views.append(
+            {
+                "learning_id": learning.get("id") or "",
+                "kind": learning.get("kind") or "",
+                "title": learning.get("title") or "",
+                "focus_value": evidence.get("value") or "",
+                "why": learning.get("action") or learning.get("summary") or "",
+                "strategy_query": _brain_learning_strategy_query(
+                    learning=learning,
+                    brand_name=brand_name,
+                    date_preset=date_preset,
+                    start_date=start_date,
+                    end_date=end_date,
+                ),
+            }
+        )
+    return views
+
+
+def _build_brain_learning_timeseries_views(
+    *,
+    learnings: list[dict[str, Any]],
+    brand_name: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+    watch_metric: str,
+    watch_signal_focus: str,
+    watch_trajectory_focus: str,
+    watch_coverage_focus: str,
+    watch_minimum_points: Any,
+    watch_minimum_calendar_days: Any,
+    watch_maximum_gap_days: Any,
+    fatigue_decay_threshold: Any,
+    limit: int,
+) -> list[dict[str, Any]]:
+    views = []
+    for learning in list(learnings or [])[:limit]:
+        query = _brain_learning_timeseries_query(
+            learning=learning,
+            brand_name=brand_name,
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+            watch_metric=watch_metric,
+            watch_signal_focus=watch_signal_focus,
+            watch_trajectory_focus=watch_trajectory_focus,
+            watch_coverage_focus=watch_coverage_focus,
+            watch_minimum_points=watch_minimum_points,
+            watch_minimum_calendar_days=watch_minimum_calendar_days,
+            watch_maximum_gap_days=watch_maximum_gap_days,
+            fatigue_decay_threshold=fatigue_decay_threshold,
+        )
+        if not query:
+            continue
+        evidence = learning.get("evidence") or {}
+        views.append(
+            {
+                "learning_id": learning.get("id") or "",
+                "kind": learning.get("kind") or "",
+                "title": learning.get("title") or "",
+                "focus_value": evidence.get("value") or "",
+                "why": learning.get("action") or learning.get("summary") or "",
+                "timeseries_query": query,
+            }
+        )
+    return views
+
+
+async def _export_demographics_context(args: dict) -> list[TextContent]:
+    payload = await _get_demographics_performance(args)
+    if not payload:
+        return payload
+    raw = getattr(payload[0], "text", "")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return payload
+    if not isinstance(parsed, dict):
+        return payload
+
+    requested_limit = args.get("limit", 3)
+    try:
+        limit = max(1, int(requested_limit))
+    except (TypeError, ValueError):
+        return _err("limit must be an integer")
+
+    opportunities = [
+        _compact_demographic_segment(segment)
+        for segment in list(parsed.get("opportunities") or [])[:limit]
+        if isinstance(segment, dict)
+    ]
+    waste = [
+        _compact_demographic_segment(segment)
+        for segment in list(parsed.get("waste") or [])[:limit]
+        if isinstance(segment, dict)
+    ]
+    totals = dict(parsed.get("totals") or {})
+    date_window = parsed.get("date_window") or "All time"
+    brand_name = parsed.get("brand_name", args.get("brand_name", ""))
+    decision_queue = _build_demographics_decision_queue(
+        parsed.get("opportunities") or [],
+        parsed.get("waste") or [],
+        limit=limit,
+    )
+    summary_text = (
+        f"{brand_name or 'Audience read'}: {len(opportunities)} opportunity "
+        f"segment{'s' if len(opportunities) != 1 else ''}, {len(waste)} waste "
+        f"segment{'s' if len(waste) != 1 else ''}, "
+        f"{totals.get('roas', 0)}x blended ROAS on ${totals.get('spend', 0)} spend "
+        f"for {date_window}."
+    )
+    export = {
+        "tool": "export_demographics_context",
+        "brand_name": brand_name,
+        "date_preset": parsed.get("date_preset", args.get("date_preset", "all_time")),
+        "start_date": parsed.get("start_date", args.get("start_date", "")),
+        "end_date": parsed.get("end_date", args.get("end_date", "")),
+        "date_window": date_window,
+        "total_segments": parsed.get("total_segments", 0),
+        "totals": totals,
+        "opportunity_count": len(parsed.get("opportunities") or []),
+        "waste_count": len(parsed.get("waste") or []),
+        "top_opportunities": opportunities,
+        "top_waste": waste,
+        "decision_queue": decision_queue,
+        "segment_strategy_views": {
+            "opportunities": _build_demographic_focus_views(
+                parsed.get("opportunities") or [],
+                brand_name=brand_name,
+                date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+                start_date=parsed.get("start_date", args.get("start_date", "")),
+                end_date=parsed.get("end_date", args.get("end_date", "")),
+                limit=limit,
+            ),
+            "waste": _build_demographic_focus_views(
+                parsed.get("waste") or [],
+                brand_name=brand_name,
+                date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+                start_date=parsed.get("start_date", args.get("start_date", "")),
+                end_date=parsed.get("end_date", args.get("end_date", "")),
+                limit=limit,
+            ),
+        },
+        "segment_timeseries_views": {
+            "opportunities": _build_demographic_segment_timeseries_views(
+                parsed.get("opportunities") or [],
+                brand_name=brand_name,
+                date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+                start_date=parsed.get("start_date", args.get("start_date", "")),
+                end_date=parsed.get("end_date", args.get("end_date", "")),
+                limit=limit,
+            ),
+            "waste": _build_demographic_segment_timeseries_views(
+                parsed.get("waste") or [],
+                brand_name=brand_name,
+                date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+                start_date=parsed.get("start_date", args.get("start_date", "")),
+                end_date=parsed.get("end_date", args.get("end_date", "")),
+                limit=limit,
+            ),
+        },
+        "suggested_strategy_views": _build_demographics_strategy_views(
+            brand_name=brand_name,
+            date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+            start_date=parsed.get("start_date", args.get("start_date", "")),
+            end_date=parsed.get("end_date", args.get("end_date", "")),
+        ),
+        "suggested_timeseries_views": _build_demographic_timeseries_views(
+            brand_name=brand_name,
+            date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
+            start_date=parsed.get("start_date", args.get("start_date", "")),
+            end_date=parsed.get("end_date", args.get("end_date", "")),
+        ),
+        "summary_text": summary_text,
+        "prompt": (
+            "Use these audience signals as the source of truth for the next "
+            "creative or targeting decision. Scale the strongest opportunity "
+            "segments, cut or isolate waste, then open the per-segment mixed "
+            "creative x audience views and audience trend queries to see which "
+            "hooks or angles fit each pocket and whether the signal is holding."
+        ),
+    }
+    return _text(export)
 
 
 async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
@@ -1617,7 +3935,7 @@ async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
         "brand_name": brand_name,
         "persist": str(args.get("persist", True)).lower(),
     }
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=180.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/brand-taxonomy/generate",
             data=data,
@@ -1629,6 +3947,7 @@ async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
 
 async def _scan_competitor(args: dict) -> list[TextContent]:
     body = {
+        "brand_name": args.get("brand_name"),
         "page_id": args.get("page_id"),
         "page_name": args.get("page_name"),
         "keyword": args.get("keyword"),
@@ -1636,9 +3955,22 @@ async def _scan_competitor(args: dict) -> list[TextContent]:
         "limit": args.get("limit", 25),
         "analyze_creatives": args.get("analyze_creatives", True),
     }
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=300.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/competitors/scan", json=body, headers=_headers()
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_competitor_scan_history(args: dict) -> list[TextContent]:
+    params = {
+        "brand_name": args.get("brand_name", ""),
+        "limit": args.get("limit", 10),
+    }
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(
+            f"{API_URL}/competitors/history", params=params, headers=_headers()
         )
         resp.raise_for_status()
         return _text(resp.json())
@@ -1656,7 +3988,7 @@ async def _import_competitor_ads(args: dict) -> list[TextContent]:
         "ads": ads,
         "analyses": analyses,
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/competitors/import", json=body, headers=_headers()
         )

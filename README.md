@@ -2,19 +2,26 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
+Status note (2026-06-15): PyPI still serves `creative-tagger-mcp==0.1.0`.
+This README tracks the local `0.2.0` branch surface in this repo. Tools such
+as strategy reports, brain learnings, and performance timeseries require the
+matching API branch and should be treated as pre-publish until `0.2.0` is live
+on PyPI and the corresponding API changes are deployed.
+
 Your AI of choice gets:
 
 - **Taxonomy** — 28 standardized dimensions for any ad creative (video, image, carousel, landing page, email)
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
+- **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
 - **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
 
 ## Quick Start
 
 ```bash
-# Install
+# Install (PyPI currently resolves to 0.1.0)
 pip install creative-tagger-mcp
 
 # Run against production (default)
@@ -124,9 +131,18 @@ Live fetch of the complete taxonomy or a single dimension.
 ```
 
 ### `list_library`
-Browse saved analyses. Search by filename or hook, filter by format.
+Browse saved analyses. Search by filename or hook, filter by format, messaging
+angle, emotion, CTA, talent, offer, audio type, or seasonality, and sort by
+joined performance.
 ```
-{ "limit": 50, "search": "BFCM", "format": "video" }
+{
+  "limit": 50,
+  "search": "BFCM",
+  "format": "video",
+  "angle": "Social Proof",
+  "talent": "Founder",
+  "sort": "roas"
+}
 ```
 
 ### `get_library_patterns`
@@ -215,25 +231,209 @@ Use `preview_naming_template` to test a template before saving, and
 Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
 Creative Tagger must have an approved native Meta OAuth connection before
 customer accounts can sync Meta performance.
+Pass `attribution_windows` when the buyer uses a non-default Meta lookback
+window and Creative Tagger should match Ads Manager exactly.
 ```
-{ "brand_name": "Acme", "date_preset": "last_30d" }
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30d",
+  "attribution_windows": ["7d_click", "1d_view"]
+}
 ```
 
 ### `get_creative_strategy_report`
 Pull the same strategy matrix shown in Creative Tagger Reports. Defaults to
-messaging angles by ad types, with states for next tests, live learning,
+ad types by messaging angles, with states for next tests, live learning,
 winners, losers, fatigue, and gaps. Returns the decision queue plus an
 `agent_context` payload that can be handed directly to an LLM for strategy work.
 Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
-milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score.
+milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score. For
+audience-mode reads, switch the axes to demographic dimensions such as
+`demographic_age` and `demographic_gender`, or use the `demographic-read` or
+`audience-signals` templates. Other built-in templates include
+`creative-winners`, `fatigue-watch`, `coverage-gaps`, `hook-performance`, and
+`persona-read`. For mixed creative × audience reads, keep one creative axis
+such as `messaging_angle`, `ad_type`, `hook`, `persona`, or `offer_type` and
+set the other axis to `demographic_segment` or `demographic_signal`. Add
+`fatigue_minimum_calendar_days` when fatigue should only count after a long
+enough live window, not just after a few close-together synced points. For
+fatigue-aware reads, pass the same embedded watch controls the app/API support:
+`watch_group_by`, `watch_metric`, `watch_signal_focus`,
+`watch_trajectory_focus`, `watch_coverage_focus`, `watch_minimum_points`,
+`watch_minimum_calendar_days`, `watch_maximum_gap_days`, and `watch_limit`.
 
 ```
 {
   "brand_name": "Acme",
   "report_template": "next-tests",
-  "rows": "messaging_angle",
-  "columns": "ad_type",
+  "rows": "ad_type",
+  "columns": "messaging_angle",
   "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"
+}
+```
+
+```json
+{
+  "brand_name": "Acme",
+  "report_template": "demographic-read",
+  "rows": "demographic_age",
+  "columns": "demographic_gender",
+  "metrics": "spend,roas,ctr,cpa,conversions,revenue",
+  "roas_target": 2.5,
+  "fatigue_minimum_calendar_days": 7,
+  "watch_group_by": "hook_type",
+  "watch_metric": "cpa",
+  "watch_signal_focus": "fatigued",
+  "watch_trajectory_focus": "worsening",
+  "watch_coverage_focus": "windowed_history",
+  "watch_minimum_points": 2,
+  "watch_minimum_calendar_days": 7,
+  "watch_maximum_gap_days": 7,
+  "watch_limit": 5,
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-31"
+}
+```
+
+```json
+{
+  "brand_name": "Acme",
+  "report_template": "audience-signals",
+  "rows": "demographic_signal",
+  "columns": "demographic_segment",
+  "metrics": "spend,roas,ctr,cpa,conversions,revenue",
+  "date_preset": "last_30_days"
+}
+```
+
+```json
+{
+  "brand_name": "Acme",
+  "rows": "messaging_angle",
+  "columns": "demographic_segment",
+  "status_focus": "all",
+  "metrics": "spend,roas,ctr,cpa,conversions,revenue",
+  "fatigue_minimum_calendar_days": 7,
+  "date_preset": "last_30_days"
+}
+```
+
+### `get_brain_learnings`
+Read the auto-written Brand Brain learnings generated from performance memory,
+strategy cells, taxonomy winners/watchouts, and audience signals. Returns a
+hero learning, concise stories, and an `agent_context` payload for the next
+brief or strategist prompt. Use `kinds` when an agent only wants a focused slice
+such as `conclusion`, `working,audience`, or `watch`. Add
+`conclusion_statuses` to narrow conclusion stories to `winner`, `fatigued`, or
+`loser` outcomes only, and `conclusion_recency_days` to keep only the most
+recent conclusion window. Use `watch_group_by`, `watch_metric`,
+`watch_signal_focus`, `watch_trajectory_focus`, `watch_coverage_focus`,
+`watch_minimum_points`, `watch_minimum_calendar_days`, `watch_sources`, and
+`fatigue_decay_threshold` when the watchouts should be written from a different
+fatigue lens such as fatigued-only CPA by ad type, weak taxonomy patterns only,
+CTR by hook, or stable ROAS by `demographic_segment`.
+```
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30_days",
+  "minimum_spend": 500,
+  "learning_spend": 1500,
+  "kinds": "conclusion,watch",
+  "conclusion_statuses": "winner,fatigued",
+  "conclusion_recency_days": 21,
+  "watch_group_by": "ad_type",
+  "watch_metric": "cpa",
+  "watch_signal_focus": "fatigued",
+  "watch_trajectory_focus": "worsening",
+  "watch_coverage_focus": "windowed_history",
+  "watch_minimum_points": 3,
+  "watch_minimum_calendar_days": 7,
+  "watch_sources": "timeseries,patterns",
+  "fatigue_decay_threshold": 0.25,
+  "limit": 6
+}
+```
+
+### `save_brain_learnings`
+Persist the current auto-written Brand Brain learnings into saved Brain notes
+for a brand, using the same filtering controls as `get_brain_learnings`. Use
+this after reviewing a conclusion/working/watch/audience/gap slice when the
+user wants the best current learnings saved back into reusable strategist context.
+```
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30_days",
+  "minimum_spend": 500,
+  "learning_spend": 1500,
+  "kinds": "conclusion,watch",
+  "conclusion_statuses": "winner,fatigued",
+  "conclusion_recency_days": 21,
+  "watch_group_by": "ad_type",
+  "watch_metric": "cpa",
+  "watch_signal_focus": "fatigued",
+  "watch_trajectory_focus": "worsening",
+  "watch_coverage_focus": "windowed_history",
+  "watch_minimum_points": 3,
+  "watch_minimum_calendar_days": 7,
+  "watch_sources": "timeseries,patterns",
+  "include_gaps_in_notes": false,
+  "limit": 6
+}
+```
+
+### `get_performance_timeseries`
+Read saved performance curves for fatigue checks without opening the dashboard.
+Returns dated points plus a fatigue signal for each grouped series, using the
+same decay threshold as Creative Tagger's strategy matrix. Group by creative,
+campaign, landing page, `analysis_id`, or audience slices like
+`demographic_age`, `demographic_gender`, `demographic_segment`, and
+`demographic_signal`, and inspect metrics like ROAS, CPA, CTR, CPM, thumbstop,
+completion rate, or funnel score. Use `signal_focus` when an agent only wants
+the current fatigue watchlist or only stable controls, and `trajectory_focus`
+when the agent wants only worsening, improving, flat, or insufficient-data
+series. Use `coverage_focus` to isolate call-ready, gappy, short-window, or
+windowed-history curves. Add `minimum_calendar_days` when fatigue should only
+count after a trend has been live long enough, not just after a few
+close-together points.
+```
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30d",
+  "group_by": "ad_name",
+  "metric": "roas",
+  "signal_focus": "fatigued",
+  "trajectory_focus": "worsening",
+  "coverage_focus": "call_ready",
+  "minimum_spend": 500,
+  "minimum_points": 3,
+  "minimum_calendar_days": 7,
+  "fatigue_decay_threshold": 0.18,
+  "limit": 5
+}
+```
+
+Use `date_preset` for a standard lookback window, or pass explicit
+`start_date` / `end_date` to override it.
+
+### `export_performance_timeseries_context`
+Return the reusable `agent_context` payload from performance time series. Use
+this when another agent needs the fatigue decision queue, summary text, action
+mix, top groups, and prompt-ready export without carrying the full chart payload.
+It accepts the same inputs as `get_performance_timeseries`.
+```
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30d",
+  "group_by": "ad_name",
+  "metric": "roas",
+  "signal_focus": "fatigued",
+  "trajectory_focus": "worsening",
+  "coverage_focus": "call_ready",
+  "minimum_spend": 500,
+  "minimum_points": 3,
+  "minimum_calendar_days": 7,
+  "fatigue_decay_threshold": 0.18,
+  "limit": 5
 }
 ```
 
@@ -260,22 +460,29 @@ performance memory exists.
 
 ### `get_prebuilt_reports`
 Return ready-made Motion-style reports: best hooks, landing pages, messaging angles,
-audiences, offers, CTAs, visual formats, and brand-custom values.
+audiences, offers, CTAs, visual formats, and brand-custom values. Add
+`start_date` / `end_date` when the report should only cover a specific synced
+window.
 ```
 { "brand_name": "Acme", "report_id": "best_hooks", "limit": 8 }
+{ "brand_name": "Acme", "report_id": "best_angles", "start_date": "2026-05-01", "end_date": "2026-05-31", "limit": 8 }
 ```
 
 ### `create_custom_report`
 Build a custom report from selected standard or brand taxonomy dimensions and
 rank the actual matched dimension combinations by ROAS, funnel score, spend,
 CTR, or CPA. Use this for Motion-style views like best hook x landing page x
-offer, founder x hook, audience x offer, or brand segment x product.
+offer, founder x hook, audience x offer, or brand segment x product. Add
+`start_date` and `end_date` when the report should isolate a specific test
+window instead of the full synced history.
 ```
 {
   "brand_name": "Acme",
   "dimensions": ["hook_type", "landing_page", "offer_type"],
   "layer": "all",
-  "metric": "roas"
+  "metric": "roas",
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-31"
 }
 ```
 Rows can include `parts` and `values`, so the agent can explain a winning
@@ -283,9 +490,25 @@ combination instead of treating each tag independently.
 
 ### Saved custom reports
 Save reusable report definitions, list them for a brand, rerun them by id, or
-delete them when they are no longer needed.
+delete them when they are no longer needed. Saved reports can also persist a
+custom `start_date` / `end_date` window for a specific launch or test period,
+plus dashboard-style preset state such as `view_type`, `date_range`,
+`group_by`, `metrics`, `filters`, `sort`, and `saved_metric_preset`.
 ```
-{ "brand_name": "Acme", "name": "Hook + LP + Offer", "dimensions": ["hook_type", "landing_page", "offer_type"] }
+{
+  "brand_name": "Acme",
+  "name": "Hook + LP + Offer",
+  "dimensions": ["hook_type", "landing_page", "offer_type"],
+  "view_type": "matrix",
+  "date_range": "custom",
+  "group_by": "dimension",
+  "metrics": ["spend", "roas", "cpa", "ctr"],
+  "filters": [{"field": "status", "value": "winner"}],
+  "sort": "desc",
+  "saved_metric_preset": "delivery",
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-31"
+}
 { "brand_name": "Acme" }
 { "report_id": 7 }
 ```
@@ -301,9 +524,29 @@ swaps.
 ```
 
 ### `get_demographics_performance`
-Read age x gender performance memory with opportunity and waste flags.
+Read age x gender performance memory with opportunity and waste flags. Use
+`date_preset` for a standard audience window, or `start_date` / `end_date` to
+isolate a specific audience window.
 ```
-{ "brand_name": "Acme" }
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30_days",
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-31"
+}
+```
+
+### `export_demographics_context`
+Return an agent-ready audience context payload from the saved demographics read.
+Use this when another agent needs the top audience opportunities and waste
+segments, blended totals, per-segment mixed creative x audience views, and a
+prompt-ready summary without the full wrapper.
+```
+{
+  "brand_name": "Acme",
+  "date_preset": "last_30_days",
+  "limit": 3
+}
 ```
 
 ### `generate_brand_taxonomy`
@@ -316,12 +559,20 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 ### `scan_competitor`
 Classify a competitor's Meta Ad Library ads and get strategy breakdown.
 ```
-{ "page_name": "Hims & Hers", "limit": 25 }
+{ "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
 ```
 
 Internal competitor-row backfill is also hidden from the default published MCP
 surface. Customer-facing competitor intelligence should use `scan_competitor`
 after native Meta Ad Library access is approved.
+
+### `get_competitor_scan_history`
+Read the saved Market scans/imports for a workspace without re-running Meta Ad
+Library access. Useful when the agent needs the latest saved competitor hooks,
+styles, or scan metadata before drafting briefs.
+```
+{ "brand_name": "Acme", "limit": 6 }
+```
 
 ### `generate_naming`
 Build naming strings from already-classified attributes (rarely needed — `analyze_creative` already includes naming).
