@@ -17,6 +17,12 @@ dependencies = [
     "httpx>=0.28.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.8.0",
+]
+
 [project.scripts]
 creative-tagger-mcp = "creative_tagger_mcp.server:main"
 
@@ -26,3 +32,17 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/creative_tagger_mcp"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# E501 (line length only) ignored where long lines are inherent — server.py's
+# tool schemas and the test file's nested-path assertions. All other rules
+# still enforced. Mirrors the creative-tagger API repo's convention.
+"src/creative_tagger_mcp/server.py" = ["E501"]
+"tests/**" = ["E501"]

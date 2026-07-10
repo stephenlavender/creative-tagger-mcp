@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import ast
 import json
-from types import SimpleNamespace
 import unittest
 from pathlib import Path
-
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "src" / "creative_tagger_mcp" / "server.py"
