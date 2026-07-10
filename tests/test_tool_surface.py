@@ -208,6 +208,29 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(explicit["metrics"], "spend,roas")
         self.assertEqual(explicit["metric_preset"], "scale")
 
+    def test_normalize_strategy_axis_follows_taxonomy_v2_dimension_split(self) -> None:
+        namespace = _load_pure_helpers({"_normalize_strategy_axis"})
+        normalize = namespace["_normalize_strategy_axis"]
+
+        # Taxonomy v2: asset_type (production class), media_type (auto-detected
+        # format), and product are distinct canonical axes — the pre-v2
+        # normalizer collapsed asset_type into ad_type, silently swapping a
+        # different dimension into the visual-format axis.
+        self.assertEqual(normalize("asset_type"), "asset_type")
+        self.assertEqual(normalize("media_type"), "media_type")
+        self.assertEqual(normalize("product"), "product")
+
+        # visual_format is the canonical execution-style key; it resolves to
+        # the API's deprecated ad_type alias (identical sources) because this
+        # normalizer also feeds the watch/timeseries space, which still keys
+        # on ad_type. Legacy spellings resolve the same way.
+        self.assertEqual(normalize("visual_format"), "ad_type")
+        self.assertEqual(normalize("creative_type"), "ad_type")
+        self.assertEqual(normalize("ad_type"), "ad_type")
+
+        self.assertEqual(normalize("angle"), "messaging_angle")
+        self.assertEqual(normalize("hook_type"), "hook")
+
     def test_strategy_params_normalize_template_aliases(self) -> None:
         namespace = _load_pure_helpers(
             {

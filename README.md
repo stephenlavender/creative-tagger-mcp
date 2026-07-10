@@ -129,6 +129,12 @@ Live fetch of the complete taxonomy or a single dimension.
 {}                                # all 28 dimensions
 { "dimension": "hook_type" }      # one dimension
 ```
+Taxonomy v2 splits three dimensions the old model mixed together: **media type**
+(the auto-detected format — static image, video, carousel; never AI-classified),
+**asset type** (production class: UGC, Studio, High Production, …), and
+**visual format** (execution style: Talking Head, Demo, Testimonial, …).
+`Static Image` and `Carousel` are media types and are no longer valid
+`visual_format` values. `messaging_angle` is the canonical angle dimension.
 
 ### `list_library`
 Browse saved analyses. Search by filename or hook, filter by format, messaging
@@ -252,8 +258,12 @@ audience-mode reads, switch the axes to demographic dimensions such as
 `demographic_age` and `demographic_gender`, or use the `demographic-read` or
 `audience-signals` templates. Other built-in templates include
 `creative-winners`, `fatigue-watch`, `coverage-gaps`, `hook-performance`, and
-`persona-read`. For mixed creative × audience reads, keep one creative axis
-such as `messaging_angle`, `ad_type`, `hook`, `persona`, or `offer_type` and
+`persona-read`. Creative axes follow taxonomy v2: `visual_format` (execution
+style), `asset_type` (production class), and `media_type` (auto-detected
+format) are three separate dimensions, with `ad_type` kept as a deprecated
+alias for `visual_format`. For mixed creative × audience reads, keep one
+creative axis such as `messaging_angle`, `visual_format`, `hook`, `persona`,
+or `offer_type` and
 set the other axis to `demographic_segment` or `demographic_signal`. Add
 `fatigue_minimum_calendar_days` when fatigue should only count after a long
 enough live window, not just after a few close-together synced points. For

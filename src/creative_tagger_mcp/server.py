@@ -185,9 +185,16 @@ def _infer_strategy_template(
 def _normalize_strategy_axis(value: Any) -> str:
     axis = str(value or "").strip().lower().replace("-", "_")
     aliases = {
+        # Taxonomy v2: asset_type (production class), media_type (auto-detected
+        # format), and product are distinct canonical axes — they pass through
+        # untouched and must never collapse into the visual-format axis (the
+        # pre-v2 coalesce mixed three dimensions under one "ad_type" label).
+        # visual_format is the canonical execution-style key, but the API's
+        # watch/timeseries space still groups by the deprecated "ad_type"
+        # alias (same sources), so visual_format resolves to it here — this
+        # normalizer also feeds get_performance_timeseries group_by.
         "creative_type": "ad_type",
         "visual_format": "ad_type",
-        "asset_type": "ad_type",
         "ad": "ad_type",
         "adtype": "ad_type",
         "creative": "ad_type",
@@ -345,7 +352,11 @@ async def list_tools() -> list[Tool]:
                 "Get the complete Creative Tagger taxonomy — all 28 dimensions with "
                 "every enum value. Pulled live from the API so it's always current. "
                 "Use this before analyze_creative when you want to know the full "
-                "vocabulary the system understands."
+                "vocabulary the system understands. Taxonomy v2: media type (the "
+                "auto-detected format — static image, video, carousel), asset type "
+                "(production class), and visual format (execution style) are three "
+                "separate dimensions; 'Static Image' and 'Carousel' are media types, "
+                "not visual_format values."
             ),
             inputSchema={
                 "type": "object",
@@ -892,7 +903,9 @@ async def list_tools() -> list[Tool]:
             name="get_creative_strategy_report",
             description=(
                 "Return the strategist matrix for deciding what to test next on Meta. "
-                "Defaults to ad_type rows by messaging_angle columns, with text and "
+                "Defaults to ad_type rows (deprecated alias for visual_format — "
+                "taxonomy v2 splits visual_format, asset_type, and media_type into "
+                "three separate axes) by messaging_angle columns, with text and "
                 "color-coded states for next tests, live learning, winners, losers, "
                 "fatigue, and gaps. Also supports audience-mode matrices with "
                 "demographic_age, demographic_gender, demographic_segment, and "
@@ -927,19 +940,26 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "default": "ad_type",
                         "description": (
-                            "Matrix row dimension, e.g. ad_type, messaging_angle, format, "
-                            "hook, persona, offer_type, demographic_age, demographic_gender, "
-                            "demographic_segment, or demographic_signal. Combine a creative "
-                            "dimension here with a demographic column for mixed audience reads."
+                            "Matrix row dimension, e.g. visual_format (execution style), "
+                            "asset_type (production class), media_type (auto-detected "
+                            "format), messaging_angle, format, hook, persona, product, "
+                            "offer_type, demographic_age, demographic_gender, "
+                            "demographic_segment, or demographic_signal. Taxonomy v2 "
+                            "splits media type, asset type, and visual format into three "
+                            "separate axes; ad_type is a deprecated alias for "
+                            "visual_format. Combine a creative dimension here with a "
+                            "demographic column for mixed audience reads."
                         ),
                     },
                     "columns": {
                         "type": "string",
                         "default": "messaging_angle",
                         "description": (
-                            "Matrix column dimension, e.g. messaging_angle, ad_type, format, "
-                            "hook, persona, offer_type, demographic_gender, demographic_age, "
-                            "demographic_segment, or demographic_signal. Set one axis to a "
+                            "Matrix column dimension, e.g. messaging_angle, visual_format, "
+                            "asset_type, media_type, format, hook, persona, product, "
+                            "offer_type, demographic_gender, demographic_age, "
+                            "demographic_segment, or demographic_signal (ad_type is a "
+                            "deprecated alias for visual_format). Set one axis to a "
                             "creative tag and the other to a demographic axis for a mixed "
                             "creative x audience matrix."
                         ),
