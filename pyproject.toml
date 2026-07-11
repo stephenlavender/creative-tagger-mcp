@@ -17,6 +17,12 @@ dependencies = [
     "httpx>=0.28.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+]
+
 [project.scripts]
 creative-tagger-mcp = "creative_tagger_mcp.server:main"
 
