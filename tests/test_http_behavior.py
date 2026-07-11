@@ -17,8 +17,11 @@ Coverage:
 - error handling: 401 / 429 / 500 (JSON and non-JSON bodies), and malformed
   JSON on an otherwise-200 response, all resolve to a clean single
   TextContent error - never a raised exception/traceback
-- timeout behavior: ReadTimeout / ConnectTimeout / PoolTimeout / ConnectError
-  are all caught by call_tool() and turned into clean tool errors
+- timeout behavior: ReadTimeout / ConnectTimeout / PoolTimeout are all caught
+  by call_tool()'s dedicated `except httpx.TimeoutException` branch and get
+  the same friendly, actionable message regardless of the underlying
+  exception's own text (mirroring the sibling ConnectError branch); a
+  message-less timeout no longer degrades to an uninformative bare "Error: "
 """
 
 from __future__ import annotations
@@ -601,12 +604,18 @@ def test_call_tool_error_statuses_never_raise_out_of_the_dispatcher(mock_api, st
 # ---------------------------------------------------------------------------
 
 
+TIMEOUT_MESSAGE = (
+    "Error: Timed out waiting for a response from http://mock.local. "
+    "The API may be slow or unreachable."
+)
+
+
 def test_call_tool_read_timeout_is_caught_cleanly(mock_api):
     mock_api.queue(
         lambda req: httpx.ReadTimeout("The read operation timed out", request=req)
     )
     result = run(server.call_tool("list_library", {}))
-    assert as_text(result) == "Error: The read operation timed out"
+    assert as_text(result) == TIMEOUT_MESSAGE
 
 
 def test_call_tool_connect_timeout_is_caught_cleanly(mock_api):
@@ -614,13 +623,13 @@ def test_call_tool_connect_timeout_is_caught_cleanly(mock_api):
         lambda req: httpx.ConnectTimeout("Connection timed out", request=req)
     )
     result = run(server.call_tool("list_library", {}))
-    assert as_text(result) == "Error: Connection timed out"
+    assert as_text(result) == TIMEOUT_MESSAGE
 
 
 def test_call_tool_pool_timeout_is_caught_cleanly(mock_api):
     mock_api.queue(lambda req: httpx.PoolTimeout("Pool timed out", request=req))
     result = run(server.call_tool("list_library", {}))
-    assert as_text(result) == "Error: Pool timed out"
+    assert as_text(result) == TIMEOUT_MESSAGE
 
 
 def test_call_tool_connect_error_returns_friendly_actionable_message(mock_api):
@@ -632,20 +641,23 @@ def test_call_tool_connect_error_returns_friendly_actionable_message(mock_api):
     )
 
 
-def test_read_timeout_with_no_message_is_caught_but_uninformative(mock_api):
-    """Documents a real (low-severity) gap: httpcore/httpx frequently raise
-    timeout exceptions with an empty message on genuine socket timeouts. When
-    that happens here, call_tool()'s generic `except Exception as e: return
-    _err(str(e))` still catches it (no traceback reaches the caller) but the
-    resulting tool error is just "Error: " with no indication a timeout
-    occurred. This test locks in the current (safe-but-unhelpful) behavior;
-    if server.py is changed to add a dedicated
-    `except httpx.TimeoutException` branch with a friendly message (mirroring
-    the ConnectError branch), update this assertion to match the new text.
+def test_read_timeout_with_no_message_still_gets_a_helpful_error(mock_api):
+    """Regression guard for a defect found while writing this suite:
+    httpcore/httpx frequently raise timeout exceptions with an empty message
+    on genuine socket timeouts. Before call_tool() had a dedicated
+    `except httpx.TimeoutException` branch, an empty-message ReadTimeout fell
+    through to the generic `except Exception as e: return _err(str(e))` and
+    produced an uninformative "Error: " with zero signal a timeout occurred.
+
+    Now TimeoutException is caught before the generic Exception fallback
+    (and ordering relative to the sibling ConnectError branch doesn't
+    matter - see test_call_tool_connect_error_returns_friendly_actionable_message
+    for proof that branch is untouched), so the friendly message always wins
+    regardless of whether the underlying exception carried any text at all.
     """
     mock_api.queue(lambda req: httpx.ReadTimeout("", request=req))
     result = run(server.call_tool("list_library", {}))
-    assert as_text(result) == "Error: "
+    assert as_text(result) == TIMEOUT_MESSAGE
 
 
 # ---------------------------------------------------------------------------

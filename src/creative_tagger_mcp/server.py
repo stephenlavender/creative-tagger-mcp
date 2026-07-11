@@ -2238,6 +2238,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             f"Cannot connect to Creative Tagger API at {API_URL}. "
             "Set CREATIVE_TAGGER_URL or check the API is running."
         )
+    except httpx.TimeoutException:
+        return _err(
+            f"Timed out waiting for a response from {API_URL}. "
+            "The API may be slow or unreachable."
+        )
     except Exception as e:
         return _err(str(e))
 
