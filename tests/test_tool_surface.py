@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "src" / "creative_tagger_mcp" / "server.py"
+README = ROOT / "README.md"
 
 PUBLIC_EXPECTED_TOOLS = {
     "analyze_creative",
@@ -87,6 +88,19 @@ class ToolSurfaceTest(unittest.TestCase):
     def test_package_version_matches_v2_surface(self) -> None:
         init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
         self.assertIn('__version__ = "0.2.0"', init_file.read_text())
+
+    def test_tool_copy_uses_current_taxonomy_dimension_count(self) -> None:
+        source = SERVER.read_text()
+        readme = README.read_text()
+
+        self.assertIn("all 21 dimensions", source)
+        self.assertIn("complete 21-dimension classification", source)
+        self.assertNotIn("28-dimension", source)
+        self.assertNotIn("all 28 dimensions", source)
+        self.assertIn("21 standardized dimensions", readme)
+        self.assertIn("https://api.creativetagger.ai/mcp", readme)
+        self.assertIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
+        self.assertNotIn("28 dimensions", readme)
 
     def test_publish_workflow_verifies_release_before_upload(self) -> None:
         workflow = ROOT / ".github" / "workflows" / "publish.yml"

@@ -349,7 +349,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_taxonomy",
             description=(
-                "Get the complete Creative Tagger taxonomy — all 28 dimensions with "
+                "Get the complete Creative Tagger taxonomy — all 21 dimensions with "
                 "every enum value. Pulled live from the API so it's always current. "
                 "Use this before analyze_creative when you want to know the full "
                 "vocabulary the system understands. Taxonomy v2: media type (the "
@@ -463,7 +463,7 @@ async def list_tools() -> list[Tool]:
             name="get_analysis",
             description=(
                 "Get the full analysis result for a single saved library item by ID. "
-                "Use after list_library when you need the complete 28-dimension classification "
+                "Use after list_library when you need the complete 21-dimension classification "
                 "(list_library returns a summary; this returns the full JSON)."
             ),
             inputSchema={
