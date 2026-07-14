@@ -107,6 +107,15 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("_project_version", source)
         self.assertNotIn("import tomli", source)
 
+    def test_release_smoke_materializes_entry_points_for_python_312(self) -> None:
+        smoke = ROOT / "scripts" / "smoke_release.py"
+        source = smoke.read_text()
+
+        # Python 3.12's EntryPoints integer indexing is a name lookup, not a
+        # sequence lookup. Materializing the selected collection keeps the
+        # release assertion portable across every supported Python version.
+        self.assertIn("entry_points = list(metadata.entry_points().select(", source)
+
     def test_generate_naming_matches_v1_api_shape(self) -> None:
         namespace = _load_pure_helpers({"_generate_naming", "_sanitize", "_ratio", "_join"})
 
