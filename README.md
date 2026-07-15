@@ -136,13 +136,17 @@ Results auto-save to the user's library.
 
 ### `get_taxonomy`
 Read taxonomy v2's versioned vocabulary or one dimension. The package returns
-16 controlled dimensions (the 14 enum-backed attributes, media type, and aspect
-ratio) plus the two intentionally dynamic, brand-specific dimensions. It does
-not infer enums from OpenAPI: several valid classification fields are strings in
-that schema, so schema discovery would silently return an incomplete taxonomy.
+15 controlled dimensions, one derived/open `aspect_ratio` dimension, and two
+intentionally dynamic, brand-specific dimensions. Aspect ratio includes common
+canonical examples but sets `allow_other_values: true`: the API may derive any
+reduced `WxH` ratio (such as `3x2` or `300x157`) or preserve a `W:H` ratio for
+long video. The package does not infer enums from OpenAPI: several valid
+classification fields are strings in that schema, so schema discovery would
+silently return an incomplete taxonomy.
 ```
-{}                                # all controlled + dynamic dimensions
+{}                                # all controlled + derived/open + dynamic dimensions
 { "dimension": "hook_type" }      # one dimension
+{ "dimension": "aspect_ratio" }   # examples; other derived values remain valid
 ```
 Taxonomy v2 splits three dimensions the old model mixed together: **media type**
 (the auto-detected format — static image, video, carousel; never AI-classified),

@@ -183,8 +183,33 @@ CONTROLLED_DIMENSIONS: dict[str, tuple[str, ...]] = {
         "Limited Time",
         "Clearance",
     ),
-    "aspect_ratio": ("1x1", "4x5", "5x4", "9x16", "16x9", "1.91x1"),
     "duration": ("6s", "15s", "30s", "60s", "90s+"),
+}
+
+# Aspect ratio is derived from the source media rather than selected from an
+# enum.  The API can return any reduced width/height ratio (for example 3x2 or
+# 300x157), and long-video analysis can preserve colon-separated ratios.  Keep
+# useful examples without falsely rejecting other valid derived values.
+DERIVED_OPEN_DIMENSIONS: dict[str, dict[str, object]] = {
+    "aspect_ratio": {
+        "canonical_values": (
+            "1x1",
+            "4x5",
+            "5x4",
+            "9x16",
+            "16x9",
+            "1.91x1",
+            "3x2",
+            "300x157",
+            "9:16",
+        ),
+        "allow_other_values": True,
+        "description": (
+            "Derived from source-media dimensions or runtime metadata. Values are "
+            "not limited to the canonical examples and may use reduced WxH or W:H "
+            "forms."
+        ),
+    },
 }
 
 DYNAMIC_DIMENSIONS: dict[str, str] = {
@@ -200,14 +225,25 @@ DYNAMIC_DIMENSIONS: dict[str, str] = {
 
 
 def taxonomy_payload() -> dict[str, object]:
-    """Return a JSON-safe copy of the complete controlled/dynamic vocabulary."""
+    """Return a JSON-safe copy of the complete taxonomy vocabulary."""
+
+    derived_open_dimensions = {
+        name: {
+            "canonical_values": list(spec["canonical_values"]),
+            "allow_other_values": spec["allow_other_values"],
+            "description": spec["description"],
+        }
+        for name, spec in DERIVED_OPEN_DIMENSIONS.items()
+    }
 
     return {
         "taxonomy_version": TAXONOMY_VERSION,
         "controlled_dimensions": {
             name: list(values) for name, values in CONTROLLED_DIMENSIONS.items()
         },
+        "derived_open_dimensions": derived_open_dimensions,
         "dynamic_dimensions": dict(DYNAMIC_DIMENSIONS),
         "controlled_dimension_count": len(CONTROLLED_DIMENSIONS),
+        "derived_open_dimension_count": len(DERIVED_OPEN_DIMENSIONS),
         "dynamic_dimension_count": len(DYNAMIC_DIMENSIONS),
     }

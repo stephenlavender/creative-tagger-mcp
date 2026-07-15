@@ -168,6 +168,7 @@ import json
 
 import creative_tagger_mcp
 from creative_tagger_mcp import server
+from creative_tagger_mcp.taxonomy import taxonomy_payload
 
 expected_tools = {sorted(EXPECTED_TOOLS)!r}
 dist_version = metadata.version("creative-tagger-mcp")
@@ -177,6 +178,8 @@ entry_points = list(metadata.entry_points().select(
 ))
 tools = asyncio.run(server.list_tools())
 tool_names = sorted(tool.name for tool in tools)
+tool_descriptions = {{tool.name: tool.description for tool in tools}}
+taxonomy = taxonomy_payload()
 
 assert creative_tagger_mcp.__version__ == {expected_version!r}
 assert dist_version == {expected_version!r}
@@ -186,11 +189,24 @@ assert tool_names == expected_tools
 internal_backfill_tools = {sorted(INTERNAL_BACKFILL_TOOLS)!r}
 assert not (set(internal_backfill_tools) & set(tool_names))
 assert server.API_URL == "https://api.creativetagger.ai"
+assert taxonomy["controlled_dimension_count"] == 15
+assert taxonomy["derived_open_dimension_count"] == 1
+assert taxonomy["dynamic_dimension_count"] == 2
+assert "aspect_ratio" not in taxonomy["controlled_dimensions"]
+aspect_ratio = taxonomy["derived_open_dimensions"]["aspect_ratio"]
+assert aspect_ratio["allow_other_values"] is True
+assert "300x157" in aspect_ratio["canonical_values"]
+assert "derived/open aspect-ratio dimension" in tool_descriptions["get_taxonomy"]
+assert "brand presence" not in tool_descriptions["analyze_creative"]
+assert "social proof" not in tool_descriptions["analyze_creative"].lower()
 
 print(json.dumps({{
     "version": dist_version,
     "entry_point": entry_points[0].value,
     "tool_count": len(tool_names),
+    "controlled_dimension_count": taxonomy["controlled_dimension_count"],
+    "derived_open_dimension_count": taxonomy["derived_open_dimension_count"],
+    "dynamic_dimension_count": taxonomy["dynamic_dimension_count"],
     "api_url": server.API_URL,
 }}))
 """

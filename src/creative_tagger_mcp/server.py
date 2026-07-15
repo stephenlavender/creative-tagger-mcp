@@ -28,6 +28,7 @@ from mcp.types import TextContent, Tool
 
 from creative_tagger_mcp.taxonomy import (
     CONTROLLED_DIMENSIONS,
+    DERIVED_OPEN_DIMENSIONS,
     DYNAMIC_DIMENSIONS,
     TAXONOMY_VERSION,
     taxonomy_payload,
@@ -287,9 +288,10 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Analyze any ad creative (image, video, carousel, landing page, email) "
                 "and return structured classification across 21 dimensions: "
-                "hook type, messaging angle, creative type, visual style, talent, CTA, "
-                "emotion, production type, offer type, social proof, brand presence, "
-                "seasonality, audio attributes, and more. Also generates standardized "
+                "media type, asset type, visual format, visual style, talent and talent "
+                "demographics, hook type, messaging angle, audience, CTA, emotion, "
+                "audio type, voiceover tone, seasonality, offer type, aspect ratio, "
+                "duration, and more. Also generates standardized "
                 "naming conventions. Provide one of: file_path, url, or html_content."
             ),
             inputSchema={
@@ -356,8 +358,9 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_taxonomy",
             description=(
-                "Get Creative Tagger taxonomy v2's controlled vocabulary plus its "
-                "two dynamic, brand-specific dimensions. The package ships a "
+                "Get Creative Tagger taxonomy v2's 15 controlled dimensions, one "
+                "derived/open aspect-ratio dimension, and two dynamic, brand-specific "
+                "dimensions. The package ships a "
                 "versioned vocabulary because the API schema does not expose enums "
                 "for every classification field. Use this before analyze_creative "
                 "when you want to know the vocabulary the system understands. "
@@ -2356,6 +2359,18 @@ async def _get_taxonomy(args: dict) -> list[TextContent]:
                 "values": list(CONTROLLED_DIMENSIONS[normalized]),
             }
         )
+    if normalized in DERIVED_OPEN_DIMENSIONS:
+        spec = DERIVED_OPEN_DIMENSIONS[normalized]
+        return _text(
+            {
+                "taxonomy_version": TAXONOMY_VERSION,
+                "dimension": normalized,
+                "kind": "derived_open",
+                "canonical_values": list(spec["canonical_values"]),
+                "allow_other_values": spec["allow_other_values"],
+                "description": spec["description"],
+            }
+        )
     if normalized in DYNAMIC_DIMENSIONS:
         return _text(
             {
@@ -2366,7 +2381,9 @@ async def _get_taxonomy(args: dict) -> list[TextContent]:
             }
         )
 
-    available = sorted((*CONTROLLED_DIMENSIONS, *DYNAMIC_DIMENSIONS))
+    available = sorted(
+        (*CONTROLLED_DIMENSIONS, *DERIVED_OPEN_DIMENSIONS, *DYNAMIC_DIMENSIONS)
+    )
     return _err(f"Unknown dimension: {dimension}. Available: {', '.join(available)}")
 
 

@@ -99,9 +99,21 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("21 standardized dimensions", readme)
         self.assertIn("https://api.creativetagger.ai/mcp/", readme)
         self.assertNotIn("https://api.creativetagger.ai/mcp`", readme)
-        self.assertIn("16 controlled dimensions", readme)
+        self.assertIn("15 controlled dimensions", readme)
+        self.assertIn("one derived/open `aspect_ratio` dimension", readme)
+        self.assertIn("`allow_other_values: true`", readme)
         self.assertIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
+
+        tools = _declared_tools()
+        analyze_description = tools["analyze_creative"]["description"]
+        taxonomy_description = tools["get_taxonomy"]["description"]
+        self.assertIn("media type, asset type, visual format", analyze_description)
+        self.assertIn("voiceover tone", analyze_description)
+        self.assertNotIn("brand presence", analyze_description)
+        self.assertNotIn("social proof", analyze_description.lower())
+        self.assertIn("15 controlled dimensions", taxonomy_description)
+        self.assertIn("derived/open aspect-ratio dimension", taxonomy_description)
 
     def test_publish_workflow_verifies_release_before_upload(self) -> None:
         workflow = ROOT / ".github" / "workflows" / "publish.yml"

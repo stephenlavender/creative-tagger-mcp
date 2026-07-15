@@ -480,7 +480,8 @@ def test_get_taxonomy_returns_complete_versioned_vocabulary_without_http(mock_ap
     result = run(server._get_taxonomy({}))
     payload = as_json(result)
     assert payload["taxonomy_version"] == "v2"
-    assert payload["controlled_dimension_count"] == 16
+    assert payload["controlled_dimension_count"] == 15
+    assert payload["derived_open_dimension_count"] == 1
     assert payload["dynamic_dimension_count"] == 2
     assert payload["controlled_dimensions"]["hook_type"][:2] == [
         "Question",
@@ -494,6 +495,11 @@ def test_get_taxonomy_returns_complete_versioned_vocabulary_without_http(mock_ap
         "email",
         "long_video",
     ]
+    aspect_ratio = payload["derived_open_dimensions"]["aspect_ratio"]
+    assert aspect_ratio["allow_other_values"] is True
+    assert "9x16" in aspect_ratio["canonical_values"]
+    assert "300x157" in aspect_ratio["canonical_values"]
+    assert "aspect_ratio" not in payload["controlled_dimensions"]
     assert "messaging_angle" in payload["dynamic_dimensions"]
     assert mock_api.requests == []
 
@@ -516,11 +522,24 @@ def test_get_taxonomy_describes_dynamic_dimension_without_fake_values(mock_api):
     assert mock_api.requests == []
 
 
+def test_get_taxonomy_describes_aspect_ratio_as_derived_and_open(mock_api):
+    result = run(server._get_taxonomy({"dimension": "aspect ratio"}))
+    payload = as_json(result)
+    assert payload["dimension"] == "aspect_ratio"
+    assert payload["kind"] == "derived_open"
+    assert payload["allow_other_values"] is True
+    assert payload["canonical_values"][:3] == ["1x1", "4x5", "5x4"]
+    assert "300x157" in payload["canonical_values"]
+    assert "values" not in payload
+    assert mock_api.requests == []
+
+
 def test_get_taxonomy_unknown_dimension_returns_clean_error(mock_api):
     result = run(server._get_taxonomy({"dimension": "not_a_dimension"}))
     text = as_text(result)
     assert text.startswith("Error: Unknown dimension: not_a_dimension. Available: ")
     assert "hook_type" in text
+    assert "aspect_ratio" in text
     assert "messaging_angle" in text
     assert mock_api.requests == []
 
