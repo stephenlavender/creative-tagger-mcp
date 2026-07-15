@@ -248,6 +248,7 @@ collection_bounds = [
     ("get_prebuilt_reports", "limit", 8, 50),
     ("get_creative_strategy_report", "limit", 10, 25),
     ("get_creative_strategy_report", "watch_limit", 5, 10),
+    ("get_creative_strategy_report", "max_cells", 24, 200),
     ("get_brain_learnings", "limit", 8, 12),
     ("get_brain_learnings", "audience_limit", 3, 10),
     ("save_brain_learnings", "limit", 8, 12),
@@ -278,8 +279,15 @@ assert brain_schema["audience_signal_focus"]["enum"] == [
 timeseries_schema = tools_by_name["get_performance_timeseries"].inputSchema["properties"]
 assert timeseries_schema["limit"]["minimum"] == 1
 assert timeseries_schema["limit"]["maximum"] == 10
-assert server._strategy_params({{"limit": 10**9, "watch_limit": 10**9}})["limit"] == 25
-assert server._strategy_params({{"limit": 10**9, "watch_limit": 10**9}})["watch_limit"] == 10
+bounded_strategy = server._strategy_params({{
+    "limit": 10**9,
+    "watch_limit": 10**9,
+    "max_cells": 10**9,
+}})
+assert bounded_strategy["limit"] == 25
+assert bounded_strategy["watch_limit"] == 10
+assert bounded_strategy["max_cells"] == 200
+assert server._strategy_params({{"limit": 1.0}})["limit"] == 1
 try:
     server._strategy_params({{"limit": 1.5}})
 except ValueError as exc:

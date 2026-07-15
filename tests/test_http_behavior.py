@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 
 import httpx
 import pytest
@@ -249,6 +250,61 @@ def test_list_library_rejects_non_integer_pagination_without_http_call(mock_api)
 
 
 @pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, 8),
+        (-7, 1),
+        (-7.0, 1),
+        (-0.0, 1),
+        (1, 1),
+        (1.0, 1),
+        (50, 50),
+        (50.0, 50),
+        (51.0, 50),
+        (1e100, 50),
+    ],
+)
+def test_clamped_int_arg_matches_json_schema_integer_semantics(value, expected):
+    assert (
+        server._clamped_int_arg(
+            value,
+            default=8,
+            minimum=1,
+            maximum=50,
+            field_name="limit",
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(True, id="true"),
+        pytest.param(False, id="false"),
+        pytest.param(1.5, id="fractional-positive"),
+        pytest.param(-1.5, id="fractional-negative"),
+        pytest.param(math.nan, id="nan"),
+        pytest.param(math.inf, id="positive-infinity"),
+        pytest.param(-math.inf, id="negative-infinity"),
+        pytest.param("1", id="numeric-string"),
+        pytest.param("many", id="string"),
+        pytest.param([], id="array"),
+        pytest.param({}, id="object"),
+    ],
+)
+def test_clamped_int_arg_rejects_non_json_schema_integers(value):
+    with pytest.raises(ValueError, match="^limit must be an integer$"):
+        server._clamped_int_arg(
+            value,
+            default=8,
+            minimum=1,
+            maximum=50,
+            field_name="limit",
+        )
+
+
+@pytest.mark.parametrize(
     ("requested", "expected"),
     [(-1, "1"), (0, "1"), (10_000, "10")],
 )
@@ -306,6 +362,17 @@ PUBLIC_COLLECTION_LIMITS = [
         {"brand_name": "Acme"},
         5,
         10,
+        "query",
+        {"cells": []},
+    ),
+    (
+        "strategy.max_cells",
+        "get_creative_strategy_report",
+        "max_cells",
+        server._get_creative_strategy_report,
+        {"brand_name": "Acme"},
+        24,
+        200,
         "query",
         {"cells": []},
     ),
@@ -472,7 +539,15 @@ def test_public_collection_limit_schemas_match_runtime_contract(
 
 @pytest.mark.parametrize(
     "boundary",
-    ["default", "below", "minimum", "maximum", "above", "huge"],
+    [
+        "default",
+        "below",
+        "minimum",
+        "integral-float",
+        "maximum",
+        "above",
+        "huge",
+    ],
 )
 @pytest.mark.parametrize(
     ("case_id", "_tool_name", "field_name", "handler", "base_args", "default", "maximum", "transport", "response"),
@@ -497,6 +572,7 @@ def test_public_collection_limits_are_clamped_before_http(
         "default": (None, default),
         "below": (-7, 1),
         "minimum": (1, 1),
+        "integral-float": (1.0, 1),
         "maximum": (maximum, maximum),
         "above": (maximum + 1, maximum),
         "huge": (10**12, maximum),

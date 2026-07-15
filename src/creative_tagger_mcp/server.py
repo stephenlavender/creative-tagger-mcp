@@ -17,6 +17,7 @@ Usage:
 """
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -43,6 +44,7 @@ LIBRARY_PAGE_LIMIT = 100
 PREBUILT_REPORT_LIMIT = 50
 STRATEGY_DECISION_LIMIT = 25
 STRATEGY_WATCH_LIMIT = 10
+STRATEGY_MAX_CELLS = 200
 BRAIN_STORY_LIMIT = 12
 BRAIN_AUDIENCE_LIMIT = 10
 TIMESERIES_SERIES_LIMIT = 10
@@ -156,9 +158,14 @@ def _clamped_int_arg(
     field_name: str,
 ) -> int:
     raw = default if value is None else value
-    if isinstance(raw, bool) or not isinstance(raw, int):
+    if isinstance(raw, bool):
         raise ValueError(f"{field_name} must be an integer")
-    parsed = raw
+    if isinstance(raw, int):
+        parsed = raw
+    elif isinstance(raw, float) and math.isfinite(raw) and raw.is_integer():
+        parsed = int(raw)
+    else:
+        raise ValueError(f"{field_name} must be an integer")
     parsed = max(minimum, parsed)
     if maximum is not None:
         parsed = min(parsed, maximum)
@@ -348,6 +355,13 @@ def _strategy_params(args: dict) -> dict[str, Any]:
         maximum=STRATEGY_WATCH_LIMIT,
         field_name="watch_limit",
     )
+    max_cells = _clamped_int_arg(
+        args.get("max_cells"),
+        default=24,
+        minimum=1,
+        maximum=STRATEGY_MAX_CELLS,
+        field_name="max_cells",
+    )
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
         "date_preset": args.get("date_preset", "all_time"),
@@ -356,7 +370,7 @@ def _strategy_params(args: dict) -> dict[str, Any]:
         "limit": limit,
         "watch_limit": watch_limit,
         "response_format": args.get("response_format", "concise"),
-        "max_cells": args.get("max_cells", 24),
+        "max_cells": max_cells,
     }
     report_template = _infer_strategy_template(
         args.get("report_template"),

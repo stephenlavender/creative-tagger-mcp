@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -139,6 +140,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(props["response_format"]["default"], "concise")
         self.assertEqual(props["response_format"]["enum"], ["concise", "detailed"])
         self.assertEqual(props["max_cells"]["default"], 24)
+        self.assertEqual(props["max_cells"]["minimum"], 1)
         self.assertEqual(props["max_cells"]["maximum"], 200)
 
         namespace = _load_pure_helpers(
@@ -1252,7 +1254,9 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('metrics = _csv_arg(args.get("metrics"))', source)
         self.assertIn('params["metrics"] = metrics', source)
         self.assertIn('"response_format": args.get("response_format", "concise")', source)
-        self.assertIn('"max_cells": args.get("max_cells", 24)', source)
+        self.assertIn('args.get("max_cells")', source)
+        self.assertIn('maximum=STRATEGY_MAX_CELLS', source)
+        self.assertIn('"max_cells": max_cells', source)
         self.assertIn("params = _strategy_params(args)", strategy_handler)
         self.assertIn('"roas_target"', source)
         self.assertIn('"fatigue_minimum_calendar_days"', source)
@@ -1485,8 +1489,10 @@ def _load_pure_helpers(wanted: set[str]) -> dict:
 
     namespace = {
         "json": json,
+        "math": math,
         "STRATEGY_DECISION_LIMIT": 25,
         "STRATEGY_WATCH_LIMIT": 10,
+        "STRATEGY_MAX_CELLS": 200,
         "_text": lambda payload: [SimpleNamespace(text=json.dumps(payload, indent=2))],
     }
     exec(compile(module, str(SERVER), "exec"), namespace)
