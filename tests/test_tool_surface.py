@@ -121,10 +121,26 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertIn("python -m build", source)
         self.assertIn("python scripts/smoke_release.py", source)
-        self.assertIn("python -m twine check dist/*", source)
+        self.assertIn("Verify release ref matches package version", source)
+        self.assertIn('EXPECTED_TAG="v${PROJECT_VERSION}"', source)
+        self.assertIn('GITHUB_REF_NAME}" != "${EXPECTED_TAG}', source)
+        self.assertIn('REQUESTED_VERSION}" != "${PROJECT_VERSION}', source)
+        self.assertIn("Verify exact release artifact set", source)
+        self.assertIn('wc -l | tr -d \' \'', source)
+        self.assertNotIn("python -m twine check dist/*", source)
         self.assertIn("pypa/gh-action-pypi-publish@release/v1", source)
         self.assertIn("id-token: write", source)
         self.assertIn("PYPI_API_TOKEN", source)
+
+    def test_local_release_upload_is_scoped_to_exact_version_artifacts(self) -> None:
+        readme = README.read_text()
+
+        self.assertNotIn("python -m twine upload dist/*", readme)
+        self.assertIn(
+            "dist/creative_tagger_mcp-0.2.1-py3-none-any.whl", readme
+        )
+        self.assertIn("dist/creative_tagger_mcp-0.2.1.tar.gz", readme)
+        self.assertIn("never publish with\n`twine upload dist/*`", readme)
 
     def test_release_smoke_does_not_require_tomli_on_old_python(self) -> None:
         smoke = ROOT / "scripts" / "smoke_release.py"
@@ -142,6 +158,15 @@ class ToolSurfaceTest(unittest.TestCase):
         # sequence lookup. Materializing the selected collection keeps the
         # release assertion portable across every supported Python version.
         self.assertIn("entry_points = list(metadata.entry_points().select(", source)
+
+    def test_release_smoke_rejects_generated_paths_in_sdist(self) -> None:
+        smoke = ROOT / "scripts" / "smoke_release.py"
+        source = smoke.read_text()
+
+        self.assertIn("_verify_sdist_contents(sdist)", source)
+        self.assertIn('".release-smoke-venv"', source)
+        self.assertIn('part.startswith(".venv")', source)
+        self.assertIn("Forbidden build/environment path in sdist", source)
 
     def test_generate_naming_matches_v1_api_shape(self) -> None:
         namespace = _load_pure_helpers({"_generate_naming", "_sanitize", "_ratio", "_join"})

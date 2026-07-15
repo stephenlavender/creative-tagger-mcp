@@ -6,4 +6,5 @@ build/
 *.egg-info/
 .venv/
 .venv*/
+.release-smoke-venv/
 .env

@@ -54,7 +54,9 @@ wheel that will be uploaded to PyPI:
 ```bash
 python -m build
 python scripts/smoke_release.py
-python -m twine check dist/*
+python -m twine check \
+  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.1.tar.gz
 ```
 
 The smoke test installs the wheel into a temporary virtualenv, verifies the
@@ -99,9 +101,17 @@ Local fallback:
 ```bash
 python -m build
 python scripts/smoke_release.py
-python -m twine check dist/*
-python -m twine upload dist/*
+python -m twine check \
+  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.1.tar.gz
+python -m twine upload \
+  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.1.tar.gz
 ```
+
+Always select the exact release artifacts for a local upload. A reused checkout
+may contain older valid distributions in `dist/`; never publish with
+`twine upload dist/*`.
 
 ## Add to Claude Desktop
 

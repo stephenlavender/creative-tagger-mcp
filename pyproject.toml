@@ -35,6 +35,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build]
 exclude = [
     "/.venv*",
+    "/.release-smoke-venv",
     "/.pytest_cache",
     "/.ruff_cache",
     "/build",

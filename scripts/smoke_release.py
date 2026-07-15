@@ -14,9 +14,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import venv
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 try:
     import tomllib
@@ -73,6 +74,14 @@ EXPECTED_TOOLS = {
     "generate_naming",
 }
 INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
+FORBIDDEN_SDIST_PARTS = {
+    ".release-smoke-venv",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "build",
+    "dist",
+}
 
 
 def main() -> int:
@@ -96,6 +105,7 @@ def main() -> int:
         raise SystemExit(f"Missing wheel: {wheel}")
     if not sdist.exists():
         raise SystemExit(f"Missing sdist: {sdist}")
+    _verify_sdist_contents(sdist)
 
     with tempfile.TemporaryDirectory(prefix="creative-tagger-mcp-smoke-") as tmp:
         venv_dir = Path(tmp) / "venv"
@@ -112,6 +122,26 @@ def main() -> int:
             print(f"Kept virtualenv at {keep_path}")
 
     return 0
+
+
+def _verify_sdist_contents(sdist: Path) -> None:
+    """Fail closed when generated or environment files leak into the sdist."""
+
+    with tarfile.open(sdist, "r:gz") as archive:
+        for member in archive.getmembers():
+            parts = PurePosixPath(member.name).parts[1:]
+            forbidden = next(
+                (
+                    part
+                    for part in parts
+                    if part in FORBIDDEN_SDIST_PARTS or part.startswith(".venv")
+                ),
+                None,
+            )
+            if forbidden:
+                raise SystemExit(
+                    f"Forbidden build/environment path in sdist: {member.name}"
+                )
 
 
 def _project_version() -> str:
