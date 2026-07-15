@@ -2,12 +2,10 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Status note (verified 2026-07-15): the production API, hosted remote MCP, and
-`creative-tagger-mcp==0.2.1` package are published. The hosted and stdio
-surfaces are separate clients of the same API and may expose different tool
-counts. This branch documents the unreleased `0.2.2` candidate; install `0.2.1`
-for the current PyPI release until `0.2.2` passes independent review, its API
-dependencies are deployed, trusted-publishing CI succeeds, and PyPI is verified.
+Release note (2026-07-15): this source tree and its packaged metadata are
+version `0.2.2`. The hosted and stdio surfaces are separate clients of the same
+API and may expose different tool counts. The companion API must be deployed
+and live before this stdio release is tagged and published.
 
 Your AI of choice gets:
 
@@ -32,8 +30,8 @@ The repository package is the stdio path for clients that require a local
 command:
 
 ```bash
-# Install the verified release
-pip install creative-tagger-mcp==0.2.1
+# Install this release after it appears on PyPI
+pip install creative-tagger-mcp==0.2.2
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
@@ -68,11 +66,12 @@ confirms the V1 tool surface is present from the installed artifact.
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-After the `0.2.2` review and API-dependency gates pass, tag the candidate:
+After the `0.2.2` review and API-dependency gates pass, tag the exact current
+`main` commit:
 
 ```bash
-git tag v0.2.2
-git push origin v0.2.2
+git tag -a v0.2.2 -m "Creative Tagger MCP v0.2.2"
+git push origin refs/tags/v0.2.2
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the

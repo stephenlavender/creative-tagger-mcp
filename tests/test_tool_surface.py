@@ -152,10 +152,11 @@ class ToolSurfaceTest(unittest.TestCase):
     def test_readme_matches_published_surface_and_current_models(self) -> None:
         readme = README.read_text()
 
-        self.assertIn("`creative-tagger-mcp==0.2.1` package are published", readme)
-        self.assertIn("pip install creative-tagger-mcp==0.2.1", readme)
-        self.assertIn("unreleased `0.2.2` candidate", readme)
-        self.assertIn("trusted-publishing CI succeeds", readme)
+        self.assertIn("packaged metadata are\nversion `0.2.2`", readme)
+        self.assertIn("pip install creative-tagger-mcp==0.2.2", readme)
+        self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
+        self.assertNotIn("unreleased `0.2.2` candidate", readme)
+        self.assertIn("companion API must be deployed", readme)
         self.assertIn("Current chart view types are `table`, `bar`, `line`, and `pie`", readme)
         self.assertNotIn('"view_type": "matrix"', readme)
         self.assertIn("Gemini 3.5 Flash", readme)
@@ -175,7 +176,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("15 controlled dimensions", readme)
         self.assertIn("one derived/open `aspect_ratio` dimension", readme)
         self.assertIn("`allow_other_values: true`", readme)
-        self.assertIn("`creative-tagger-mcp==0.2.1` package are published", readme)
+        self.assertIn("packaged metadata are\nversion `0.2.2`", readme)
         self.assertNotIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
 
@@ -251,7 +252,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('requirement.startswith("mcp<2,>=1.28.1")', source)
         self.assertIn("package_metadata.get_payload()", source)
         self.assertIn("call list_workspaces first", source)
-        self.assertIn("creative-tagger-mcp==0.2.1` package are published", source)
+        self.assertIn('"packaged metadata are"', source)
+        self.assertIn('"version `0.2.2`"', source)
+        self.assertIn('"pip install creative-tagger-mcp==0.2.2"', source)
+        self.assertIn('"pip install creative-tagger-mcp==0.2.1" not in readme', source)
         self.assertIn("len(tool_catalog) < 40_000", source)
         self.assertIn('strategy_schema["response_format"]["default"] == "concise"', source)
 
