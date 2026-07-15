@@ -364,6 +364,77 @@ def test_strategy_preserves_explicit_detailed_opt_in(mock_api):
     assert params["max_cells"] == "80"
 
 
+def test_demographics_export_consumes_observational_band_contract(mock_api):
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "brand_name": "Acme",
+                "date_window": "All time",
+                "total_segments": 2,
+                "totals": {"spend": 1000, "roas": 2.2},
+                "higher_observed_efficiency": [
+                    {
+                        "age": "25-34",
+                        "gender": "female",
+                        "observed_efficiency_band": (
+                            "higher_observed_return_per_spend"
+                        ),
+                        "return_per_spend_percentile": 100,
+                        "spend": 200,
+                        "revenue": 800,
+                        "roas": 4.0,
+                    }
+                ],
+                "lower_observed_efficiency": [
+                    {
+                        "age": "45-54",
+                        "gender": "male",
+                        "observed_efficiency_band": (
+                            "lower_observed_return_per_spend"
+                        ),
+                        "return_per_spend_percentile": 0,
+                        "spend": 500,
+                        "revenue": 250,
+                        "roas": 0.5,
+                    }
+                ],
+                "outcome_verdicts_withheld": True,
+                "metric_predeclaration_required": True,
+                "goal_direction_predeclaration_required": True,
+                "interpretation": "observational age/gender delivery only",
+            },
+        )
+    )
+
+    payload = as_json(
+        run(server._export_demographics_context({"brand_name": "Acme", "limit": 3}))
+    )
+
+    assert payload["higher_observed_efficiency_count"] == 1
+    assert payload["lower_observed_efficiency_count"] == 1
+    assert payload["top_higher_observed_efficiency"][0]["segment"] == (
+        "25-34 / female"
+    )
+    assert payload["top_lower_observed_efficiency"][0]["segment"] == "45-54 / male"
+    assert len(payload["decision_queue"]) == 2
+    assert all(
+        item["action"] == "review_observed_delivery"
+        for item in payload["decision_queue"]
+    )
+    assert all(
+        item["observation_plan"]["interpretation"] == "association_not_causation"
+        for item in payload["decision_queue"]
+    )
+    assert payload["outcome_verdicts_withheld"] is True
+    assert "1 higher and 1 lower observed-return-per-spend" in payload["summary_text"]
+    serialized = json.dumps(payload).lower()
+    assert "opportunity" not in serialized
+    assert "waste" not in serialized
+
+    assert mock_api.last_request.url.path == "/performance/demographics"
+
+
 def test_compact_concise_strategy_fixture_stays_within_agent_token_budget(mock_api):
     cells = [
         {

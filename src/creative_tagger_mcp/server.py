@@ -2120,8 +2120,9 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_demographics_performance",
             description=(
-                "Return saved age x gender performance memory with opportunity and "
-                "waste flags. Useful for audience strategy and Advantage+ diagnostics. "
+                "Return saved age x gender delivery with account-relative higher and "
+                "lower observed-return-per-spend bands. These are descriptive "
+                "associations, not audience outcome or action verdicts. "
                 "Supports report date presets like last_30_days or a custom "
                 "start_date/end_date (YYYY-MM-DD) to scope the audience read to "
                 "a specific performance window."
@@ -2151,8 +2152,8 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Return an agent-ready audience context payload from saved age x "
                 "gender performance memory. Use this when another agent or workflow "
-                "needs the top opportunity and waste segments, account totals, "
-                "summary text, a prompt-ready audience decision queue, and date-scoped "
+                "needs the higher and lower observed-efficiency bands, account totals, "
+                "summary text, a prompt-ready descriptive review queue, and date-scoped "
                 "mixed creative x audience strategy queries plus time-series "
                 "follow-up queries without opening the dashboard."
             ),
@@ -2176,7 +2177,7 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "default": 3,
-                        "description": "Maximum opportunity and waste segments to include in the exported context",
+                        "description": "Maximum segments from each observed-efficiency band to include in the exported context",
                     },
                 },
             },
@@ -3410,7 +3411,11 @@ def _demographic_segment_label(segment: dict[str, Any]) -> str:
 def _compact_demographic_segment(segment: dict[str, Any]) -> dict[str, Any]:
     return {
         "segment": _demographic_segment_label(segment),
-        "signal": segment.get("signal") or "neutral",
+        "observed_efficiency_band": (
+            segment.get("observed_efficiency_band")
+            or "near_account_observed_return_per_spend"
+        ),
+        "return_per_spend_percentile": segment.get("return_per_spend_percentile"),
         "spend": segment.get("spend", 0),
         "revenue": segment.get("revenue", 0),
         "roas": segment.get("roas", 0),
@@ -3435,58 +3440,58 @@ def _format_demographic_evidence(segment):
     )
 
 
-def _build_demographics_decision_queue(opportunities, waste, *, limit):
+def _build_demographics_decision_queue(
+    higher_observed_efficiency,
+    lower_observed_efficiency,
+    *,
+    limit,
+):
     capped_limit = max(1, min(int(limit or 3), 6))
     queue = []
-    for segment in list(opportunities or [])[:capped_limit]:
+    for segment in list(higher_observed_efficiency or [])[:capped_limit]:
         compact = _compact_demographic_segment(segment)
         queue.append(
             {
                 **compact,
-                "action": "validate_opportunity",
+                "action": "review_observed_delivery",
                 "recommendation": (
-                    f"{compact['segment']} showed stronger relative efficiency in this "
-                    "historical window. Validate that association before changing spend."
+                    f"Review {compact['segment']} as a higher observed-return-per-spend "
+                    "band in this account window; do not infer an audience outcome."
                 ),
                 "evidence_summary": _format_demographic_evidence(compact),
                 "evidence_type": "observational_association",
                 "causal_claim": False,
-                "controlled_test": {
-                    "hypothesis": (
-                        f"Holding offer and placement constant, one creative variant "
-                        f"tailored to {compact['segment']} improves the primary metric."
-                    ),
-                    "single_variable": "creative treatment",
-                    "primary_metric": "CPA or ROAS selected before launch",
-                    "guardrails": ["spend", "frequency", "conversion volume"],
-                    "decision_rule": "Predeclare minimum data and ship/stop thresholds.",
+                "observation_plan": {
+                    "mode": "descriptive_observation",
+                    "measure": "pending_predeclare",
+                    "direction": "pending_predeclare",
+                    "comparison": "account_context_only",
+                    "interpretation": "association_not_causation",
+                    "next_step": "collect_comparable_delivery",
                 },
             }
         )
     remaining = max(1, capped_limit - len(queue))
-    for segment in list(waste or [])[:remaining]:
+    for segment in list(lower_observed_efficiency or [])[:remaining]:
         compact = _compact_demographic_segment(segment)
         queue.append(
             {
                 **compact,
-                "action": "validate_risk",
+                "action": "review_observed_delivery",
                 "recommendation": (
-                    f"{compact['segment']} showed weaker relative efficiency in this "
-                    "historical window. Check delivery confounds and run a controlled "
-                    "creative comparison before changing allocation."
+                    f"Review {compact['segment']} as a lower observed-return-per-spend "
+                    "band in this account window; do not infer an audience outcome."
                 ),
                 "evidence_summary": _format_demographic_evidence(compact),
                 "evidence_type": "observational_association",
                 "causal_claim": False,
-                "controlled_test": {
-                    "hypothesis": (
-                        f"Holding audience, offer, and placement constant, a single "
-                        f"creative change improves the primary metric for {compact['segment']}."
-                    ),
-                    "single_variable": "creative treatment",
-                    "primary_metric": "CPA or ROAS selected before launch",
-                    "guardrails": ["spend", "frequency", "conversion volume"],
-                    "decision_rule": "Predeclare minimum data and ship/stop thresholds.",
+                "observation_plan": {
+                    "mode": "descriptive_observation",
+                    "measure": "pending_predeclare",
+                    "direction": "pending_predeclare",
+                    "comparison": "account_context_only",
+                    "interpretation": "association_not_causation",
+                    "next_step": "collect_comparable_delivery",
                 },
             }
         )
@@ -3550,7 +3555,9 @@ def _build_demographic_focus_views(
                 {
                     "label": f"{spec['label_prefix']} {compact['segment']}",
                     "focus_segment": compact["segment"],
-                    "signal": compact["signal"],
+                    "observed_efficiency_band": compact[
+                        "observed_efficiency_band"
+                    ],
                     "why": spec["why"],
                     "strategy_query": query,
                 }
@@ -3616,7 +3623,7 @@ def _build_demographic_timeseries_views(
             "signal_focus": "all",
             "trajectory_focus": "all",
             "coverage_focus": "all",
-            "why": "Track which audience pockets are improving, fatiguing, or too sparse before testing an allocation change.",
+            "why": "Track raw audience movement and data coverage without assigning an outcome direction.",
         },
         {
             "label": "Audience signal trend",
@@ -3625,7 +3632,7 @@ def _build_demographic_timeseries_views(
             "signal_focus": "all",
             "trajectory_focus": "all",
             "coverage_focus": "all",
-            "why": "Watch whether opportunity and waste buckets are holding their edge across repeated sync windows.",
+            "why": "Watch how account-relative observed-efficiency bands move across repeated sync windows.",
         },
     ]
     for view in views:
@@ -3664,8 +3671,10 @@ def _build_demographic_segment_timeseries_views(
                     {
                         "label": f"Trend for {compact['segment']}",
                         "focus_segment": compact["segment"],
-                        "signal": compact["signal"],
-                        "why": "Confirm whether this audience pocket is strengthening, flattening, or decaying across repeated sync windows.",
+                        "observed_efficiency_band": compact[
+                            "observed_efficiency_band"
+                        ],
+                        "why": "Compare raw movement across repeated sync windows without assigning an outcome direction.",
                         "timeseries_query": _build_demographic_timeseries_query(
                             brand_name=brand_name,
                             group_by="demographic_segment",
@@ -3729,7 +3738,7 @@ def _build_demographics_strategy_views(
             "columns": "demographic_gender",
             "fill_metric": "roas",
             "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
-            "why": "Start with the age x gender matrix to confirm where efficiency clusters.",
+            "why": "Start with the age x gender matrix to describe account-relative delivery bands.",
         },
         {
             "label": "Audience signals",
@@ -3738,7 +3747,7 @@ def _build_demographics_strategy_views(
             "columns": "demographic_signal",
             "fill_metric": "roas",
             "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
-            "why": "Separate the strongest opportunity pockets from waste before mixing in creative angles or hooks.",
+            "why": "Compare higher and lower observed-return-per-spend bands before mixing in creative angles or hooks.",
         },
         {
             "label": "Angle x audience",
@@ -4098,30 +4107,31 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
     except (TypeError, ValueError):
         return _err("limit must be an integer")
 
-    opportunities = [
+    higher_observed_efficiency = [
         _compact_demographic_segment(segment)
-        for segment in list(parsed.get("opportunities") or [])[:limit]
+        for segment in list(parsed.get("higher_observed_efficiency") or [])[:limit]
         if isinstance(segment, dict)
     ]
-    waste = [
+    lower_observed_efficiency = [
         _compact_demographic_segment(segment)
-        for segment in list(parsed.get("waste") or [])[:limit]
+        for segment in list(parsed.get("lower_observed_efficiency") or [])[:limit]
         if isinstance(segment, dict)
     ]
     totals = dict(parsed.get("totals") or {})
     date_window = parsed.get("date_window") or "All time"
     brand_name = parsed.get("brand_name", args.get("brand_name", ""))
     decision_queue = _build_demographics_decision_queue(
-        parsed.get("opportunities") or [],
-        parsed.get("waste") or [],
+        parsed.get("higher_observed_efficiency") or [],
+        parsed.get("lower_observed_efficiency") or [],
         limit=limit,
     )
     summary_text = (
-        f"{brand_name or 'Audience read'}: {len(opportunities)} opportunity "
-        f"segment{'s' if len(opportunities) != 1 else ''}, {len(waste)} waste "
-        f"segment{'s' if len(waste) != 1 else ''}, "
-        f"{totals.get('roas', 0)}x blended ROAS on ${totals.get('spend', 0)} spend "
-        f"for {date_window}."
+        f"{brand_name or 'Audience read'}: "
+        f"{len(higher_observed_efficiency)} higher and "
+        f"{len(lower_observed_efficiency)} lower observed-return-per-spend "
+        f"segment{'s' if (len(higher_observed_efficiency) + len(lower_observed_efficiency)) != 1 else ''} "
+        f"for {date_window}. Outcome direction and audience action are withheld "
+        "until a metric and direction are predeclared."
     )
     export = {
         "tool": "export_demographics_context",
@@ -4132,22 +4142,38 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
         "date_window": date_window,
         "total_segments": parsed.get("total_segments", 0),
         "totals": totals,
-        "opportunity_count": len(parsed.get("opportunities") or []),
-        "waste_count": len(parsed.get("waste") or []),
-        "top_opportunities": opportunities,
-        "top_waste": waste,
+        "higher_observed_efficiency_count": len(
+            parsed.get("higher_observed_efficiency") or []
+        ),
+        "lower_observed_efficiency_count": len(
+            parsed.get("lower_observed_efficiency") or []
+        ),
+        "top_higher_observed_efficiency": higher_observed_efficiency,
+        "top_lower_observed_efficiency": lower_observed_efficiency,
+        "outcome_verdicts_withheld": bool(
+            parsed.get("outcome_verdicts_withheld", True)
+        ),
+        "metric_predeclaration_required": bool(
+            parsed.get("metric_predeclaration_required", True)
+        ),
+        "goal_direction_predeclaration_required": bool(
+            parsed.get("goal_direction_predeclaration_required", True)
+        ),
+        "interpretation": parsed.get("interpretation") or (
+            "observational age/gender delivery only"
+        ),
         "decision_queue": decision_queue,
         "segment_strategy_views": {
-            "opportunities": _build_demographic_focus_views(
-                parsed.get("opportunities") or [],
+            "higher_observed_efficiency": _build_demographic_focus_views(
+                parsed.get("higher_observed_efficiency") or [],
                 brand_name=brand_name,
                 date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
                 start_date=parsed.get("start_date", args.get("start_date", "")),
                 end_date=parsed.get("end_date", args.get("end_date", "")),
                 limit=limit,
             ),
-            "waste": _build_demographic_focus_views(
-                parsed.get("waste") or [],
+            "lower_observed_efficiency": _build_demographic_focus_views(
+                parsed.get("lower_observed_efficiency") or [],
                 brand_name=brand_name,
                 date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
                 start_date=parsed.get("start_date", args.get("start_date", "")),
@@ -4156,16 +4182,16 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
             ),
         },
         "segment_timeseries_views": {
-            "opportunities": _build_demographic_segment_timeseries_views(
-                parsed.get("opportunities") or [],
+            "higher_observed_efficiency": _build_demographic_segment_timeseries_views(
+                parsed.get("higher_observed_efficiency") or [],
                 brand_name=brand_name,
                 date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
                 start_date=parsed.get("start_date", args.get("start_date", "")),
                 end_date=parsed.get("end_date", args.get("end_date", "")),
                 limit=limit,
             ),
-            "waste": _build_demographic_segment_timeseries_views(
-                parsed.get("waste") or [],
+            "lower_observed_efficiency": _build_demographic_segment_timeseries_views(
+                parsed.get("lower_observed_efficiency") or [],
                 brand_name=brand_name,
                 date_preset=parsed.get("date_preset", args.get("date_preset", "all_time")),
                 start_date=parsed.get("start_date", args.get("start_date", "")),
@@ -4187,11 +4213,10 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
         ),
         "summary_text": summary_text,
         "prompt": (
-            "Treat these audience signals as historical associations, not causal "
-            "effects. Open the per-segment mixed creative and trend views, state "
-            "a falsifiable hypothesis, vary one creative factor, predeclare the "
-            "primary metric, guardrails, minimum data, and ship/stop criteria, then "
-            "change allocation only if the controlled result supports it."
+            "Treat these audience bands as descriptive historical associations, "
+            "not causal effects or outcome verdicts. Open the per-segment mixed "
+            "creative and trend views, then predeclare the objective metric and "
+            "direction before interpreting raw movement."
         ),
     }
     return _text(export)

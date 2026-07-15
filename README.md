@@ -14,7 +14,7 @@ Your AI of choice gets:
 - **Taxonomy** — 21 standardized dimensions for any ad creative (video, image, carousel, landing page, long video, email)
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
-- **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
+- **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
 - **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
@@ -585,9 +585,10 @@ predeclared primary metric, minimum data, guardrails, and ship/stop criteria.
 ```
 
 ### `get_demographics_performance`
-Read age x gender performance memory with opportunity and waste flags. Use
-`date_preset` for a standard audience window, or `start_date` / `end_date` to
-isolate a specific audience window.
+Read age x gender delivery with account-relative higher and lower observed-
+return-per-spend bands. These bands are descriptive associations, not audience
+outcome or action verdicts. Use `date_preset` for a standard audience window,
+or `start_date` / `end_date` to isolate a specific audience window.
 ```
 {
   "brand_name": "Acme",
@@ -599,9 +600,10 @@ isolate a specific audience window.
 
 ### `export_demographics_context`
 Return an agent-ready audience context payload from the saved demographics read.
-Use this when another agent needs the top audience opportunities and waste
-segments, blended totals, per-segment mixed creative x audience views, and a
-prompt-ready summary without the full wrapper.
+Use this when another agent needs higher and lower observed-efficiency bands,
+raw totals, per-segment mixed creative x audience views, and a prompt-ready
+descriptive summary without the full wrapper. Outcome direction stays withheld
+until an objective metric and direction are predeclared.
 ```
 {
   "brand_name": "Acme",

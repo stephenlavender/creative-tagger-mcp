@@ -527,7 +527,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 {
                     "age": "25-34",
                     "gender": "female",
-                    "signal": "opportunity",
+                    "observed_efficiency_band": "higher_observed_return_per_spend",
+                    "return_per_spend_percentile": 100,
                     "spend": 1250,
                     "roas": 4.2,
                     "ctr": 2.7,
@@ -539,7 +540,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 {
                     "age": "45-54",
                     "gender": "male",
-                    "signal": "waste",
+                    "observed_efficiency_band": "lower_observed_return_per_spend",
+                    "return_per_spend_percentile": 0,
                     "spend": 980,
                     "roas": 0.9,
                     "ctr": 0.8,
@@ -552,14 +554,20 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertEqual(len(queue), 2)
         self.assertEqual(queue[0]["rank"], 1)
-        self.assertEqual(queue[0]["action"], "validate_opportunity")
+        self.assertEqual(queue[0]["action"], "review_observed_delivery")
         self.assertIn("25-34 / female", queue[0]["recommendation"])
         self.assertIn("$1250 spend", queue[0]["evidence_summary"])
         self.assertFalse(queue[0]["causal_claim"])
-        self.assertIn("controlled_test", queue[0])
-        self.assertEqual(queue[1]["action"], "validate_risk")
+        self.assertEqual(
+            queue[0]["observation_plan"]["interpretation"],
+            "association_not_causation",
+        )
+        self.assertNotIn("controlled_test", queue[0])
+        self.assertEqual(queue[1]["action"], "review_observed_delivery")
         self.assertIn("45-54 / male", queue[1]["recommendation"])
         self.assertIn("0.90x ROAS", queue[1]["evidence_summary"])
+        self.assertNotIn("opportunity", json.dumps(queue).lower())
+        self.assertNotIn("waste", json.dumps(queue).lower())
 
         views = namespace["_build_demographics_strategy_views"](
             brand_name="Acme",
@@ -1126,7 +1134,9 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("windowed_history", timeseries_export_schema["coverage_focus"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_desc)
         self.assertIn("agent-ready audience context payload", demographics_export_desc)
-        self.assertIn("top opportunity and waste segments", demographics_export_desc)
+        self.assertIn("higher and lower observed-efficiency bands", demographics_export_desc)
+        self.assertNotIn("opportunity", demographics_export_desc.lower())
+        self.assertNotIn("waste", demographics_export_desc.lower())
         self.assertIn("mixed creative x audience strategy queries", demographics_export_desc)
         self.assertIn("time-series follow-up queries", demographics_export_desc)
         demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
@@ -1240,6 +1250,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"export_demographics_context": _export_demographics_context', source)
         self.assertIn("async def _export_demographics_context(args: dict)", source)
         self.assertIn('payload = await _get_demographics_performance(args)', source)
+        self.assertIn('parsed.get("higher_observed_efficiency")', source)
+        self.assertIn('parsed.get("lower_observed_efficiency")', source)
         self.assertIn('"decision_queue": decision_queue', source)
         self.assertIn('"segment_strategy_views": {', source)
         self.assertIn('"segment_timeseries_views": {', source)
@@ -1298,7 +1310,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 {
                     "age": "25-34",
                     "gender": "female",
-                    "signal": "opportunity",
+                    "observed_efficiency_band": "higher_observed_return_per_spend",
+                    "return_per_spend_percentile": 100,
                     "spend": 420,
                     "revenue": 1680,
                     "roas": 4.0,
@@ -1315,7 +1328,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(len(focus_views), 1)
         first = focus_views[0]
         self.assertEqual(first["segment"], "25-34 / female")
-        self.assertEqual(first["signal"], "opportunity")
+        self.assertEqual(
+            first["observed_efficiency_band"],
+            "higher_observed_return_per_spend",
+        )
         self.assertIn("$420 spend", first["evidence_summary"])
         self.assertEqual(len(first["strategy_views"]), 2)
         labels = {view["label"] for view in first["strategy_views"]}
@@ -1333,7 +1349,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 {
                     "age": "25-34",
                     "gender": "female",
-                    "signal": "opportunity",
+                    "observed_efficiency_band": "higher_observed_return_per_spend",
+                    "return_per_spend_percentile": 100,
                     "spend": 420,
                     "revenue": 1680,
                     "roas": 4.0,
