@@ -2,15 +2,15 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Status note (2026-06-15): PyPI still serves `creative-tagger-mcp==0.1.0`.
-This README tracks the local `0.2.0` branch surface in this repo. Tools such
-as strategy reports, brain learnings, and performance timeseries require the
-matching API branch and should be treated as pre-publish until `0.2.0` is live
-on PyPI and the corresponding API changes are deployed.
+Status note (verified 2026-07-13): the production API and hosted remote MCP
+surface are live, but PyPI still serves `creative-tagger-mcp==0.1.0`. This
+README documents the repository's unpublished `0.2.0` stdio bridge. Use
+`https://api.creativetagger.ai/mcp/` for the current hosted tool surface; do not
+assume the installed `0.1.0` package includes the tools documented below.
 
 Your AI of choice gets:
 
-- **Taxonomy** — 28 standardized dimensions for any ad creative (video, image, carousel, landing page, email)
+- **Taxonomy** — 21 standardized dimensions for any ad creative (video, image, carousel, landing page, long video, email)
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
@@ -19,6 +19,17 @@ Your AI of choice gets:
 - **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
 
 ## Quick Start
+
+For clients that support remote MCP, connect the current hosted server:
+
+```text
+URL: https://api.creativetagger.ai/mcp/
+Authorization: Bearer ct_your_key
+```
+
+The repository package is the stdio path for clients that require a local
+command. Until `0.2.0` is published, installing from PyPI gives the older tool
+surface:
 
 ```bash
 # Install (PyPI currently resolves to 0.1.0)
@@ -115,7 +126,7 @@ Restart Claude Desktop. The tools appear in the MCP picker.
 ## Tools
 
 ### `analyze_creative`
-Analyze any ad creative and get structured classification across 28 dimensions.
+Analyze any ad creative and get structured classification across 21 dimensions.
 ```
 { "file_path": "./ad.mp4", "brand_name": "Brand" }
 { "url": "https://example.com/landing-page", "brand_name": "Brand" }
@@ -124,10 +135,18 @@ Analyze any ad creative and get structured classification across 28 dimensions.
 Results auto-save to the user's library.
 
 ### `get_taxonomy`
-Live fetch of the complete taxonomy or a single dimension.
+Read taxonomy v2's versioned vocabulary or one dimension. The package returns
+15 controlled dimensions, one derived/open `aspect_ratio` dimension, and two
+intentionally dynamic, brand-specific dimensions. Aspect ratio includes common
+canonical examples but sets `allow_other_values: true`: the API may derive any
+reduced `WxH` ratio (such as `3x2` or `300x157`) or preserve a `W:H` ratio for
+long video. The package does not infer enums from OpenAPI: several valid
+classification fields are strings in that schema, so schema discovery would
+silently return an incomplete taxonomy.
 ```
-{}                                # all 28 dimensions
+{}                                # all controlled + derived/open + dynamic dimensions
 { "dimension": "hook_type" }      # one dimension
+{ "dimension": "aspect_ratio" }   # examples; other derived values remain valid
 ```
 Taxonomy v2 splits three dimensions the old model mixed together: **media type**
 (the auto-detected format — static image, video, carousel; never AI-classified),
@@ -155,7 +174,7 @@ joined performance.
 Cross-library pattern insights — concentration and diversity per dimension, plus rule-based diversification flags.
 
 ### `get_analysis`
-Pull the full 28-dimension result for one library item.
+Pull the full 21-dimension result for one library item.
 ```
 { "analysis_id": 42 }
 ```
@@ -249,7 +268,7 @@ window and Creative Tagger should match Ads Manager exactly.
 
 ### `get_creative_strategy_report`
 Pull the same strategy matrix shown in Creative Tagger Reports. Defaults to
-ad types by messaging angles, with states for next tests, live learning,
+visual formats by messaging angles, with states for next tests, live learning,
 winners, losers, fatigue, and gaps. Returns the decision queue plus an
 `agent_context` payload that can be handed directly to an LLM for strategy work.
 Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
@@ -276,7 +295,7 @@ fatigue-aware reads, pass the same embedded watch controls the app/API support:
 {
   "brand_name": "Acme",
   "report_template": "next-tests",
-  "rows": "ad_type",
+  "rows": "visual_format",
   "columns": "messaging_angle",
   "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"
 }

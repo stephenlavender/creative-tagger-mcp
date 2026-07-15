@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "src" / "creative_tagger_mcp" / "server.py"
+README = ROOT / "README.md"
 
 PUBLIC_EXPECTED_TOOLS = {
     "analyze_creative",
@@ -87,6 +88,32 @@ class ToolSurfaceTest(unittest.TestCase):
     def test_package_version_matches_v2_surface(self) -> None:
         init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
         self.assertIn('__version__ = "0.2.0"', init_file.read_text())
+
+    def test_tool_copy_uses_current_taxonomy_dimension_count(self) -> None:
+        source = SERVER.read_text()
+        readme = README.read_text()
+
+        self.assertIn("classification across 21 dimensions", source)
+        self.assertIn("complete 21-dimension classification", source)
+        self.assertNotIn("28 taxonomy dimensions", source)
+        self.assertIn("21 standardized dimensions", readme)
+        self.assertIn("https://api.creativetagger.ai/mcp/", readme)
+        self.assertNotIn("https://api.creativetagger.ai/mcp`", readme)
+        self.assertIn("15 controlled dimensions", readme)
+        self.assertIn("one derived/open `aspect_ratio` dimension", readme)
+        self.assertIn("`allow_other_values: true`", readme)
+        self.assertIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
+        self.assertNotIn("28 dimensions", readme)
+
+        tools = _declared_tools()
+        analyze_description = tools["analyze_creative"]["description"]
+        taxonomy_description = tools["get_taxonomy"]["description"]
+        self.assertIn("media type, asset type, visual format", analyze_description)
+        self.assertIn("voiceover tone", analyze_description)
+        self.assertNotIn("brand presence", analyze_description)
+        self.assertNotIn("social proof", analyze_description.lower())
+        self.assertIn("15 controlled dimensions", taxonomy_description)
+        self.assertIn("derived/open aspect-ratio dimension", taxonomy_description)
 
     def test_publish_workflow_verifies_release_before_upload(self) -> None:
         workflow = ROOT / ".github" / "workflows" / "publish.yml"
