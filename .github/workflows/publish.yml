@@ -62,13 +62,20 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Verify exact release artifact set
+      - name: Stage exact release artifact set
         run: |
           WHEEL="dist/creative_tagger_mcp-${PROJECT_VERSION}-py3-none-any.whl"
           SDIST="dist/creative_tagger_mcp-${PROJECT_VERSION}.tar.gz"
           test -f "${WHEEL}"
+          test ! -L "${WHEEL}"
           test -f "${SDIST}"
-          test "$(find dist -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+          test ! -L "${SDIST}"
+          test "$(find dist -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = "2"
+          rm -rf release-dist
+          mkdir release-dist
+          cp -- "${WHEEL}" "${SDIST}" release-dist/
+          test "$(find release-dist -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+          test "$(find release-dist -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = "2"
 
       - name: Smoke-test built wheel
         run: python scripts/smoke_release.py
@@ -76,15 +83,18 @@ jobs:
       - name: Check package metadata
         run: |
           python -m twine check \
-            "dist/creative_tagger_mcp-${PROJECT_VERSION}-py3-none-any.whl" \
-            "dist/creative_tagger_mcp-${PROJECT_VERSION}.tar.gz"
+            "release-dist/creative_tagger_mcp-${PROJECT_VERSION}-py3-none-any.whl" \
+            "release-dist/creative_tagger_mcp-${PROJECT_VERSION}.tar.gz"
 
       - name: Publish to PyPI with API token
         if: env.HAS_PYPI_API_TOKEN == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          packages-dir: release-dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
 
       - name: Publish to PyPI with trusted publishing
         if: env.HAS_PYPI_API_TOKEN != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: release-dist/
