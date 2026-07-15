@@ -5,7 +5,7 @@ The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structur
 Status note (verified 2026-07-13): the production API and hosted remote MCP
 surface are live, but PyPI still serves `creative-tagger-mcp==0.1.0`. This
 README documents the repository's unpublished `0.2.0` stdio bridge. Use
-`https://api.creativetagger.ai/mcp` for the current hosted tool surface; do not
+`https://api.creativetagger.ai/mcp/` for the current hosted tool surface; do not
 assume the installed `0.1.0` package includes the tools documented below.
 
 Your AI of choice gets:
@@ -23,7 +23,7 @@ Your AI of choice gets:
 For clients that support remote MCP, connect the current hosted server:
 
 ```text
-URL: https://api.creativetagger.ai/mcp
+URL: https://api.creativetagger.ai/mcp/
 Authorization: Bearer ct_your_key
 ```
 
@@ -135,9 +135,13 @@ Analyze any ad creative and get structured classification across 21 dimensions.
 Results auto-save to the user's library.
 
 ### `get_taxonomy`
-Live fetch of the complete taxonomy or a single dimension.
+Read taxonomy v2's versioned vocabulary or one dimension. The package returns
+16 controlled dimensions (the 14 enum-backed attributes, media type, and aspect
+ratio) plus the two intentionally dynamic, brand-specific dimensions. It does
+not infer enums from OpenAPI: several valid classification fields are strings in
+that schema, so schema discovery would silently return an incomplete taxonomy.
 ```
-{}                                # all 21 dimensions
+{}                                # all controlled + dynamic dimensions
 { "dimension": "hook_type" }      # one dimension
 ```
 Taxonomy v2 splits three dimensions the old model mixed together: **media type**

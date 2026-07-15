@@ -3,7 +3,7 @@
 Exposes the Creative Tagger API as MCP tools so any AI agent (Claude Desktop,
 Cursor, Windsurf, ChatGPT with MCP, etc.) can:
 
-- Analyze ad creatives across 28 taxonomy dimensions
+- Analyze ad creatives across the 21-dimension classification surface
 - Browse and search the user's creative library (memory)
 - Get strategist recommendations grounded in library + brand context
 - Set brand voice / audience / top performers / anti-patterns
@@ -25,6 +25,13 @@ import httpx
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
+
+from creative_tagger_mcp.taxonomy import (
+    CONTROLLED_DIMENSIONS,
+    DYNAMIC_DIMENSIONS,
+    TAXONOMY_VERSION,
+    taxonomy_payload,
+)
 
 API_URL = os.environ.get("CREATIVE_TAGGER_URL", "https://api.creativetagger.ai")
 API_KEY = os.environ.get("CREATIVE_TAGGER_API_KEY", "")
@@ -279,7 +286,7 @@ async def list_tools() -> list[Tool]:
             name="analyze_creative",
             description=(
                 "Analyze any ad creative (image, video, carousel, landing page, email) "
-                "and return structured classification across 28 taxonomy dimensions: "
+                "and return structured classification across 21 dimensions: "
                 "hook type, messaging angle, creative type, visual style, talent, CTA, "
                 "emotion, production type, offer type, social proof, brand presence, "
                 "seasonality, audio attributes, and more. Also generates standardized "
@@ -349,10 +356,12 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_taxonomy",
             description=(
-                "Get the complete Creative Tagger taxonomy — all 21 dimensions with "
-                "every enum value. Pulled live from the API so it's always current. "
-                "Use this before analyze_creative when you want to know the full "
-                "vocabulary the system understands. Taxonomy v2: media type (the "
+                "Get Creative Tagger taxonomy v2's controlled vocabulary plus its "
+                "two dynamic, brand-specific dimensions. The package ships a "
+                "versioned vocabulary because the API schema does not expose enums "
+                "for every classification field. Use this before analyze_creative "
+                "when you want to know the vocabulary the system understands. "
+                "Taxonomy v2: media type (the "
                 "auto-detected format — static image, video, carousel), asset type "
                 "(production class), and visual format (execution style) are three "
                 "separate dimensions; 'Static Image' and 'Carousel' are media types, "
@@ -2333,31 +2342,32 @@ def _analysis_form_data(args: dict, brand_name: str) -> dict[str, str]:
 
 
 async def _get_taxonomy(args: dict) -> list[TextContent]:
-    dimension = args.get("dimension")
-    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
-        resp = await client.get(f"{API_URL}/openapi.json", headers=_headers())
-        resp.raise_for_status()
-        spec = resp.json()
+    dimension = str(args.get("dimension") or "").strip().lower()
+    if not dimension:
+        return _text(taxonomy_payload())
 
-    schemas = (spec.get("components") or {}).get("schemas") or {}
-    enums: dict[str, list[str]] = {}
-    for name, schema in schemas.items():
-        values = schema.get("enum")
-        if values and isinstance(values, list):
-            enums[name] = values
-
-    if dimension:
-        match = next(
-            (v for k, v in enums.items() if k.lower() == dimension.lower()),
-            None,
+    normalized = dimension.replace("-", "_").replace(" ", "_")
+    if normalized in CONTROLLED_DIMENSIONS:
+        return _text(
+            {
+                "taxonomy_version": TAXONOMY_VERSION,
+                "dimension": normalized,
+                "kind": "controlled",
+                "values": list(CONTROLLED_DIMENSIONS[normalized]),
+            }
         )
-        if not match:
-            return _err(
-                f"Unknown dimension: {dimension}. Available: {', '.join(sorted(enums.keys()))}"
-            )
-        return _text({dimension: match})
+    if normalized in DYNAMIC_DIMENSIONS:
+        return _text(
+            {
+                "taxonomy_version": TAXONOMY_VERSION,
+                "dimension": normalized,
+                "kind": "dynamic",
+                "description": DYNAMIC_DIMENSIONS[normalized],
+            }
+        )
 
-    return _text({"dimensions": enums, "count": len(enums)})
+    available = sorted((*CONTROLLED_DIMENSIONS, *DYNAMIC_DIMENSIONS))
+    return _err(f"Unknown dimension: {dimension}. Available: {', '.join(available)}")
 
 
 async def _list_library(args: dict) -> list[TextContent]:

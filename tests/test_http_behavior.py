@@ -13,7 +13,7 @@ httpx.Response — no server process, no sockets, no live API.
 Coverage:
 - request shape: X-API-Key header set, never an api_key query param
 - response parsing: JSON success bodies, the get_brand_context 404 special
-  case, and get_taxonomy's openapi.json-derived enum extraction
+  case, and get_taxonomy's versioned package vocabulary
 - error handling: 401 / 429 / 500 (JSON and non-JSON bodies), and malformed
   JSON on an otherwise-200 response, all resolve to a clean single
   TextContent error - never a raised exception/traceback
@@ -471,63 +471,58 @@ def test_analyze_creative_missing_file_returns_clean_error_no_http_call(
 
 
 # ---------------------------------------------------------------------------
-# Response parsing: get_taxonomy (openapi.json-derived enums) and the
+# Response parsing: get_taxonomy (versioned package vocabulary) and the
 # get_brand_context 404-is-not-an-error special case
 # ---------------------------------------------------------------------------
 
 
-def test_get_taxonomy_extracts_enum_dimensions_from_openapi_schema(mock_api):
-    mock_api.queue(
-        httpx.Response(
-            200,
-            json={
-                "components": {
-                    "schemas": {
-                        "HookType": {"enum": ["Question", "Bold Claim"]},
-                        "MessagingAngle": {"enum": ["Pain Point", "Social Proof"]},
-                        "AnalyzeRequest": {"type": "object"},
-                    }
-                }
-            },
-        )
-    )
-
+def test_get_taxonomy_returns_complete_versioned_vocabulary_without_http(mock_api):
     result = run(server._get_taxonomy({}))
     payload = as_json(result)
-    assert payload["count"] == 2
-    assert payload["dimensions"]["HookType"] == ["Question", "Bold Claim"]
-    assert "AnalyzeRequest" not in payload["dimensions"]
+    assert payload["taxonomy_version"] == "v2"
+    assert payload["controlled_dimension_count"] == 16
+    assert payload["dynamic_dimension_count"] == 2
+    assert payload["controlled_dimensions"]["hook_type"][:2] == [
+        "Question",
+        "Bold Claim",
+    ]
+    assert payload["controlled_dimensions"]["media_type"] == [
+        "video",
+        "image",
+        "carousel",
+        "landing_page",
+        "email",
+        "long_video",
+    ]
+    assert "messaging_angle" in payload["dynamic_dimensions"]
+    assert mock_api.requests == []
 
-    req = mock_api.last_request
-    assert req.url.path == "/openapi.json"
-    assert req.headers.get("x-api-key") == "test-api-key-123"
 
-
-def test_get_taxonomy_filters_to_one_dimension_case_insensitively(mock_api):
-    mock_api.queue(
-        httpx.Response(
-            200,
-            json={"components": {"schemas": {"HookType": {"enum": ["Question"]}}}},
-        )
-    )
-
-    result = run(server._get_taxonomy({"dimension": "hooktype"}))
+def test_get_taxonomy_filters_controlled_dimension_case_insensitively(mock_api):
+    result = run(server._get_taxonomy({"dimension": "HOOK TYPE"}))
     payload = as_json(result)
-    assert payload == {"hooktype": ["Question"]}
+    assert payload["dimension"] == "hook_type"
+    assert payload["kind"] == "controlled"
+    assert "Question" in payload["values"]
+    assert mock_api.requests == []
+
+
+def test_get_taxonomy_describes_dynamic_dimension_without_fake_values(mock_api):
+    result = run(server._get_taxonomy({"dimension": "messaging-angle"}))
+    payload = as_json(result)
+    assert payload["dimension"] == "messaging_angle"
+    assert payload["kind"] == "dynamic"
+    assert "values" not in payload
+    assert mock_api.requests == []
 
 
 def test_get_taxonomy_unknown_dimension_returns_clean_error(mock_api):
-    mock_api.queue(
-        httpx.Response(
-            200,
-            json={"components": {"schemas": {"HookType": {"enum": ["Question"]}}}},
-        )
-    )
-
     result = run(server._get_taxonomy({"dimension": "not_a_dimension"}))
-    assert as_text(result) == (
-        "Error: Unknown dimension: not_a_dimension. Available: HookType"
-    )
+    text = as_text(result)
+    assert text.startswith("Error: Unknown dimension: not_a_dimension. Available: ")
+    assert "hook_type" in text
+    assert "messaging_angle" in text
+    assert mock_api.requests == []
 
 
 def test_get_brand_context_404_is_a_normal_response_not_an_error(mock_api):

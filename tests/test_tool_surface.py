@@ -93,12 +93,13 @@ class ToolSurfaceTest(unittest.TestCase):
         source = SERVER.read_text()
         readme = README.read_text()
 
-        self.assertIn("all 21 dimensions", source)
+        self.assertIn("classification across 21 dimensions", source)
         self.assertIn("complete 21-dimension classification", source)
-        self.assertNotIn("28-dimension", source)
-        self.assertNotIn("all 28 dimensions", source)
+        self.assertNotIn("28 taxonomy dimensions", source)
         self.assertIn("21 standardized dimensions", readme)
-        self.assertIn("https://api.creativetagger.ai/mcp", readme)
+        self.assertIn("https://api.creativetagger.ai/mcp/", readme)
+        self.assertNotIn("https://api.creativetagger.ai/mcp`", readme)
+        self.assertIn("16 controlled dimensions", readme)
         self.assertIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
 
