@@ -1,6 +1,6 @@
 [project]
 name = "creative-tagger-mcp"
-version = "0.2.1"
+version = "0.2.2"
 description = "MCP server for Creative Tagger — taxonomy + library memory + strategist tools for any AI agent"
 requires-python = ">=3.11"
 readme = "README.md"
@@ -15,7 +15,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp>=1.28.1,<2",
     "httpx>=0.28.0",
 ]
 

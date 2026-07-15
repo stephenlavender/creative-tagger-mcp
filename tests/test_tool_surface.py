@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -20,6 +21,7 @@ README = ROOT / "README.md"
 PUBLIC_EXPECTED_TOOLS = {
     "analyze_creative",
     "get_taxonomy",
+    "list_workspaces",
     "list_library",
     "get_library_patterns",
     "get_analysis",
@@ -83,11 +85,96 @@ class ToolSurfaceTest(unittest.TestCase):
         source = SERVER.read_text()
 
         for name in EXPECTED_DECLARED_TOOLS:
-            self.assertIn(f'if name == "{name}":', source)
+            if name == "generate_naming":
+                self.assertIn('if name == "generate_naming":', source)
+            else:
+                self.assertRegex(source, rf'"{name}":\s+_[a-z_]+')
 
     def test_package_version_matches_v2_surface(self) -> None:
         init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
-        self.assertIn('__version__ = "0.2.1"', init_file.read_text())
+        self.assertIn('__version__ = "0.2.2"', init_file.read_text())
+        pyproject = (ROOT / "pyproject.toml").read_text()
+        self.assertIn('version = "0.2.2"', pyproject)
+        self.assertIn('"mcp>=1.28.1,<2"', pyproject)
+
+    def test_workspace_first_surface_and_brand_scopes_are_declared(self) -> None:
+        tools = _declared_tools()
+
+        self.assertIn("list_workspaces", tools)
+        self.assertEqual(
+            tools["list_workspaces"]["inputSchema"],
+            {"type": "object", "properties": {}},
+        )
+        for name in (
+            "list_library",
+            "get_library_patterns",
+            "get_analysis",
+            "get_meta_status",
+        ):
+            self.assertIn("brand_name", tools[name]["inputSchema"]["properties"])
+        library_schema = tools["list_library"]["inputSchema"]["properties"]
+        self.assertEqual(library_schema["limit"]["minimum"], 1)
+        self.assertEqual(library_schema["limit"]["maximum"], 100)
+        self.assertEqual(library_schema["offset"]["minimum"], 0)
+
+    def test_server_instructions_are_workspace_safe_and_causally_honest(self) -> None:
+        source = SERVER.read_text()
+
+        self.assertIn("version=__version__", source)
+        self.assertIn("instructions=PLAYBOOK_INSTRUCTIONS", source)
+        self.assertIn("call list_workspaces first", source)
+        self.assertIn("never blend or infer across", source)
+        self.assertIn("historical associations", source)
+        self.assertIn("falsifiable", source)
+        self.assertIn("ship/stop", source)
+
+        predict = _declared_tools()["predict_creative"]["description"]
+        self.assertIn("not a forecast", predict)
+        self.assertIn("controlled-test hypothesis", predict)
+        self.assertNotIn("predict how a creative will perform", predict.lower())
+
+    def test_strategy_is_concise_by_default_with_detailed_opt_in(self) -> None:
+        schema = _declared_tools()["get_creative_strategy_report"]["inputSchema"]
+        props = schema["properties"]
+
+        self.assertEqual(props["response_format"]["default"], "concise")
+        self.assertEqual(props["response_format"]["enum"], ["concise", "detailed"])
+        self.assertEqual(props["max_cells"]["default"], 24)
+        self.assertEqual(props["max_cells"]["minimum"], 1)
+        self.assertEqual(props["max_cells"]["maximum"], 200)
+
+        namespace = _load_pure_helpers(
+            {
+                "_csv_arg",
+                "_infer_strategy_template",
+                "_normalize_strategy_axis",
+                "_strategy_params",
+            }
+        )
+        params = namespace["_strategy_params"]({"brand_name": "Acme"})
+        self.assertEqual(params["response_format"], "concise")
+        self.assertEqual(params["max_cells"], 24)
+
+    def test_readme_matches_published_surface_and_current_models(self) -> None:
+        readme = README.read_text()
+
+        self.assertIn("packaged metadata are\nversion `0.2.2`", readme)
+        self.assertIn("pip install creative-tagger-mcp==0.2.2", readme)
+        self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
+        self.assertNotIn("unreleased `0.2.2` candidate", readme)
+        self.assertIn("companion API must be deployed", readme)
+        self.assertIn("Current chart view types are `table`, `bar`, `line`, and `pie`", readme)
+        self.assertNotIn('"view_type": "matrix"', readme)
+        self.assertIn("Gemini 3.5 Flash", readme)
+        self.assertIn("Claude Sonnet 5", readme)
+        self.assertNotIn("Gemini 2.5 Flash", readme)
+        brain_docs = readme.split("### `get_brain_learnings`", 1)[1].split(
+            "### `get_performance_timeseries`", 1
+        )[0]
+        self.assertIn("`higher_observed_efficiency`", brain_docs)
+        self.assertIn("`lower_observed_efficiency`", brain_docs)
+        self.assertNotIn("opportunity", brain_docs.lower())
+        self.assertNotIn("waste", brain_docs.lower())
 
     def test_tool_copy_uses_current_taxonomy_dimension_count(self) -> None:
         source = SERVER.read_text()
@@ -102,7 +189,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("15 controlled dimensions", readme)
         self.assertIn("one derived/open `aspect_ratio` dimension", readme)
         self.assertIn("`allow_other_values: true`", readme)
-        self.assertIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
+        self.assertIn("packaged metadata are\nversion `0.2.2`", readme)
+        self.assertNotIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
 
         tools = _declared_tools()
@@ -147,9 +235,9 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertNotIn("python -m twine upload dist/*", readme)
         self.assertIn(
-            "dist/creative_tagger_mcp-0.2.1-py3-none-any.whl", readme
+            "dist/creative_tagger_mcp-0.2.2-py3-none-any.whl", readme
         )
-        self.assertIn("dist/creative_tagger_mcp-0.2.1.tar.gz", readme)
+        self.assertIn("dist/creative_tagger_mcp-0.2.2.tar.gz", readme)
         self.assertIn("never publish with\n`twine upload dist/*`", readme)
 
     def test_release_smoke_does_not_require_tomli_on_old_python(self) -> None:
@@ -168,6 +256,21 @@ class ToolSurfaceTest(unittest.TestCase):
         # sequence lookup. Materializing the selected collection keeps the
         # release assertion portable across every supported Python version.
         self.assertIn("entry_points = list(metadata.entry_points().select(", source)
+
+    def test_release_smoke_checks_server_version_and_packaged_readme(self) -> None:
+        smoke = ROOT / "scripts" / "smoke_release.py"
+        source = smoke.read_text()
+
+        self.assertIn("initialization.server_version", source)
+        self.assertIn('requirement.startswith("mcp<2,>=1.28.1")', source)
+        self.assertIn("package_metadata.get_payload()", source)
+        self.assertIn("call list_workspaces first", source)
+        self.assertIn('"packaged metadata are"', source)
+        self.assertIn('"version `0.2.2`"', source)
+        self.assertIn('"pip install creative-tagger-mcp==0.2.2"', source)
+        self.assertIn('"pip install creative-tagger-mcp==0.2.1" not in readme', source)
+        self.assertIn("len(tool_catalog) < 40_000", source)
+        self.assertIn('strategy_schema["response_format"]["default"] == "concise"', source)
 
     def test_release_smoke_rejects_generated_paths_in_sdist(self) -> None:
         smoke = ROOT / "scripts" / "smoke_release.py"
@@ -441,7 +544,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 {
                     "age": "25-34",
                     "gender": "female",
-                    "signal": "opportunity",
+                    "observed_efficiency_band": "higher_observed_return_per_spend",
+                    "return_per_spend_percentile": 100,
                     "spend": 1250,
                     "roas": 4.2,
                     "ctr": 2.7,
@@ -453,7 +557,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 {
                     "age": "45-54",
                     "gender": "male",
-                    "signal": "waste",
+                    "observed_efficiency_band": "lower_observed_return_per_spend",
+                    "return_per_spend_percentile": 0,
                     "spend": 980,
                     "roas": 0.9,
                     "ctr": 0.8,
@@ -466,12 +571,20 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertEqual(len(queue), 2)
         self.assertEqual(queue[0]["rank"], 1)
-        self.assertEqual(queue[0]["action"], "scale")
+        self.assertEqual(queue[0]["action"], "review_observed_delivery")
         self.assertIn("25-34 / female", queue[0]["recommendation"])
         self.assertIn("$1250 spend", queue[0]["evidence_summary"])
-        self.assertEqual(queue[1]["action"], "cut_or_fix")
+        self.assertFalse(queue[0]["causal_claim"])
+        self.assertEqual(
+            queue[0]["observation_plan"]["interpretation"],
+            "association_not_causation",
+        )
+        self.assertNotIn("controlled_test", queue[0])
+        self.assertEqual(queue[1]["action"], "review_observed_delivery")
         self.assertIn("45-54 / male", queue[1]["recommendation"])
         self.assertIn("0.90x ROAS", queue[1]["evidence_summary"])
+        self.assertNotIn("opportunity", json.dumps(queue).lower())
+        self.assertNotIn("waste", json.dumps(queue).lower())
 
         views = namespace["_build_demographics_strategy_views"](
             brand_name="Acme",
@@ -579,10 +692,10 @@ class ToolSurfaceTest(unittest.TestCase):
             limit=4,
         )
         self.assertEqual([item["rank"] for item in queue], [1, 2, 3, 4])
-        self.assertEqual(queue[0]["action"], "scale")
+        self.assertEqual(queue[0]["action"], "validate")
         self.assertEqual(queue[0]["strategy_query"]["report_template"], "hook-performance")
         self.assertEqual(queue[0]["strategy_query"]["rows"], "hook")
-        self.assertEqual(queue[1]["action"], "refresh")
+        self.assertEqual(queue[1]["action"], "investigate")
         self.assertEqual(queue[1]["strategy_query"]["report_template"], "angle-audience-fit")
         self.assertEqual(queue[1]["strategy_query"]["columns"], "demographic_segment")
         self.assertEqual(queue[1]["timeseries_query"]["tool"], "get_performance_timeseries")
@@ -590,7 +703,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(queue[1]["timeseries_query"]["signal_focus"], "fatigued")
         self.assertEqual(queue[1]["timeseries_query"]["coverage_focus"], "gappy")
         self.assertEqual(queue[1]["timeseries_query"]["focus_value"], "25-34 / female")
-        self.assertEqual(queue[2]["action"], "scale")
+        self.assertEqual(queue[2]["action"], "validate")
         self.assertEqual(queue[2]["strategy_query"]["report_template"], "creative-winners")
         self.assertEqual(queue[2]["strategy_query"]["focus_status"], "winner")
         self.assertEqual(queue[3]["action"], "test")
@@ -839,17 +952,18 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("brand_name", competitor_history_schema)
         self.assertIn("Brand Brain learnings", brain_desc)
         self.assertIn("agent_context", brain_desc)
-        self.assertIn("audience opportunities", brain_desc)
+        self.assertIn("audience efficiency observations", brain_desc)
         self.assertIn("conclusion-only", brain_desc)
         self.assertIn("working-only", brain_desc)
         self.assertIn("demographic_segment", brain_desc)
-        self.assertIn("waste-only", brain_desc)
+        self.assertIn("lower-observed-efficiency", brain_desc)
         self.assertIn("watch_coverage_focus", brain_desc)
         self.assertIn("windowed-history", brain_desc)
         self.assertIn("Persist", brain_save_desc)
         self.assertIn("Brand Brain notes", brain_save_desc)
         self.assertIn("demographic_signal", brain_save_desc)
-        self.assertIn("opportunities-only", brain_save_desc)
+        self.assertIn("higher-", brain_save_desc)
+        self.assertIn("lower-observed-efficiency", brain_save_desc)
         self.assertIn("watch_coverage_focus", brain_save_desc)
         self.assertIn("windowed-history", brain_save_desc)
         self.assertIn("agent_context payload", brain_export_desc)
@@ -892,7 +1006,19 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("worsening", brain_export_schema["watch_trajectory_focus"]["description"])
         self.assertIn("insufficient_points", brain_export_schema["watch_coverage_focus"]["description"])
         self.assertIn("strategy", brain_export_schema["watch_sources"]["description"])
-        self.assertIn("waste", brain_export_schema["audience_signal_focus"]["description"])
+        expected_audience_focus = [
+            "all",
+            "higher_observed_efficiency",
+            "lower_observed_efficiency",
+        ]
+        self.assertEqual(
+            brain_export_schema["audience_signal_focus"]["enum"],
+            expected_audience_focus,
+        )
+        self.assertIn(
+            "lower_observed_efficiency",
+            brain_export_schema["audience_signal_focus"]["description"],
+        )
         brain_save_schema = tools["save_brain_learnings"]["inputSchema"]["properties"]
         self.assertEqual(brain_save_schema["limit"]["default"], 8)
         self.assertEqual(brain_save_schema["include_gaps_in_notes"]["default"], False)
@@ -916,8 +1042,14 @@ class ToolSurfaceTest(unittest.TestCase):
             "report end date",
             brain_save_schema["conclusion_recency_days"]["description"],
         )
-        self.assertIn("opportunity", brain_save_schema["audience_signal_focus"]["description"])
-        self.assertIn("waste", brain_save_schema["audience_signal_focus"]["description"])
+        self.assertEqual(
+            brain_save_schema["audience_signal_focus"]["enum"],
+            expected_audience_focus,
+        )
+        self.assertIn(
+            "higher_observed_efficiency",
+            brain_save_schema["audience_signal_focus"]["description"],
+        )
         self.assertIn("strategy", brain_save_schema["watch_sources"]["description"])
         self.assertIn("fatigued", brain_save_schema["watch_signal_focus"]["description"])
         self.assertIn("worsening", brain_save_schema["watch_trajectory_focus"]["description"])
@@ -943,8 +1075,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("loser", brain_schema["conclusion_statuses"]["description"])
         self.assertIn("all", brain_schema["conclusion_statuses"]["description"])
         self.assertIn("report end date", brain_schema["conclusion_recency_days"]["description"])
-        self.assertIn("opportunity", brain_schema["audience_signal_focus"]["description"])
-        self.assertIn("waste", brain_schema["audience_signal_focus"]["description"])
+        self.assertEqual(
+            brain_schema["audience_signal_focus"]["enum"],
+            expected_audience_focus,
+        )
+        self.assertIn(
+            "lower_observed_efficiency",
+            brain_schema["audience_signal_focus"]["description"],
+        )
         self.assertIn("visual_style", brain_schema["watch_group_by"]["description"])
         self.assertIn("demographic_age", brain_schema["watch_group_by"]["description"])
         self.assertIn("demographic_signal", brain_save_schema["watch_group_by"]["description"])
@@ -974,7 +1112,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("windowed-history", timeseries_desc)
         self.assertIn("agent_context payload", timeseries_export_desc)
         self.assertIn("decision queue", timeseries_export_desc)
-        self.assertIn("scale, hold, or sync more data", timeseries_export_desc)
+        self.assertIn("validate, hold, or sync more data", timeseries_export_desc)
         summary_schema = tools["get_meta_performance_summary"]["inputSchema"]["properties"]
         self.assertEqual(summary_schema["date_preset"]["default"], "all_time")
         self.assertIn("last_30_days", summary_schema["date_preset"]["description"])
@@ -995,6 +1133,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(timeseries_schema["minimum_calendar_days"]["default"], 0)
         self.assertEqual(timeseries_schema["maximum_gap_days"]["default"], 0)
         self.assertEqual(timeseries_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertEqual(timeseries_schema["limit"]["minimum"], 1)
+        self.assertEqual(timeseries_schema["limit"]["maximum"], 10)
         self.assertIn("last_90d", timeseries_schema["date_preset"]["description"])
         self.assertIn("landing_page_domain", timeseries_schema["group_by"]["description"])
         self.assertIn("visual_style", timeseries_schema["group_by"]["description"])
@@ -1025,6 +1165,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(timeseries_export_schema["minimum_calendar_days"]["default"], 0)
         self.assertEqual(timeseries_export_schema["maximum_gap_days"]["default"], 0)
         self.assertEqual(timeseries_export_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertEqual(timeseries_export_schema["limit"]["minimum"], 1)
+        self.assertEqual(timeseries_export_schema["limit"]["maximum"], 10)
         self.assertIn("demographic_segment", timeseries_export_schema["group_by"]["description"])
         self.assertIn("funnel_score", timeseries_export_schema["metric"]["description"])
         self.assertIn("hook_rate", timeseries_export_schema["metric"]["description"])
@@ -1038,7 +1180,9 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("windowed_history", timeseries_export_schema["coverage_focus"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_desc)
         self.assertIn("agent-ready audience context payload", demographics_export_desc)
-        self.assertIn("top opportunity and waste segments", demographics_export_desc)
+        self.assertIn("higher and lower observed-efficiency bands", demographics_export_desc)
+        self.assertNotIn("opportunity", demographics_export_desc.lower())
+        self.assertNotIn("waste", demographics_export_desc.lower())
         self.assertIn("mixed creative x audience strategy queries", demographics_export_desc)
         self.assertIn("time-series follow-up queries", demographics_export_desc)
         demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
@@ -1051,6 +1195,8 @@ class ToolSurfaceTest(unittest.TestCase):
         demographics_export_schema = tools["export_demographics_context"]["inputSchema"]["properties"]
         self.assertEqual(demographics_export_schema["date_preset"]["default"], "all_time")
         self.assertEqual(demographics_export_schema["limit"]["default"], 3)
+        self.assertEqual(demographics_export_schema["limit"]["minimum"], 1)
+        self.assertEqual(demographics_export_schema["limit"]["maximum"], 100)
         self.assertIn("last_30_days", demographics_export_schema["date_preset"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_export_schema["start_date"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_export_schema["end_date"]["description"])
@@ -1107,6 +1253,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('for key in ("rows", "columns", "status_focus", "metric_preset"):', source)
         self.assertIn('metrics = _csv_arg(args.get("metrics"))', source)
         self.assertIn('params["metrics"] = metrics', source)
+        self.assertIn('"response_format": args.get("response_format", "concise")', source)
+        self.assertIn('args.get("max_cells")', source)
+        self.assertIn('maximum=STRATEGY_MAX_CELLS', source)
+        self.assertIn('"max_cells": max_cells', source)
         self.assertIn("params = _strategy_params(args)", strategy_handler)
         self.assertIn('"roas_target"', source)
         self.assertIn('"fatigue_minimum_calendar_days"', source)
@@ -1147,9 +1297,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('f"{API_URL}/performance/by-taxonomy"', source)
         self.assertIn('f"{API_URL}/reports/prebuilt"', source)
         self.assertIn('f"{API_URL}/performance/demographics"', source)
-        self.assertIn('if name == "export_demographics_context":', source)
+        self.assertIn('"export_demographics_context": _export_demographics_context', source)
         self.assertIn("async def _export_demographics_context(args: dict)", source)
         self.assertIn('payload = await _get_demographics_performance(args)', source)
+        self.assertIn('parsed.get("higher_observed_efficiency")', source)
+        self.assertIn('parsed.get("lower_observed_efficiency")', source)
         self.assertIn('"decision_queue": decision_queue', source)
         self.assertIn('"segment_strategy_views": {', source)
         self.assertIn('"segment_timeseries_views": {', source)
@@ -1158,11 +1310,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"suggested_timeseries_views": _build_demographic_timeseries_views(', source)
         self.assertIn('"strategy_query"] = _build_demographics_strategy_query(', source)
         self.assertIn('"tool": "export_demographics_context"', source)
-        self.assertIn('if name == "get_competitor_scan_history":', source)
+        self.assertIn('"get_competitor_scan_history": _get_competitor_scan_history', source)
         self.assertIn('f"{API_URL}/competitors/history"', source)
-        self.assertIn('if name == "save_brain_learnings":', source)
+        self.assertIn('"save_brain_learnings": _save_brain_learnings', source)
         self.assertIn('f"{API_URL}/brain/learnings/save"', source)
-        self.assertIn('if name == "export_brain_learnings_context":', source)
+        self.assertIn('"export_brain_learnings_context": _export_brain_learnings_context', source)
         self.assertIn("async def _export_brain_learnings_context(args: dict)", source)
         self.assertIn('payload = await _get_brain_learnings(args)', source)
         self.assertIn('parsed.get("agent_context")', source)
@@ -1170,7 +1322,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"suggested_strategy_views": _build_brain_learning_strategy_views(', source)
         self.assertIn('"suggested_timeseries_views": _build_brain_learning_timeseries_views(', source)
         self.assertIn('"timeseries_query": _brain_learning_timeseries_query(', source)
-        self.assertIn('if name == "export_performance_timeseries_context":', source)
+        self.assertIn(
+            '"export_performance_timeseries_context": _export_performance_timeseries_context',
+            source,
+        )
         self.assertIn("async def _export_performance_timeseries_context(args: dict)", source)
         self.assertIn('payload = await _get_performance_timeseries(args)', source)
         self.assertIn("Performance timeseries response did not include agent_context", source)
@@ -1205,7 +1360,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 {
                     "age": "25-34",
                     "gender": "female",
-                    "signal": "opportunity",
+                    "observed_efficiency_band": "higher_observed_return_per_spend",
+                    "return_per_spend_percentile": 100,
                     "spend": 420,
                     "revenue": 1680,
                     "roas": 4.0,
@@ -1222,7 +1378,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(len(focus_views), 1)
         first = focus_views[0]
         self.assertEqual(first["segment"], "25-34 / female")
-        self.assertEqual(first["signal"], "opportunity")
+        self.assertEqual(
+            first["observed_efficiency_band"],
+            "higher_observed_return_per_spend",
+        )
         self.assertIn("$420 spend", first["evidence_summary"])
         self.assertEqual(len(first["strategy_views"]), 2)
         labels = {view["label"] for view in first["strategy_views"]}
@@ -1240,7 +1399,8 @@ class ToolSurfaceTest(unittest.TestCase):
                 {
                     "age": "25-34",
                     "gender": "female",
-                    "signal": "opportunity",
+                    "observed_efficiency_band": "higher_observed_return_per_spend",
+                    "return_per_spend_percentile": 100,
                     "spend": 420,
                     "revenue": 1680,
                     "roas": 4.0,
@@ -1318,14 +1478,21 @@ def _literal_string(node: ast.AST) -> str:
 def _load_pure_helpers(wanted: set[str]) -> dict:
     """Load pure helpers, without importing MCP/httpx dependencies."""
     tree = ast.parse(SERVER.read_text())
+    dependencies = {"_clamped_int_arg"} if "_strategy_params" in wanted else set()
     functions = [
-        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in wanted
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in wanted | dependencies
     ]
     module = ast.Module(body=functions, type_ignores=[])
     ast.fix_missing_locations(module)
 
     namespace = {
         "json": json,
+        "math": math,
+        "STRATEGY_DECISION_LIMIT": 25,
+        "STRATEGY_WATCH_LIMIT": 10,
+        "STRATEGY_MAX_CELLS": 200,
         "_text": lambda payload: [SimpleNamespace(text=json.dumps(payload, indent=2))],
     }
     exec(compile(module, str(SERVER), "exec"), namespace)

@@ -28,11 +28,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 
 import httpx
 import pytest
+from mcp.types import CallToolRequest, CallToolRequestParams
 
-from creative_tagger_mcp import server
+from creative_tagger_mcp import __version__, server
 
 
 def run(coro):
@@ -40,13 +42,15 @@ def run(coro):
 
 
 def as_json(result) -> object:
-    assert len(result) == 1
-    return json.loads(result[0].text)
+    content = result.content if hasattr(result, "content") else result
+    assert len(content) == 1
+    return json.loads(content[0].text)
 
 
 def as_text(result) -> str:
-    assert len(result) == 1
-    return result[0].text
+    content = result.content if hasattr(result, "content") else result
+    assert len(content) == 1
+    return content[0].text
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +96,63 @@ def test_list_tools_shows_internal_backfill_tools_when_env_flag_set(monkeypatch)
     assert "import_competitor_ads" in names
 
 
+def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts(
+    monkeypatch,
+):
+    monkeypatch.delenv("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", raising=False)
+    tools = run(server.list_tools())
+    payload = json.dumps(
+        [tool.model_dump(exclude_none=True) for tool in tools],
+        separators=(",", ":"),
+    )
+    by_name = {tool.name: tool for tool in tools}
+
+    assert len(payload) < 40_000  # <10k conservative char/4 proxy tokens
+    assert "opportunity" not in payload.lower()
+    assert "waste" not in payload.lower()
+    strategy = by_name["get_creative_strategy_report"]
+    assert "observational" in strategy.description
+    assert strategy.inputSchema["properties"]["response_format"]["default"] == "concise"
+    assert strategy.inputSchema["properties"]["rows"]["description"]
+    assert by_name["save_brain_learnings"].inputSchema["properties"]["limit"] == {
+        "type": "integer",
+        "default": 8,
+        "minimum": 1,
+        "maximum": 12,
+    }
+
+
+def test_initialize_reports_package_version_and_workspace_first_playbook():
+    options = server.server.create_initialization_options()
+
+    assert options.server_version == __version__ == "0.2.2"
+    assert "call list_workspaces first" in options.instructions
+    assert "historical associations" in options.instructions
+    assert "falsifiable" in options.instructions
+    assert "ship/stop" in options.instructions
+
+
+def test_registered_mcp_handler_sets_is_error_for_tool_failures(mock_api):
+    request = CallToolRequest(
+        params=CallToolRequestParams(name="not_a_real_tool", arguments={})
+    )
+    result = run(server.server.request_handlers[CallToolRequest](request)).root
+
+    assert result.isError is True
+    assert result.content[0].text == "Error: Unknown tool: not_a_real_tool"
+
+
+def test_registered_mcp_handler_sets_is_error_for_http_failures(mock_api):
+    mock_api.queue(httpx.Response(401, json={"detail": "Invalid API key"}))
+    request = CallToolRequest(
+        params=CallToolRequestParams(name="list_workspaces", arguments={})
+    )
+    result = run(server.server.request_handlers[CallToolRequest](request)).root
+
+    assert result.isError is True
+    assert result.content[0].text == "Error: API error (401): Invalid API key"
+
+
 # ---------------------------------------------------------------------------
 # call_tool() dispatcher contract
 # ---------------------------------------------------------------------------
@@ -100,6 +161,7 @@ def test_list_tools_shows_internal_backfill_tools_when_env_flag_set(monkeypatch)
 def test_call_tool_unknown_tool_returns_clean_error(mock_api):
     result = run(server.call_tool("not_a_real_tool", {}))
     assert as_text(result) == "Error: Unknown tool: not_a_real_tool"
+    assert result.isError is True
     assert mock_api.requests == []
 
 
@@ -112,6 +174,7 @@ def test_call_tool_blocks_internal_backfill_tool_without_env_flag(
     )
     text = as_text(result)
     assert text.startswith("Error: Internal backfill tools are disabled")
+    assert result.isError is True
     assert mock_api.requests == []  # never touches the network
 
 
@@ -156,6 +219,731 @@ def test_get_tool_sends_header_auth_and_query_params_without_api_key(mock_api):
     params = mock_api.query_params()
     assert params == {"limit": "5", "search": "BFCM", "sort": "roas"}
     assert "api_key" not in params
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ({"limit": -1}, {"limit": "1"}),
+        ({"limit": 0}, {"limit": "1"}),
+        ({"limit": 10_000}, {"limit": "100"}),
+        ({"offset": -9}, {"offset": "0"}),
+        (
+            {"limit": 10_000, "offset": -9},
+            {"limit": "100", "offset": "0"},
+        ),
+    ],
+)
+def test_list_library_clamps_pagination_before_api_request(mock_api, args, expected):
+    mock_api.queue(httpx.Response(200, json={"items": []}))
+
+    run(server._list_library(args))
+
+    assert mock_api.query_params() == expected
+
+
+def test_list_library_rejects_non_integer_pagination_without_http_call(mock_api):
+    result = run(server._list_library({"limit": "many"}))
+
+    assert as_text(result) == "Error: limit must be an integer"
+    assert mock_api.requests == []
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, 8),
+        (-7, 1),
+        (-7.0, 1),
+        (-0.0, 1),
+        (1, 1),
+        (1.0, 1),
+        (50, 50),
+        (50.0, 50),
+        (51.0, 50),
+        (1e100, 50),
+    ],
+)
+def test_clamped_int_arg_matches_json_schema_integer_semantics(value, expected):
+    assert (
+        server._clamped_int_arg(
+            value,
+            default=8,
+            minimum=1,
+            maximum=50,
+            field_name="limit",
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(True, id="true"),
+        pytest.param(False, id="false"),
+        pytest.param(1.5, id="fractional-positive"),
+        pytest.param(-1.5, id="fractional-negative"),
+        pytest.param(math.nan, id="nan"),
+        pytest.param(math.inf, id="positive-infinity"),
+        pytest.param(-math.inf, id="negative-infinity"),
+        pytest.param("1", id="numeric-string"),
+        pytest.param("many", id="string"),
+        pytest.param([], id="array"),
+        pytest.param({}, id="object"),
+    ],
+)
+def test_clamped_int_arg_rejects_non_json_schema_integers(value):
+    with pytest.raises(ValueError, match="^limit must be an integer$"):
+        server._clamped_int_arg(
+            value,
+            default=8,
+            minimum=1,
+            maximum=50,
+            field_name="limit",
+        )
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [(-1, "1"), (0, "1"), (10_000, "10")],
+)
+def test_performance_timeseries_clamps_collection_limit_locally(
+    mock_api, requested, expected
+):
+    mock_api.queue(httpx.Response(200, json={"series": []}))
+
+    run(server._get_performance_timeseries({"limit": requested}))
+
+    assert mock_api.query_params()["limit"] == expected
+
+
+def test_performance_timeseries_export_uses_the_same_local_cap(mock_api):
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={"series": [], "agent_context": {}, "summary": {}},
+        )
+    )
+
+    run(server._export_performance_timeseries_context({"limit": 10_000}))
+
+    assert mock_api.query_params()["limit"] == "10"
+
+
+PUBLIC_COLLECTION_LIMITS = [
+    (
+        "prebuilt.limit",
+        "get_prebuilt_reports",
+        "limit",
+        server._get_prebuilt_reports,
+        {"brand_name": "Acme"},
+        8,
+        50,
+        "query",
+        {"reports": []},
+    ),
+    (
+        "strategy.limit",
+        "get_creative_strategy_report",
+        "limit",
+        server._get_creative_strategy_report,
+        {"brand_name": "Acme"},
+        10,
+        25,
+        "query",
+        {"cells": []},
+    ),
+    (
+        "strategy.watch_limit",
+        "get_creative_strategy_report",
+        "watch_limit",
+        server._get_creative_strategy_report,
+        {"brand_name": "Acme"},
+        5,
+        10,
+        "query",
+        {"cells": []},
+    ),
+    (
+        "strategy.max_cells",
+        "get_creative_strategy_report",
+        "max_cells",
+        server._get_creative_strategy_report,
+        {"brand_name": "Acme"},
+        24,
+        200,
+        "query",
+        {"cells": []},
+    ),
+    (
+        "brain-get.limit",
+        "get_brain_learnings",
+        "limit",
+        server._get_brain_learnings,
+        {"brand_name": "Acme"},
+        8,
+        12,
+        "query",
+        {"learnings": []},
+    ),
+    (
+        "brain-get.audience_limit",
+        "get_brain_learnings",
+        "audience_limit",
+        server._get_brain_learnings,
+        {"brand_name": "Acme"},
+        3,
+        10,
+        "query",
+        {"learnings": []},
+    ),
+    (
+        "brain-save.limit",
+        "save_brain_learnings",
+        "limit",
+        server._save_brain_learnings,
+        {"brand_name": "Acme"},
+        8,
+        12,
+        "json",
+        {"saved": True},
+    ),
+    (
+        "brain-save.audience_limit",
+        "save_brain_learnings",
+        "audience_limit",
+        server._save_brain_learnings,
+        {"brand_name": "Acme"},
+        3,
+        10,
+        "json",
+        {"saved": True},
+    ),
+    (
+        "brain-export.limit",
+        "export_brain_learnings_context",
+        "limit",
+        server._export_brain_learnings_context,
+        {"brand_name": "Acme"},
+        8,
+        12,
+        "query",
+        {"agent_context": {}, "summary": {}, "learnings": []},
+    ),
+    (
+        "brain-export.audience_limit",
+        "export_brain_learnings_context",
+        "audience_limit",
+        server._export_brain_learnings_context,
+        {"brand_name": "Acme"},
+        3,
+        10,
+        "query",
+        {"agent_context": {}, "summary": {}, "learnings": []},
+    ),
+    (
+        "timeseries-get.limit",
+        "get_performance_timeseries",
+        "limit",
+        server._get_performance_timeseries,
+        {"brand_name": "Acme"},
+        10,
+        10,
+        "query",
+        {"series": []},
+    ),
+    (
+        "timeseries-export.limit",
+        "export_performance_timeseries_context",
+        "limit",
+        server._export_performance_timeseries_context,
+        {"brand_name": "Acme"},
+        10,
+        10,
+        "query",
+        {"agent_context": {}, "summary": {}, "series": []},
+    ),
+    (
+        "custom-create.limit",
+        "create_custom_report",
+        "limit",
+        server._create_custom_report,
+        {"brand_name": "Acme", "dimensions": ["hook_type"]},
+        12,
+        50,
+        "json",
+        {"rows": []},
+    ),
+    (
+        "custom-save.limit",
+        "save_custom_report",
+        "limit",
+        server._save_custom_report,
+        {"brand_name": "Acme", "name": "Hooks", "dimensions": ["hook_type"]},
+        12,
+        50,
+        "json",
+        {"saved": True},
+    ),
+    (
+        "competitor-scan.limit",
+        "scan_competitor",
+        "limit",
+        server._scan_competitor,
+        {"brand_name": "Acme", "page_name": "Rival"},
+        25,
+        50,
+        "json",
+        {"ads": []},
+    ),
+    (
+        "competitor-history.limit",
+        "get_competitor_scan_history",
+        "limit",
+        server._get_competitor_scan_history,
+        {"brand_name": "Acme"},
+        10,
+        50,
+        "query",
+        {"items": []},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("case_id", "tool_name", "field_name", "_handler", "_base_args", "default", "maximum", "_transport", "_response"),
+    PUBLIC_COLLECTION_LIMITS,
+    ids=[case[0] for case in PUBLIC_COLLECTION_LIMITS],
+)
+def test_public_collection_limit_schemas_match_runtime_contract(
+    case_id,
+    tool_name,
+    field_name,
+    _handler,
+    _base_args,
+    default,
+    maximum,
+    _transport,
+    _response,
+):
+    del case_id
+    by_name = {tool.name: tool for tool in run(server.list_tools())}
+    field = by_name[tool_name].inputSchema["properties"][field_name]
+
+    assert field["type"] == "integer"
+    assert field["default"] == default
+    assert field["minimum"] == 1
+    assert field["maximum"] == maximum
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        "default",
+        "below",
+        "minimum",
+        "integral-float",
+        "maximum",
+        "above",
+        "huge",
+    ],
+)
+@pytest.mark.parametrize(
+    ("case_id", "_tool_name", "field_name", "handler", "base_args", "default", "maximum", "transport", "response"),
+    PUBLIC_COLLECTION_LIMITS,
+    ids=[case[0] for case in PUBLIC_COLLECTION_LIMITS],
+)
+def test_public_collection_limits_are_clamped_before_http(
+    mock_api,
+    boundary,
+    case_id,
+    _tool_name,
+    field_name,
+    handler,
+    base_args,
+    default,
+    maximum,
+    transport,
+    response,
+):
+    del case_id
+    requested_and_expected = {
+        "default": (None, default),
+        "below": (-7, 1),
+        "minimum": (1, 1),
+        "integral-float": (1.0, 1),
+        "maximum": (maximum, maximum),
+        "above": (maximum + 1, maximum),
+        "huge": (10**12, maximum),
+    }
+    requested, expected = requested_and_expected[boundary]
+    args = dict(base_args)
+    if requested is not None:
+        args[field_name] = requested
+    mock_api.queue(httpx.Response(200, json=response))
+
+    run(handler(args))
+
+    if transport == "query":
+        actual = int(mock_api.query_params()[field_name])
+    else:
+        actual = json.loads(mock_api.last_request.content)[field_name]
+    assert actual == expected
+
+
+@pytest.mark.parametrize("invalid", ["many", 1.5, True])
+@pytest.mark.parametrize(
+    ("case_id", "_tool_name", "field_name", "handler", "base_args", "_default", "_maximum", "_transport", "_response"),
+    PUBLIC_COLLECTION_LIMITS,
+    ids=[case[0] for case in PUBLIC_COLLECTION_LIMITS],
+)
+def test_public_collection_limits_reject_non_integers_without_http(
+    mock_api,
+    invalid,
+    case_id,
+    _tool_name,
+    field_name,
+    handler,
+    base_args,
+    _default,
+    _maximum,
+    _transport,
+    _response,
+):
+    del case_id
+    args = {**base_args, field_name: invalid}
+
+    result = run(handler(args))
+
+    assert as_text(result) == f"Error: {field_name} must be an integer"
+    assert mock_api.requests == []
+
+
+@pytest.mark.parametrize(
+    ("legacy", "canonical"),
+    [
+        ("opportunity", "higher_observed_efficiency"),
+        ("opportunity-only", "higher_observed_efficiency"),
+        ("waste", "lower_observed_efficiency"),
+        ("waste-only", "lower_observed_efficiency"),
+    ],
+)
+def test_brain_get_normalizes_legacy_audience_filters_internally(
+    mock_api, legacy, canonical
+):
+    mock_api.queue(httpx.Response(200, json={"learnings": []}))
+
+    run(
+        server._get_brain_learnings(
+            {"brand_name": "Acme", "audience_signal_focus": legacy}
+        )
+    )
+
+    assert mock_api.query_params()["audience_signal_focus"] == canonical
+
+
+def test_brain_save_normalizes_legacy_audience_filter_internally(mock_api):
+    mock_api.queue(httpx.Response(200, json={"saved": True}))
+
+    run(
+        server._save_brain_learnings(
+            {"brand_name": "Acme", "audience_signal_focus": "waste"}
+        )
+    )
+
+    assert json.loads(mock_api.last_request.content)["audience_signal_focus"] == (
+        "lower_observed_efficiency"
+    )
+
+
+def test_list_workspaces_uses_authenticated_workspace_endpoint(mock_api):
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "workspaces": [
+                    {"brand_name": "Acme"},
+                    {"brand_name": "Beta Brand"},
+                ],
+                "total": 2,
+            },
+        )
+    )
+
+    payload = as_json(run(server._list_workspaces({})))
+
+    assert payload["total"] == 2
+    assert mock_api.last_request.url.path == "/auth/workspaces"
+    assert mock_api.last_request.headers["x-api-key"] == "test-api-key-123"
+
+
+@pytest.mark.parametrize(
+    "handler,args,expected_path",
+    [
+        (server._list_library, {"brand_name": "Beta Brand"}, "/auth/library"),
+        (
+            server._get_library_patterns,
+            {"brand_name": "Beta Brand"},
+            "/auth/library/patterns",
+        ),
+        (
+            server._get_analysis,
+            {"brand_name": "Beta Brand", "analysis_id": 42},
+            "/auth/library/42",
+        ),
+        (
+            server._get_meta_status,
+            {"brand_name": "Beta Brand"},
+            "/auth/meta/status",
+        ),
+    ],
+)
+def test_workspace_sensitive_gets_forward_exact_brand_name(
+    mock_api, handler, args, expected_path
+):
+    mock_api.queue(httpx.Response(200, json={"ok": True}))
+
+    run(handler(args))
+
+    assert mock_api.last_request.url.path == expected_path
+    assert mock_api.query_params()["brand_name"] == "Beta Brand"
+
+
+@pytest.mark.parametrize(
+    "handler,args,expected_path",
+    [
+        (server._list_library, {"brand_name": ""}, "/auth/library"),
+        (
+            server._get_library_patterns,
+            {"brand_name": ""},
+            "/auth/library/patterns",
+        ),
+        (
+            server._get_analysis,
+            {"brand_name": "", "analysis_id": 42},
+            "/auth/library/42",
+        ),
+        (
+            server._get_meta_status,
+            {"brand_name": ""},
+            "/auth/meta/status",
+        ),
+    ],
+)
+def test_workspace_sensitive_gets_preserve_explicit_default_workspace(
+    mock_api, handler, args, expected_path
+):
+    mock_api.queue(httpx.Response(200, json={"ok": True}))
+
+    run(handler(args))
+
+    assert mock_api.last_request.url.path == expected_path
+    assert "brand_name=" in str(mock_api.last_request.url)
+    assert mock_api.query_params()["brand_name"] == ""
+
+
+def test_get_analysis_keeps_default_and_named_workspace_queries_isolated(mock_api):
+    mock_api.queue(httpx.Response(200, json={"id": 42, "workspace": "default"}))
+    mock_api.queue(httpx.Response(200, json={"id": 42, "workspace": "Beta Brand"}))
+
+    default_result = as_json(
+        run(server._get_analysis({"brand_name": "", "analysis_id": 42}))
+    )
+    named_result = as_json(
+        run(server._get_analysis({"brand_name": "Beta Brand", "analysis_id": 42}))
+    )
+
+    assert default_result["workspace"] == "default"
+    assert named_result["workspace"] == "Beta Brand"
+    assert mock_api.query_params(0) == {"brand_name": ""}
+    assert mock_api.query_params(1) == {"brand_name": "Beta Brand"}
+
+
+def test_two_workspace_calls_never_reuse_the_other_workspace_scope(mock_api):
+    mock_api.queue(httpx.Response(200, json={"items": [{"id": 1}]}))
+    mock_api.queue(httpx.Response(200, json={"items": [{"id": 2}]}))
+
+    first = as_json(run(server._list_library({"brand_name": "Acme", "limit": 1})))
+    second = as_json(
+        run(server._list_library({"brand_name": "Beta Brand", "limit": 1}))
+    )
+
+    assert first["items"][0]["id"] == 1
+    assert second["items"][0]["id"] == 2
+    assert mock_api.query_params(0)["brand_name"] == "Acme"
+    assert mock_api.query_params(1)["brand_name"] == "Beta Brand"
+
+
+def test_strategy_defaults_to_bounded_concise_response_and_forwards_max_cells(
+    mock_api,
+):
+    mock_api.queue(httpx.Response(200, json={"cells": []}))
+
+    run(server._get_creative_strategy_report({"brand_name": "Acme"}))
+
+    params = mock_api.query_params()
+    assert params["response_format"] == "concise"
+    assert params["max_cells"] == "24"
+
+
+def test_strategy_preserves_explicit_detailed_opt_in(mock_api):
+    mock_api.queue(httpx.Response(200, json={"cells": []}))
+
+    run(
+        server._get_creative_strategy_report(
+            {
+                "brand_name": "Acme",
+                "response_format": "detailed",
+                "max_cells": 80,
+            }
+        )
+    )
+
+    params = mock_api.query_params()
+    assert params["response_format"] == "detailed"
+    assert params["max_cells"] == "80"
+
+
+def test_demographics_export_consumes_observational_band_contract(mock_api):
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "brand_name": "Acme",
+                "date_window": "All time",
+                "total_segments": 2,
+                "totals": {"spend": 1000, "roas": 2.2},
+                "higher_observed_efficiency": [
+                    {
+                        "age": "25-34",
+                        "gender": "female",
+                        "observed_efficiency_band": (
+                            "higher_observed_return_per_spend"
+                        ),
+                        "return_per_spend_percentile": 100,
+                        "spend": 200,
+                        "revenue": 800,
+                        "roas": 4.0,
+                    }
+                ],
+                "lower_observed_efficiency": [
+                    {
+                        "age": "45-54",
+                        "gender": "male",
+                        "observed_efficiency_band": (
+                            "lower_observed_return_per_spend"
+                        ),
+                        "return_per_spend_percentile": 0,
+                        "spend": 500,
+                        "revenue": 250,
+                        "roas": 0.5,
+                    }
+                ],
+                "outcome_verdicts_withheld": True,
+                "metric_predeclaration_required": True,
+                "goal_direction_predeclaration_required": True,
+                "interpretation": "observational age/gender delivery only",
+            },
+        )
+    )
+
+    payload = as_json(
+        run(server._export_demographics_context({"brand_name": "Acme", "limit": 3}))
+    )
+
+    assert payload["higher_observed_efficiency_count"] == 1
+    assert payload["lower_observed_efficiency_count"] == 1
+    assert payload["top_higher_observed_efficiency"][0]["segment"] == (
+        "25-34 / female"
+    )
+    assert payload["top_lower_observed_efficiency"][0]["segment"] == "45-54 / male"
+    assert len(payload["decision_queue"]) == 2
+    assert all(
+        item["action"] == "review_observed_delivery"
+        for item in payload["decision_queue"]
+    )
+    assert all(
+        item["observation_plan"]["interpretation"] == "association_not_causation"
+        for item in payload["decision_queue"]
+    )
+    assert payload["outcome_verdicts_withheld"] is True
+    assert "1 higher and 1 lower observed-return-per-spend" in payload["summary_text"]
+    serialized = json.dumps(payload).lower()
+    assert "opportunity" not in serialized
+    assert "waste" not in serialized
+
+    assert mock_api.last_request.url.path == "/performance/demographics"
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [(-1, 1), (0, 1), (10_000, 100)],
+)
+def test_demographics_export_clamps_segment_collection_limit(
+    mock_api, requested, expected
+):
+    segments = [
+        {
+            "age": f"segment-{index}",
+            "gender": "unknown",
+            "spend": index + 1,
+            "revenue": (index + 1) * 2,
+            "roas": 2.0,
+        }
+        for index in range(120)
+    ]
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "brand_name": "Acme",
+                "higher_observed_efficiency": segments,
+                "lower_observed_efficiency": segments,
+                "totals": {},
+            },
+        )
+    )
+
+    payload = as_json(
+        run(server._export_demographics_context({"limit": requested}))
+    )
+
+    assert len(payload["top_higher_observed_efficiency"]) == expected
+    assert len(payload["top_lower_observed_efficiency"]) == expected
+
+
+def test_compact_concise_strategy_fixture_stays_within_agent_token_budget(mock_api):
+    cells = [
+        {
+            "row": f"format-{index}",
+            "column": f"angle-{index}",
+            "status": "learning",
+            "spend": 123.45,
+            "roas": 2.1,
+            "next_test": "Change one hook and hold audience/offer constant.",
+        }
+        for index in range(24)
+    ]
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "response_format": "concise",
+                "cells": cells,
+                "agent_context": {
+                    "evidence_type": "observational_association",
+                    "prompt": "Run one-variable controlled tests.",
+                },
+            },
+        )
+    )
+
+    result = run(server._get_creative_strategy_report({"brand_name": "Acme"}))
+    text = as_text(result)
+
+    assert "\n  " not in text
+    assert len(text) / 4 < 2_000
 
 
 def test_get_tool_with_path_param_builds_url_from_argument(mock_api):
@@ -203,6 +991,33 @@ def test_post_form_tool_sends_header_auth_and_form_body(mock_api):
     assert req.headers["content-type"] == "application/x-www-form-urlencoded"
     body = dict(httpx.QueryParams(req.content.decode()))
     assert body == {"brand_name": "Acme", "question": "What next?"}
+
+
+def test_predict_response_is_explicitly_observational_and_testable(mock_api):
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={"fit_score": 78, "recommended_swaps": ["Hook A -> Hook B"]},
+        )
+    )
+
+    payload = as_json(
+        run(
+            server._predict_creative(
+                {
+                    "brand_name": "Acme",
+                    "attributes": {"hook_type": "Question"},
+                }
+            )
+        )
+    )
+
+    assert payload["fit_score"] == 78
+    assert payload["evidence_type"] == "observational_association"
+    assert payload["causal_claim"] is False
+    assert "does not forecast" in payload["decision_boundary"]
+    assert payload["test_protocol"]["single_variable"]
+    assert "ship/stop" in payload["test_protocol"]["decision_rule"]
 
 
 def test_delete_tool_sends_header_auth_and_no_api_key_query_param(mock_api):

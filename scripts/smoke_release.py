@@ -32,6 +32,7 @@ DIST = ROOT / "dist"
 EXPECTED_TOOLS = {
     "analyze_creative",
     "get_taxonomy",
+    "list_workspaces",
     "list_library",
     "get_library_patterns",
     "get_analysis",
@@ -202,6 +203,9 @@ from creative_tagger_mcp.taxonomy import taxonomy_payload
 
 expected_tools = {sorted(EXPECTED_TOOLS)!r}
 dist_version = metadata.version("creative-tagger-mcp")
+package_metadata = metadata.metadata("creative-tagger-mcp")
+requirements = metadata.requires("creative-tagger-mcp") or []
+readme = package_metadata.get_payload()
 entry_points = list(metadata.entry_points().select(
     group="console_scripts",
     name="creative-tagger-mcp",
@@ -209,13 +213,93 @@ entry_points = list(metadata.entry_points().select(
 tools = asyncio.run(server.list_tools())
 tool_names = sorted(tool.name for tool in tools)
 tool_descriptions = {{tool.name: tool.description for tool in tools}}
+tools_by_name = {{tool.name: tool for tool in tools}}
+tool_catalog = json.dumps(
+    [tool.model_dump(exclude_none=True) for tool in tools],
+    separators=(",", ":"),
+)
 taxonomy = taxonomy_payload()
+initialization = server.server.create_initialization_options()
 
 assert creative_tagger_mcp.__version__ == {expected_version!r}
 assert dist_version == {expected_version!r}
+assert any(requirement.startswith("mcp<2,>=1.28.1") for requirement in requirements)
+assert initialization.server_version == {expected_version!r}
+assert "call list_workspaces first" in initialization.instructions
+assert "historical associations" in initialization.instructions
+assert "packaged metadata are" in readme
+assert "version `0.2.2`" in readme
+assert "pip install creative-tagger-mcp==0.2.2" in readme
+assert "unreleased `0.2.2` candidate" not in readme
+assert "pip install creative-tagger-mcp==0.2.1" not in readme
+assert "PyPI still serves `creative-tagger-mcp==0.1.0`" not in readme
+assert "`higher_observed_efficiency`" in readme
+assert "`lower_observed_efficiency`" in readme
 assert len(entry_points) == 1
 assert entry_points[0].value == "creative_tagger_mcp.server:main"
 assert tool_names == expected_tools
+assert len(tool_catalog) < 40_000
+assert "opportunity" not in tool_catalog.lower()
+assert "waste" not in tool_catalog.lower()
+strategy_schema = tools_by_name["get_creative_strategy_report"].inputSchema["properties"]
+assert strategy_schema["response_format"]["default"] == "concise"
+assert strategy_schema["max_cells"]["default"] == 24
+collection_bounds = [
+    ("get_prebuilt_reports", "limit", 8, 50),
+    ("get_creative_strategy_report", "limit", 10, 25),
+    ("get_creative_strategy_report", "watch_limit", 5, 10),
+    ("get_creative_strategy_report", "max_cells", 24, 200),
+    ("get_brain_learnings", "limit", 8, 12),
+    ("get_brain_learnings", "audience_limit", 3, 10),
+    ("save_brain_learnings", "limit", 8, 12),
+    ("save_brain_learnings", "audience_limit", 3, 10),
+    ("export_brain_learnings_context", "limit", 8, 12),
+    ("export_brain_learnings_context", "audience_limit", 3, 10),
+    ("get_performance_timeseries", "limit", 10, 10),
+    ("export_performance_timeseries_context", "limit", 10, 10),
+    ("create_custom_report", "limit", 12, 50),
+    ("save_custom_report", "limit", 12, 50),
+    ("scan_competitor", "limit", 25, 50),
+    ("get_competitor_scan_history", "limit", 10, 50),
+]
+for tool_name, field_name, default, maximum in collection_bounds:
+    field = tools_by_name[tool_name].inputSchema["properties"][field_name]
+    assert field["type"] == "integer"
+    assert field["default"] == default
+    assert field["minimum"] == 1
+    assert field["maximum"] == maximum
+library_schema = tools_by_name["list_library"].inputSchema["properties"]
+assert library_schema["limit"]["minimum"] == 1
+assert library_schema["limit"]["maximum"] == 100
+assert library_schema["offset"]["minimum"] == 0
+brain_schema = tools_by_name["get_brain_learnings"].inputSchema["properties"]
+assert brain_schema["audience_signal_focus"]["enum"] == [
+    "all", "higher_observed_efficiency", "lower_observed_efficiency"
+]
+timeseries_schema = tools_by_name["get_performance_timeseries"].inputSchema["properties"]
+assert timeseries_schema["limit"]["minimum"] == 1
+assert timeseries_schema["limit"]["maximum"] == 10
+bounded_strategy = server._strategy_params({{
+    "limit": 10**9,
+    "watch_limit": 10**9,
+    "max_cells": 10**9,
+}})
+assert bounded_strategy["limit"] == 25
+assert bounded_strategy["watch_limit"] == 10
+assert bounded_strategy["max_cells"] == 200
+assert server._strategy_params({{"limit": 1.0}})["limit"] == 1
+try:
+    server._strategy_params({{"limit": 1.5}})
+except ValueError as exc:
+    assert str(exc) == "limit must be an integer"
+else:
+    raise AssertionError("non-integer strategy limit was accepted")
+demographics_export_schema = tools_by_name["export_demographics_context"].inputSchema[
+    "properties"
+]
+assert demographics_export_schema["limit"]["minimum"] == 1
+assert demographics_export_schema["limit"]["maximum"] == 100
+assert "brand_name" in tools_by_name["get_meta_status"].inputSchema["properties"]
 internal_backfill_tools = {sorted(INTERNAL_BACKFILL_TOOLS)!r}
 assert not (set(internal_backfill_tools) & set(tool_names))
 assert server.API_URL == "https://api.creativetagger.ai"
@@ -232,8 +316,10 @@ assert "social proof" not in tool_descriptions["analyze_creative"].lower()
 
 print(json.dumps({{
     "version": dist_version,
+    "server_version": initialization.server_version,
     "entry_point": entry_points[0].value,
     "tool_count": len(tool_names),
+    "tool_catalog_bytes": len(tool_catalog),
     "controlled_dimension_count": taxonomy["controlled_dimension_count"],
     "derived_open_dimension_count": taxonomy["derived_open_dimension_count"],
     "dynamic_dimension_count": taxonomy["dynamic_dimension_count"],

@@ -2,18 +2,17 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Status note (verified 2026-07-15): the production API and hosted remote MCP
-surface are live, but PyPI still serves `creative-tagger-mcp==0.1.0`. This
-README documents the repository's unpublished `0.2.1` release candidate. Use
-`https://api.creativetagger.ai/mcp/` for the current hosted tool surface; do not
-assume the installed `0.1.0` package includes the tools documented below.
+Release note (2026-07-15): this source tree and its packaged metadata are
+version `0.2.2`. The hosted and stdio surfaces are separate clients of the same
+API and may expose different tool counts. The companion API must be deployed
+and live before this stdio release is tagged and published.
 
 Your AI of choice gets:
 
 - **Taxonomy** — 21 standardized dimensions for any ad creative (video, image, carousel, landing page, long video, email)
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
-- **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over winners, unproven tags, demographic opportunities, and taxonomy gaps
+- **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
 - **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
@@ -28,12 +27,11 @@ Authorization: Bearer ct_your_key
 ```
 
 The repository package is the stdio path for clients that require a local
-command. Until `0.2.1` is published, installing from PyPI gives the older tool
-surface:
+command:
 
 ```bash
-# Install (PyPI currently resolves to 0.1.0)
-pip install creative-tagger-mcp
+# Install this release after it appears on PyPI
+pip install creative-tagger-mcp==0.2.2
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
@@ -55,8 +53,8 @@ wheel that will be uploaded to PyPI:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.1.tar.gz
+  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.2.tar.gz
 ```
 
 The smoke test installs the wheel into a temporary virtualenv, verifies the
@@ -68,11 +66,12 @@ confirms the V1 tool surface is present from the installed artifact.
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-Recommended path:
+After the `0.2.2` review and API-dependency gates pass, tag the exact current
+`main` commit:
 
 ```bash
-git tag v0.2.1
-git push origin v0.2.1
+git tag -a v0.2.2 -m "Creative Tagger MCP v0.2.2"
+git push origin refs/tags/v0.2.2
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
@@ -102,11 +101,11 @@ Local fallback:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.1.tar.gz
+  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.2.tar.gz
 python -m twine upload \
-  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.1.tar.gz
+  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.2.tar.gz
 ```
 
 Always select the exact release artifacts for a local upload. A reused checkout
@@ -165,12 +164,23 @@ Taxonomy v2 splits three dimensions the old model mixed together: **media type**
 `Static Image` and `Carousel` are media types and are no longer valid
 `visual_format` values. `messaging_angle` is the canonical angle dimension.
 
+### `list_workspaces`
+List the authenticated user's available workspaces. Start every connected
+account workflow here, select one returned `brand_name`, and pass that exact
+value to every library, Meta status, report, and strategist call. Do not blend
+observations across workspaces unless the user explicitly requests a comparison.
+```
+{}
+```
+
 ### `list_library`
 Browse saved analyses. Search by filename or hook, filter by format, messaging
 angle, emotion, CTA, talent, offer, audio type, or seasonality, and sort by
-joined performance.
+joined performance. `limit` is clamped to 1–100 and `offset` to zero or higher
+before the request leaves the local stdio server.
 ```
 {
+  "brand_name": "Acme",
   "limit": 50,
   "search": "BFCM",
   "format": "video",
@@ -182,11 +192,12 @@ joined performance.
 
 ### `get_library_patterns`
 Cross-library pattern insights — concentration and diversity per dimension, plus rule-based diversification flags.
+Pass the exact workspace `brand_name` returned by `list_workspaces`.
 
 ### `get_analysis`
 Pull the full 21-dimension result for one library item.
 ```
-{ "analysis_id": 42 }
+{ "brand_name": "Acme", "analysis_id": 42 }
 ```
 
 ### `recommend` ⭐
@@ -279,8 +290,9 @@ window and Creative Tagger should match Ads Manager exactly.
 ### `get_creative_strategy_report`
 Pull the same strategy matrix shown in Creative Tagger Reports. Defaults to
 visual formats by messaging angles, with states for next tests, live learning,
-winners, losers, fatigue, and gaps. Returns the decision queue plus an
-`agent_context` payload that can be handed directly to an LLM for strategy work.
+winners, losers, fatigue, and gaps. Returns the decision queue and a bounded
+matrix slice for agent strategy work. Detailed responses also include an
+`agent_context` payload that can be handed directly to an LLM.
 Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
 milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score. For
 audience-mode reads, switch the axes to demographic dimensions such as
@@ -300,6 +312,12 @@ fatigue-aware reads, pass the same embedded watch controls the app/API support:
 `watch_group_by`, `watch_metric`, `watch_signal_focus`,
 `watch_trajectory_focus`, `watch_coverage_focus`, `watch_minimum_points`,
 `watch_minimum_calendar_days`, `watch_maximum_gap_days`, and `watch_limit`.
+The decision-queue `limit` is clamped to 1–25, while `watch_limit` is clamped
+to 1–10, before the API request.
+Responses default to `response_format: "concise"` with at most 24 matrix cells
+to keep the result bounded. Set `response_format: "detailed"` explicitly for
+the richer report fields, including `agent_context`. Both formats respect
+`max_cells`; raise it (up to 200) when a larger matrix slice is needed.
 
 ```
 {
@@ -307,7 +325,9 @@ fatigue-aware reads, pass the same embedded watch controls the app/API support:
   "report_template": "next-tests",
   "rows": "visual_format",
   "columns": "messaging_angle",
-  "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"
+  "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
+  "response_format": "concise",
+  "max_cells": 24
 }
 ```
 
@@ -371,13 +391,19 @@ recent conclusion window. Use `watch_group_by`, `watch_metric`,
 `fatigue_decay_threshold` when the watchouts should be written from a different
 fatigue lens such as fatigued-only CPA by ad type, weak taxonomy patterns only,
 CTR by hook, or stable ROAS by `demographic_segment`.
+When `kinds` includes `audience`, `audience_signal_focus` accepts the canonical
+values `all`, `higher_observed_efficiency`, or
+`lower_observed_efficiency`. The same vocabulary applies to get, save, and
+export operations. Across all three operations, story `limit` is clamped to
+1–12 and `audience_limit` is clamped to 1–10 before the API request.
 ```
 {
   "brand_name": "Acme",
   "date_preset": "last_30_days",
   "minimum_spend": 500,
   "learning_spend": 1500,
-  "kinds": "conclusion,watch",
+  "kinds": "conclusion,watch,audience",
+  "audience_signal_focus": "higher_observed_efficiency",
   "conclusion_statuses": "winner,fatigued",
   "conclusion_recency_days": 21,
   "watch_group_by": "ad_type",
@@ -404,7 +430,8 @@ user wants the best current learnings saved back into reusable strategist contex
   "date_preset": "last_30_days",
   "minimum_spend": 500,
   "learning_spend": 1500,
-  "kinds": "conclusion,watch",
+  "kinds": "conclusion,watch,audience",
+  "audience_signal_focus": "lower_observed_efficiency",
   "conclusion_statuses": "winner,fatigued",
   "conclusion_recency_days": 21,
   "watch_group_by": "ad_type",
@@ -416,6 +443,20 @@ user wants the best current learnings saved back into reusable strategist contex
   "watch_minimum_calendar_days": 7,
   "watch_sources": "timeseries,patterns",
   "include_gaps_in_notes": false,
+  "limit": 6
+}
+```
+
+### `export_brain_learnings_context`
+Export the bounded `agent_context` from `get_brain_learnings`, including its
+filtered learning stories and follow-up Strategy/time-series queries. It uses
+the same controls and canonical `audience_signal_focus` values as the get and
+save tools.
+```
+{
+  "brand_name": "Acme",
+  "kinds": "audience",
+  "audience_signal_focus": "higher_observed_efficiency",
   "limit": 6
 }
 ```
@@ -433,7 +474,8 @@ when the agent wants only worsening, improving, flat, or insufficient-data
 series. Use `coverage_focus` to isolate call-ready, gappy, short-window, or
 windowed-history curves. Add `minimum_calendar_days` when fatigue should only
 count after a trend has been live long enough, not just after a few
-close-together points.
+close-together points. Both this tool and its context export clamp `limit` to
+1–10 grouped series locally.
 ```
 {
   "brand_name": "Acme",
@@ -490,9 +532,10 @@ Each aggregate can include `funnel_score` and a `funnel` explanation object for
 capture -> hold -> bring-to-site -> convert diagnosis.
 
 ### `get_taxonomy_performance`
-Find which tags scale, which are unproven, and which standard taxonomy values have
-not been tested yet. Rows include ROAS, CTR, thumbstop, and funnel scores when
-performance memory exists.
+Find historical tag associations, under-observed tags, and standard taxonomy
+values that have not been tested. Rows include ROAS, CTR, thumbstop, and funnel
+scores when performance memory exists. These are observational comparisons;
+validate a promising tag with a one-variable controlled test.
 ```
 { "brand_name": "Acme", "dimension": "hook_type", "spend_threshold": 500 }
 ```
@@ -501,7 +544,7 @@ performance memory exists.
 Return ready-made Motion-style reports: best hooks, landing pages, messaging angles,
 audiences, offers, CTAs, visual formats, and brand-custom values. Add
 `start_date` / `end_date` when the report should only cover a specific synced
-window.
+window. `limit` is clamped to 1–50 rows per report before the API request.
 ```
 { "brand_name": "Acme", "report_id": "best_hooks", "limit": 8 }
 { "brand_name": "Acme", "report_id": "best_angles", "start_date": "2026-05-01", "end_date": "2026-05-31", "limit": 8 }
@@ -513,7 +556,8 @@ rank the actual matched dimension combinations by ROAS, funnel score, spend,
 CTR, or CPA. Use this for Motion-style views like best hook x landing page x
 offer, founder x hook, audience x offer, or brand segment x product. Add
 `start_date` and `end_date` when the report should isolate a specific test
-window instead of the full synced history.
+window instead of the full synced history. `limit` is clamped to 1–50 rows
+before the API request.
 ```
 {
   "brand_name": "Acme",
@@ -533,12 +577,14 @@ delete them when they are no longer needed. Saved reports can also persist a
 custom `start_date` / `end_date` window for a specific launch or test period,
 plus dashboard-style preset state such as `view_type`, `date_range`,
 `group_by`, `metrics`, `filters`, `sort`, and `saved_metric_preset`.
+Current chart view types are `table`, `bar`, `line`, and `pie`.
+`save_custom_report` clamps `limit` to 1–50 rows before the API request.
 ```
 {
   "brand_name": "Acme",
   "name": "Hook + LP + Offer",
   "dimensions": ["hook_type", "landing_page", "offer_type"],
-  "view_type": "matrix",
+  "view_type": "table",
   "date_range": "custom",
   "group_by": "dimension",
   "metrics": ["spend", "roas", "cpa", "ctr"],
@@ -555,17 +601,20 @@ Tools: `save_custom_report`, `list_custom_reports`, `run_saved_custom_report`,
 `delete_custom_report`.
 
 ### `predict_creative`
-Score a saved analysis or draft attributes before it spends, using the brand's
-own performance memory. Returns a fit score, per-tag ratings, and recommended
-swaps.
+Despite the legacy tool name, this is not a forecast. It compares a saved
+analysis or draft attributes with the brand's historical tag-level performance
+and returns an observational fit score plus explicit causal guardrails. Turn a
+promising association into a falsifiable, one-variable controlled test with a
+predeclared primary metric, minimum data, guardrails, and ship/stop criteria.
 ```
 { "brand_name": "Acme", "attributes": { "hook_type": "Question", "cta": "Shop Now" } }
 ```
 
 ### `get_demographics_performance`
-Read age x gender performance memory with opportunity and waste flags. Use
-`date_preset` for a standard audience window, or `start_date` / `end_date` to
-isolate a specific audience window.
+Read age x gender delivery with account-relative higher and lower observed-
+return-per-spend bands. These bands are descriptive associations, not audience
+outcome or action verdicts. Use `date_preset` for a standard audience window,
+or `start_date` / `end_date` to isolate a specific audience window.
 ```
 {
   "brand_name": "Acme",
@@ -577,9 +626,11 @@ isolate a specific audience window.
 
 ### `export_demographics_context`
 Return an agent-ready audience context payload from the saved demographics read.
-Use this when another agent needs the top audience opportunities and waste
-segments, blended totals, per-segment mixed creative x audience views, and a
-prompt-ready summary without the full wrapper.
+Use this when another agent needs higher and lower observed-efficiency bands,
+raw totals, per-segment mixed creative x audience views, and a prompt-ready
+descriptive summary without the full wrapper. Outcome direction stays withheld
+until an objective metric and direction are predeclared. `limit` is clamped to
+1–100 segments per observed-efficiency band.
 ```
 {
   "brand_name": "Acme",
@@ -597,6 +648,7 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 
 ### `scan_competitor`
 Classify a competitor's Meta Ad Library ads and get strategy breakdown.
+`limit` is clamped to 1–50 ads before the API request.
 ```
 { "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
 ```
@@ -608,7 +660,8 @@ after native Meta Ad Library access is approved.
 ### `get_competitor_scan_history`
 Read the saved Market scans/imports for a workspace without re-running Meta Ad
 Library access. Useful when the agent needs the latest saved competitor hooks,
-styles, or scan metadata before drafting briefs.
+styles, or scan metadata before drafting briefs. `limit` is clamped to 1–50
+saved scans before the API request.
 ```
 { "brand_name": "Acme", "limit": 6 }
 ```
@@ -621,8 +674,8 @@ Build naming strings from already-classified attributes (rarely needed — `anal
 ```
 Your AI agent  ←—stdio—→  creative-tagger-mcp  ←—HTTPS—→  api.creativetagger.ai
                                                               │
-                                                              ├── Gemini 2.5 Flash (classifier)
-                                                              ├── Claude Sonnet (fallback)
+                                                              ├── Gemini 3.5 Flash (default classifier)
+                                                              ├── Claude Sonnet 5 (configured fallback)
                                                               ├── SQLite (library + brand memory)
                                                               └── Meta Ad Library
 ```
