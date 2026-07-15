@@ -39,6 +39,22 @@ from creative_tagger_mcp.taxonomy import (
 API_URL = os.environ.get("CREATIVE_TAGGER_URL", "https://api.creativetagger.ai")
 API_KEY = os.environ.get("CREATIVE_TAGGER_API_KEY", "")
 INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
+LIBRARY_PAGE_LIMIT = 100
+TIMESERIES_SERIES_LIMIT = 100
+DEMOGRAPHICS_EXPORT_LIMIT = 100
+
+_AUDIENCE_SIGNAL_FOCUS_ALIASES = {
+    "all": "all",
+    "higher": "higher_observed_efficiency",
+    "higher_observed_efficiency": "higher_observed_efficiency",
+    "opportunity": "higher_observed_efficiency",
+    "opportunities": "higher_observed_efficiency",
+    "opportunity_only": "higher_observed_efficiency",
+    "lower": "lower_observed_efficiency",
+    "lower_observed_efficiency": "lower_observed_efficiency",
+    "waste": "lower_observed_efficiency",
+    "waste_only": "lower_observed_efficiency",
+}
 
 PLAYBOOK_INSTRUCTIONS = """\
 Creative Tagger is observational decision support, not a causal attribution or
@@ -122,6 +138,32 @@ def _coerce_bool(value: Any, *, default: bool = False) -> bool:
         if normalized in {"0", "false", "no", "n", "off"}:
             return False
     return bool(value)
+
+
+def _clamped_int_arg(
+    value: Any,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int | None = None,
+    field_name: str,
+) -> int:
+    raw = default if value is None else value
+    if isinstance(raw, bool):
+        raise ValueError(f"{field_name} must be an integer")
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer") from exc
+    parsed = max(minimum, parsed)
+    if maximum is not None:
+        parsed = min(parsed, maximum)
+    return parsed
+
+
+def _canonical_audience_signal_focus(value: Any) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return _AUDIENCE_SIGNAL_FOCUS_ALIASES.get(normalized, normalized)
 
 
 def _csv_arg(value: Any) -> str:
@@ -350,15 +392,17 @@ _COMPACT_TOOL_DESCRIPTIONS = {
     "get_brain_learnings": (
         "Read one workspace's current Brand Brain observations, conclusions, "
         "watchouts, audience signals, gaps, and agent_context. Validate associations "
-        "with controlled tests before changing allocation."
+        "with controlled tests before changing allocation. Audience filters use "
+        "higher_observed_efficiency or lower_observed_efficiency."
     ),
     "save_brain_learnings": (
         "Persist a reviewed get_brain_learnings slice as Brand Brain notes. Uses the "
-        "same filters; saving memory does not prove causality."
+        "same canonical audience filters; saving memory does not prove causality."
     ),
     "export_brain_learnings_context": (
         "Export a bounded, prompt-ready context from get_brain_learnings, including "
-        "follow-up Strategy and time-series queries."
+        "follow-up Strategy and time-series queries and the same canonical audience "
+        "filters."
     ),
     "get_performance_timeseries": (
         "Read one workspace's saved performance series for observational fatigue, "
@@ -397,8 +441,8 @@ _SCHEMA_DESCRIPTION_FIELDS = {
         "watch_sources",
         "audience_signal_focus",
     },
-    "save_brain_learnings": set(),
-    "export_brain_learnings_context": set(),
+    "save_brain_learnings": {"audience_signal_focus"},
+    "export_brain_learnings_context": {"audience_signal_focus"},
     "export_performance_timeseries_context": set(),
 }
 
@@ -552,8 +596,13 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Exact workspace brand_name from list_workspaces",
                     },
-                    "limit": {"type": "integer", "default": 50},
-                    "offset": {"type": "integer", "default": 0},
+                    "limit": {
+                        "type": "integer",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 100,
+                    },
+                    "offset": {"type": "integer", "default": 0, "minimum": 0},
                     "search": {
                         "type": "string",
                         "description": "Search filename, naming, hook, or creative type",
@@ -1277,12 +1326,12 @@ async def list_tools() -> list[Tool]:
                 "Return auto-written Brand Brain learnings from saved performance, "
                 "strategy, taxonomy, and audience data. Use this when an agent needs "
                 "the current test conclusions, working patterns, watchouts, audience "
-                "opportunities, fatigue, and gap learnings plus an agent_context "
+                "efficiency observations, fatigue, and gap learnings plus an agent_context "
                 "brief seed. Supports focused reads like conclusion-only, "
                 "working-only, or audience-only learnings, including audience "
                 "fatigue reads grouped by demographic_age, demographic_gender, "
                 "demographic_segment, or demographic_signal. Audience filters can "
-                "also isolate opportunities-only or waste-only learnings, and "
+                "also isolate higher- or lower-observed-efficiency learnings, and "
                 "watch_coverage_focus can isolate call-ready, gappy, short-window, "
                 "insufficient-point, or windowed-history time-series reads."
             ),
@@ -1401,7 +1450,12 @@ async def list_tools() -> list[Tool]:
                     "audience_signal_focus": {
                         "type": "string",
                         "default": "all",
-                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                        "enum": [
+                            "all",
+                            "higher_observed_efficiency",
+                            "lower_observed_efficiency",
+                        ],
+                        "description": "Optional audience signal filter when kinds includes audience: all, higher_observed_efficiency, or lower_observed_efficiency",
                     },
                     "audience_limit": {
                         "type": "integer",
@@ -1425,8 +1479,9 @@ async def list_tools() -> list[Tool]:
                 "patterns, watchouts, audience signals, or gaps saved as reusable "
                 "strategist context, including audience watchouts grouped by "
                 "demographic_age, demographic_gender, demographic_segment, or "
-                "demographic_signal. Audience filters can isolate opportunities-only "
-                "or waste-only learnings before saving, and watch_coverage_focus can "
+                "demographic_signal. Audience filters can isolate higher- or "
+                "lower-observed-efficiency learnings before saving, and "
+                "watch_coverage_focus can "
                 "save only gappy, short-window, insufficient-point, or "
                 "windowed-history watchouts."
             ),
@@ -1546,7 +1601,12 @@ async def list_tools() -> list[Tool]:
                     "audience_signal_focus": {
                         "type": "string",
                         "default": "all",
-                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                        "enum": [
+                            "all",
+                            "higher_observed_efficiency",
+                            "lower_observed_efficiency",
+                        ],
+                        "description": "Optional audience signal filter when kinds includes audience: all, higher_observed_efficiency, or lower_observed_efficiency",
                     },
                     "audience_limit": {
                         "type": "integer",
@@ -1575,7 +1635,8 @@ async def list_tools() -> list[Tool]:
                 "thresholds, saved Brand Brain context, and active watch or audience "
                 "filters without the full response wrapper, including strategy queries "
                 "for the next matrix view, time-series follow-up queries, and "
-                "watch_coverage_focus for time-series sync-quality reads."
+                "watch_coverage_focus for time-series sync-quality reads. Audience "
+                "filters use higher_observed_efficiency or lower_observed_efficiency."
             ),
             inputSchema={
                 "type": "object",
@@ -1692,7 +1753,12 @@ async def list_tools() -> list[Tool]:
                     "audience_signal_focus": {
                         "type": "string",
                         "default": "all",
-                        "description": "Optional audience signal filter when kinds includes audience: all, opportunity, or waste",
+                        "enum": [
+                            "all",
+                            "higher_observed_efficiency",
+                            "lower_observed_efficiency",
+                        ],
+                        "description": "Optional audience signal filter when kinds includes audience: all, higher_observed_efficiency, or lower_observed_efficiency",
                     },
                     "audience_limit": {
                         "type": "integer",
@@ -1785,6 +1851,8 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "default": 10,
+                        "minimum": 1,
+                        "maximum": 100,
                         "description": "Maximum grouped series to return",
                     },
                     "minimum_spend": {
@@ -1889,6 +1957,8 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "default": 10,
+                        "minimum": 1,
+                        "maximum": 100,
                         "description": "Maximum grouped series to return",
                     },
                     "minimum_spend": {
@@ -2177,6 +2247,8 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "default": 3,
+                        "minimum": 1,
+                        "maximum": 100,
                         "description": "Maximum segments from each observed-efficiency band to include in the exported context",
                     },
                 },
@@ -2557,10 +2629,26 @@ async def _list_workspaces(args: dict) -> list[TextContent]:
 
 async def _list_library(args: dict) -> list[TextContent]:
     params: dict[str, Any] = {**_auth_params()}
+    try:
+        if args.get("limit") is not None:
+            params["limit"] = _clamped_int_arg(
+                args["limit"],
+                default=50,
+                minimum=1,
+                maximum=LIBRARY_PAGE_LIMIT,
+                field_name="limit",
+            )
+        if args.get("offset") is not None:
+            params["offset"] = _clamped_int_arg(
+                args["offset"],
+                default=0,
+                minimum=0,
+                field_name="offset",
+            )
+    except ValueError as exc:
+        return _err(str(exc))
     for k in (
         "brand_name",
-        "limit",
-        "offset",
         "search",
         "format",
         "hook",
@@ -2990,7 +3078,10 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
                 params[key] = value
             continue
         if args.get(key) not in (None, ""):
-            params[key] = args[key]
+            value = args[key]
+            if key == "audience_signal_focus":
+                value = _canonical_audience_signal_focus(value)
+            params[key] = value
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/brain/learnings",
@@ -3042,7 +3133,10 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
                 body[key] = value
             continue
         if args.get(key) not in (None, ""):
-            body[key] = args[key]
+            value = args[key]
+            if key == "audience_signal_focus":
+                value = _canonical_audience_signal_focus(value)
+            body[key] = value
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.post(
             f"{API_URL}/brain/learnings/save",
@@ -3225,6 +3319,16 @@ async def _export_brain_learnings_context(args: dict) -> list[TextContent]:
 
 
 async def _get_performance_timeseries(args: dict) -> list[TextContent]:
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=10,
+            minimum=1,
+            maximum=TIMESERIES_SERIES_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
         "date_preset": args.get("date_preset", "last_30d"),
@@ -3233,7 +3337,7 @@ async def _get_performance_timeseries(args: dict) -> list[TextContent]:
         "signal_focus": args.get("signal_focus", "all"),
         "trajectory_focus": args.get("trajectory_focus", "all"),
         "coverage_focus": args.get("coverage_focus", "all"),
-        "limit": args.get("limit", 10),
+        "limit": limit,
         "minimum_spend": args.get("minimum_spend", 500),
         "minimum_points": args.get("minimum_points", 0),
         "minimum_calendar_days": args.get("minimum_calendar_days", 0),
@@ -4103,9 +4207,15 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
 
     requested_limit = args.get("limit", 3)
     try:
-        limit = max(1, int(requested_limit))
-    except (TypeError, ValueError):
-        return _err("limit must be an integer")
+        limit = _clamped_int_arg(
+            requested_limit,
+            default=3,
+            minimum=1,
+            maximum=DEMOGRAPHICS_EXPORT_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
 
     higher_observed_efficiency = [
         _compact_demographic_segment(segment)

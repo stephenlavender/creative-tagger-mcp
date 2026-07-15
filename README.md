@@ -176,7 +176,8 @@ observations across workspaces unless the user explicitly requests a comparison.
 ### `list_library`
 Browse saved analyses. Search by filename or hook, filter by format, messaging
 angle, emotion, CTA, talent, offer, audio type, or seasonality, and sort by
-joined performance.
+joined performance. `limit` is clamped to 1–100 and `offset` to zero or higher
+before the request leaves the local stdio server.
 ```
 {
   "brand_name": "Acme",
@@ -388,13 +389,18 @@ recent conclusion window. Use `watch_group_by`, `watch_metric`,
 `fatigue_decay_threshold` when the watchouts should be written from a different
 fatigue lens such as fatigued-only CPA by ad type, weak taxonomy patterns only,
 CTR by hook, or stable ROAS by `demographic_segment`.
+When `kinds` includes `audience`, `audience_signal_focus` accepts the canonical
+values `all`, `higher_observed_efficiency`, or
+`lower_observed_efficiency`. The same vocabulary applies to get, save, and
+export operations.
 ```
 {
   "brand_name": "Acme",
   "date_preset": "last_30_days",
   "minimum_spend": 500,
   "learning_spend": 1500,
-  "kinds": "conclusion,watch",
+  "kinds": "conclusion,watch,audience",
+  "audience_signal_focus": "higher_observed_efficiency",
   "conclusion_statuses": "winner,fatigued",
   "conclusion_recency_days": 21,
   "watch_group_by": "ad_type",
@@ -421,7 +427,8 @@ user wants the best current learnings saved back into reusable strategist contex
   "date_preset": "last_30_days",
   "minimum_spend": 500,
   "learning_spend": 1500,
-  "kinds": "conclusion,watch",
+  "kinds": "conclusion,watch,audience",
+  "audience_signal_focus": "lower_observed_efficiency",
   "conclusion_statuses": "winner,fatigued",
   "conclusion_recency_days": 21,
   "watch_group_by": "ad_type",
@@ -433,6 +440,20 @@ user wants the best current learnings saved back into reusable strategist contex
   "watch_minimum_calendar_days": 7,
   "watch_sources": "timeseries,patterns",
   "include_gaps_in_notes": false,
+  "limit": 6
+}
+```
+
+### `export_brain_learnings_context`
+Export the bounded `agent_context` from `get_brain_learnings`, including its
+filtered learning stories and follow-up Strategy/time-series queries. It uses
+the same controls and canonical `audience_signal_focus` values as the get and
+save tools.
+```
+{
+  "brand_name": "Acme",
+  "kinds": "audience",
+  "audience_signal_focus": "higher_observed_efficiency",
   "limit": 6
 }
 ```
@@ -450,7 +471,8 @@ when the agent wants only worsening, improving, flat, or insufficient-data
 series. Use `coverage_focus` to isolate call-ready, gappy, short-window, or
 windowed-history curves. Add `minimum_calendar_days` when fatigue should only
 count after a trend has been live long enough, not just after a few
-close-together points.
+close-together points. Both this tool and its context export clamp `limit` to
+1–100 grouped series locally.
 ```
 {
   "brand_name": "Acme",
@@ -602,7 +624,8 @@ Return an agent-ready audience context payload from the saved demographics read.
 Use this when another agent needs higher and lower observed-efficiency bands,
 raw totals, per-segment mixed creative x audience views, and a prompt-ready
 descriptive summary without the full wrapper. Outcome direction stays withheld
-until an objective metric and direction are predeclared.
+until an objective metric and direction are predeclared. `limit` is clamped to
+1–100 segments per observed-efficiency band.
 ```
 {
   "brand_name": "Acme",

@@ -10,6 +10,10 @@
 - Aligned demographic tools with the API's descriptive
   `higher_observed_efficiency` and `lower_observed_efficiency` bands, without
   causal audience or budget-allocation claims.
+- Exposed that same canonical vocabulary on every Brain audience filter while
+  retaining legacy aliases only inside the stdio compatibility layer.
+- Clamped stdio library pagination and performance-series collection limits so
+  negative or oversized arguments cannot bypass bounded agent responses.
 - Made validation and transport failures protocol-visible, strengthened agent
   instructions around objective-aware observational evidence, and advertised
   the installed package version in MCP initialization metadata.

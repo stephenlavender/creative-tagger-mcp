@@ -233,13 +233,33 @@ assert "pip install creative-tagger-mcp==0.2.2" in readme
 assert "unreleased `0.2.2` candidate" not in readme
 assert "pip install creative-tagger-mcp==0.2.1" not in readme
 assert "PyPI still serves `creative-tagger-mcp==0.1.0`" not in readme
+assert "`higher_observed_efficiency`" in readme
+assert "`lower_observed_efficiency`" in readme
 assert len(entry_points) == 1
 assert entry_points[0].value == "creative_tagger_mcp.server:main"
 assert tool_names == expected_tools
 assert len(tool_catalog) < 40_000
+assert "opportunity" not in tool_catalog.lower()
+assert "waste" not in tool_catalog.lower()
 strategy_schema = tools_by_name["get_creative_strategy_report"].inputSchema["properties"]
 assert strategy_schema["response_format"]["default"] == "concise"
 assert strategy_schema["max_cells"]["default"] == 24
+library_schema = tools_by_name["list_library"].inputSchema["properties"]
+assert library_schema["limit"]["minimum"] == 1
+assert library_schema["limit"]["maximum"] == 100
+assert library_schema["offset"]["minimum"] == 0
+brain_schema = tools_by_name["get_brain_learnings"].inputSchema["properties"]
+assert brain_schema["audience_signal_focus"]["enum"] == [
+    "all", "higher_observed_efficiency", "lower_observed_efficiency"
+]
+timeseries_schema = tools_by_name["get_performance_timeseries"].inputSchema["properties"]
+assert timeseries_schema["limit"]["minimum"] == 1
+assert timeseries_schema["limit"]["maximum"] == 100
+demographics_export_schema = tools_by_name["export_demographics_context"].inputSchema[
+    "properties"
+]
+assert demographics_export_schema["limit"]["minimum"] == 1
+assert demographics_export_schema["limit"]["maximum"] == 100
 assert "brand_name" in tools_by_name["get_meta_status"].inputSchema["properties"]
 internal_backfill_tools = {sorted(INTERNAL_BACKFILL_TOOLS)!r}
 assert not (set(internal_backfill_tools) & set(tool_names))

@@ -111,6 +111,10 @@ class ToolSurfaceTest(unittest.TestCase):
             "get_meta_status",
         ):
             self.assertIn("brand_name", tools[name]["inputSchema"]["properties"])
+        library_schema = tools["list_library"]["inputSchema"]["properties"]
+        self.assertEqual(library_schema["limit"]["minimum"], 1)
+        self.assertEqual(library_schema["limit"]["maximum"], 100)
+        self.assertEqual(library_schema["offset"]["minimum"], 0)
 
     def test_server_instructions_are_workspace_safe_and_causally_honest(self) -> None:
         source = SERVER.read_text()
@@ -162,6 +166,13 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("Gemini 3.5 Flash", readme)
         self.assertIn("Claude Sonnet 5", readme)
         self.assertNotIn("Gemini 2.5 Flash", readme)
+        brain_docs = readme.split("### `get_brain_learnings`", 1)[1].split(
+            "### `get_performance_timeseries`", 1
+        )[0]
+        self.assertIn("`higher_observed_efficiency`", brain_docs)
+        self.assertIn("`lower_observed_efficiency`", brain_docs)
+        self.assertNotIn("opportunity", brain_docs.lower())
+        self.assertNotIn("waste", brain_docs.lower())
 
     def test_tool_copy_uses_current_taxonomy_dimension_count(self) -> None:
         source = SERVER.read_text()
@@ -939,17 +950,18 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("brand_name", competitor_history_schema)
         self.assertIn("Brand Brain learnings", brain_desc)
         self.assertIn("agent_context", brain_desc)
-        self.assertIn("audience opportunities", brain_desc)
+        self.assertIn("audience efficiency observations", brain_desc)
         self.assertIn("conclusion-only", brain_desc)
         self.assertIn("working-only", brain_desc)
         self.assertIn("demographic_segment", brain_desc)
-        self.assertIn("waste-only", brain_desc)
+        self.assertIn("lower-observed-efficiency", brain_desc)
         self.assertIn("watch_coverage_focus", brain_desc)
         self.assertIn("windowed-history", brain_desc)
         self.assertIn("Persist", brain_save_desc)
         self.assertIn("Brand Brain notes", brain_save_desc)
         self.assertIn("demographic_signal", brain_save_desc)
-        self.assertIn("opportunities-only", brain_save_desc)
+        self.assertIn("higher-", brain_save_desc)
+        self.assertIn("lower-observed-efficiency", brain_save_desc)
         self.assertIn("watch_coverage_focus", brain_save_desc)
         self.assertIn("windowed-history", brain_save_desc)
         self.assertIn("agent_context payload", brain_export_desc)
@@ -992,7 +1004,19 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("worsening", brain_export_schema["watch_trajectory_focus"]["description"])
         self.assertIn("insufficient_points", brain_export_schema["watch_coverage_focus"]["description"])
         self.assertIn("strategy", brain_export_schema["watch_sources"]["description"])
-        self.assertIn("waste", brain_export_schema["audience_signal_focus"]["description"])
+        expected_audience_focus = [
+            "all",
+            "higher_observed_efficiency",
+            "lower_observed_efficiency",
+        ]
+        self.assertEqual(
+            brain_export_schema["audience_signal_focus"]["enum"],
+            expected_audience_focus,
+        )
+        self.assertIn(
+            "lower_observed_efficiency",
+            brain_export_schema["audience_signal_focus"]["description"],
+        )
         brain_save_schema = tools["save_brain_learnings"]["inputSchema"]["properties"]
         self.assertEqual(brain_save_schema["limit"]["default"], 8)
         self.assertEqual(brain_save_schema["include_gaps_in_notes"]["default"], False)
@@ -1016,8 +1040,14 @@ class ToolSurfaceTest(unittest.TestCase):
             "report end date",
             brain_save_schema["conclusion_recency_days"]["description"],
         )
-        self.assertIn("opportunity", brain_save_schema["audience_signal_focus"]["description"])
-        self.assertIn("waste", brain_save_schema["audience_signal_focus"]["description"])
+        self.assertEqual(
+            brain_save_schema["audience_signal_focus"]["enum"],
+            expected_audience_focus,
+        )
+        self.assertIn(
+            "higher_observed_efficiency",
+            brain_save_schema["audience_signal_focus"]["description"],
+        )
         self.assertIn("strategy", brain_save_schema["watch_sources"]["description"])
         self.assertIn("fatigued", brain_save_schema["watch_signal_focus"]["description"])
         self.assertIn("worsening", brain_save_schema["watch_trajectory_focus"]["description"])
@@ -1043,8 +1073,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("loser", brain_schema["conclusion_statuses"]["description"])
         self.assertIn("all", brain_schema["conclusion_statuses"]["description"])
         self.assertIn("report end date", brain_schema["conclusion_recency_days"]["description"])
-        self.assertIn("opportunity", brain_schema["audience_signal_focus"]["description"])
-        self.assertIn("waste", brain_schema["audience_signal_focus"]["description"])
+        self.assertEqual(
+            brain_schema["audience_signal_focus"]["enum"],
+            expected_audience_focus,
+        )
+        self.assertIn(
+            "lower_observed_efficiency",
+            brain_schema["audience_signal_focus"]["description"],
+        )
         self.assertIn("visual_style", brain_schema["watch_group_by"]["description"])
         self.assertIn("demographic_age", brain_schema["watch_group_by"]["description"])
         self.assertIn("demographic_signal", brain_save_schema["watch_group_by"]["description"])
@@ -1095,6 +1131,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(timeseries_schema["minimum_calendar_days"]["default"], 0)
         self.assertEqual(timeseries_schema["maximum_gap_days"]["default"], 0)
         self.assertEqual(timeseries_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertEqual(timeseries_schema["limit"]["minimum"], 1)
+        self.assertEqual(timeseries_schema["limit"]["maximum"], 100)
         self.assertIn("last_90d", timeseries_schema["date_preset"]["description"])
         self.assertIn("landing_page_domain", timeseries_schema["group_by"]["description"])
         self.assertIn("visual_style", timeseries_schema["group_by"]["description"])
@@ -1125,6 +1163,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(timeseries_export_schema["minimum_calendar_days"]["default"], 0)
         self.assertEqual(timeseries_export_schema["maximum_gap_days"]["default"], 0)
         self.assertEqual(timeseries_export_schema["fatigue_decay_threshold"]["default"], 0.18)
+        self.assertEqual(timeseries_export_schema["limit"]["minimum"], 1)
+        self.assertEqual(timeseries_export_schema["limit"]["maximum"], 100)
         self.assertIn("demographic_segment", timeseries_export_schema["group_by"]["description"])
         self.assertIn("funnel_score", timeseries_export_schema["metric"]["description"])
         self.assertIn("hook_rate", timeseries_export_schema["metric"]["description"])
@@ -1153,6 +1193,8 @@ class ToolSurfaceTest(unittest.TestCase):
         demographics_export_schema = tools["export_demographics_context"]["inputSchema"]["properties"]
         self.assertEqual(demographics_export_schema["date_preset"]["default"], "all_time")
         self.assertEqual(demographics_export_schema["limit"]["default"], 3)
+        self.assertEqual(demographics_export_schema["limit"]["minimum"], 1)
+        self.assertEqual(demographics_export_schema["limit"]["maximum"], 100)
         self.assertIn("last_30_days", demographics_export_schema["date_preset"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_export_schema["start_date"]["description"])
         self.assertIn("YYYY-MM-DD", demographics_export_schema["end_date"]["description"])

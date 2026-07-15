@@ -107,6 +107,8 @@ def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts
     by_name = {tool.name: tool for tool in tools}
 
     assert len(payload) < 40_000  # <10k conservative char/4 proxy tokens
+    assert "opportunity" not in payload.lower()
+    assert "waste" not in payload.lower()
     strategy = by_name["get_creative_strategy_report"]
     assert "observational" in strategy.description
     assert strategy.inputSchema["properties"]["response_format"]["default"] == "concise"
@@ -214,6 +216,98 @@ def test_get_tool_sends_header_auth_and_query_params_without_api_key(mock_api):
     params = mock_api.query_params()
     assert params == {"limit": "5", "search": "BFCM", "sort": "roas"}
     assert "api_key" not in params
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ({"limit": -1}, {"limit": "1"}),
+        ({"limit": 0}, {"limit": "1"}),
+        ({"limit": 10_000}, {"limit": "100"}),
+        ({"offset": -9}, {"offset": "0"}),
+        (
+            {"limit": 10_000, "offset": -9},
+            {"limit": "100", "offset": "0"},
+        ),
+    ],
+)
+def test_list_library_clamps_pagination_before_api_request(mock_api, args, expected):
+    mock_api.queue(httpx.Response(200, json={"items": []}))
+
+    run(server._list_library(args))
+
+    assert mock_api.query_params() == expected
+
+
+def test_list_library_rejects_non_integer_pagination_without_http_call(mock_api):
+    result = run(server._list_library({"limit": "many"}))
+
+    assert as_text(result) == "Error: limit must be an integer"
+    assert mock_api.requests == []
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [(-1, "1"), (0, "1"), (10_000, "100")],
+)
+def test_performance_timeseries_clamps_collection_limit_locally(
+    mock_api, requested, expected
+):
+    mock_api.queue(httpx.Response(200, json={"series": []}))
+
+    run(server._get_performance_timeseries({"limit": requested}))
+
+    assert mock_api.query_params()["limit"] == expected
+
+
+def test_performance_timeseries_export_uses_the_same_local_cap(mock_api):
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={"series": [], "agent_context": {}, "summary": {}},
+        )
+    )
+
+    run(server._export_performance_timeseries_context({"limit": 10_000}))
+
+    assert mock_api.query_params()["limit"] == "100"
+
+
+@pytest.mark.parametrize(
+    ("legacy", "canonical"),
+    [
+        ("opportunity", "higher_observed_efficiency"),
+        ("opportunity-only", "higher_observed_efficiency"),
+        ("waste", "lower_observed_efficiency"),
+        ("waste-only", "lower_observed_efficiency"),
+    ],
+)
+def test_brain_get_normalizes_legacy_audience_filters_internally(
+    mock_api, legacy, canonical
+):
+    mock_api.queue(httpx.Response(200, json={"learnings": []}))
+
+    run(
+        server._get_brain_learnings(
+            {"brand_name": "Acme", "audience_signal_focus": legacy}
+        )
+    )
+
+    assert mock_api.query_params()["audience_signal_focus"] == canonical
+
+
+def test_brain_save_normalizes_legacy_audience_filter_internally(mock_api):
+    mock_api.queue(httpx.Response(200, json={"saved": True}))
+
+    run(
+        server._save_brain_learnings(
+            {"brand_name": "Acme", "audience_signal_focus": "waste"}
+        )
+    )
+
+    assert json.loads(mock_api.last_request.content)["audience_signal_focus"] == (
+        "lower_observed_efficiency"
+    )
 
 
 def test_list_workspaces_uses_authenticated_workspace_endpoint(mock_api):
@@ -433,6 +527,43 @@ def test_demographics_export_consumes_observational_band_contract(mock_api):
     assert "waste" not in serialized
 
     assert mock_api.last_request.url.path == "/performance/demographics"
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [(-1, 1), (0, 1), (10_000, 100)],
+)
+def test_demographics_export_clamps_segment_collection_limit(
+    mock_api, requested, expected
+):
+    segments = [
+        {
+            "age": f"segment-{index}",
+            "gender": "unknown",
+            "spend": index + 1,
+            "revenue": (index + 1) * 2,
+            "roas": 2.0,
+        }
+        for index in range(120)
+    ]
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "brand_name": "Acme",
+                "higher_observed_efficiency": segments,
+                "lower_observed_efficiency": segments,
+                "totals": {},
+            },
+        )
+    )
+
+    payload = as_json(
+        run(server._export_demographics_context({"limit": requested}))
+    )
+
+    assert len(payload["top_higher_observed_efficiency"]) == expected
+    assert len(payload["top_lower_observed_efficiency"]) == expected
 
 
 def test_compact_concise_strategy_fixture_stays_within_agent_token_budget(mock_api):
