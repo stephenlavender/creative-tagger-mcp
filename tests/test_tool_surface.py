@@ -87,7 +87,7 @@ class ToolSurfaceTest(unittest.TestCase):
 
     def test_package_version_matches_v2_surface(self) -> None:
         init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
-        self.assertIn('__version__ = "0.2.0"', init_file.read_text())
+        self.assertIn('__version__ = "0.2.1"', init_file.read_text())
 
     def test_tool_copy_uses_current_taxonomy_dimension_count(self) -> None:
         source = SERVER.read_text()
