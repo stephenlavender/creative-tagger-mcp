@@ -171,10 +171,10 @@ from creative_tagger_mcp import server
 
 expected_tools = {sorted(EXPECTED_TOOLS)!r}
 dist_version = metadata.version("creative-tagger-mcp")
-entry_points = metadata.entry_points().select(
+entry_points = list(metadata.entry_points().select(
     group="console_scripts",
     name="creative-tagger-mcp",
-)
+))
 tools = asyncio.run(server.list_tools())
 tool_names = sorted(tool.name for tool in tools)
 
