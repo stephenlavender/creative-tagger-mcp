@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -44,6 +46,12 @@ jobs:
           fi
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${REQUESTED_VERSION}" != "${PROJECT_VERSION}" ]; then
             echo "Requested version ${REQUESTED_VERSION} does not match package version ${PROJECT_VERSION}" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+          if [ "${GITHUB_SHA}" != "${MAIN_SHA}" ]; then
+            echo "Tagged commit ${GITHUB_SHA} is not current origin/main ${MAIN_SHA}" >&2
             exit 1
           fi
           echo "PROJECT_VERSION=${PROJECT_VERSION}" >> "${GITHUB_ENV}"

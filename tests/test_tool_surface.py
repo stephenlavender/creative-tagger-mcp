@@ -125,6 +125,12 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('EXPECTED_TAG="v${PROJECT_VERSION}"', source)
         self.assertIn('GITHUB_REF_NAME}" != "${EXPECTED_TAG}', source)
         self.assertIn('REQUESTED_VERSION}" != "${PROJECT_VERSION}', source)
+        self.assertIn("fetch-depth: 0", source)
+        self.assertIn(
+            "git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main",
+            source,
+        )
+        self.assertIn('GITHUB_SHA}" != "${MAIN_SHA}', source)
         self.assertIn("Verify exact release artifact set", source)
         self.assertIn('wc -l | tr -d \' \'', source)
         self.assertNotIn("python -m twine check dist/*", source)
