@@ -1132,7 +1132,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(timeseries_schema["maximum_gap_days"]["default"], 0)
         self.assertEqual(timeseries_schema["fatigue_decay_threshold"]["default"], 0.18)
         self.assertEqual(timeseries_schema["limit"]["minimum"], 1)
-        self.assertEqual(timeseries_schema["limit"]["maximum"], 100)
+        self.assertEqual(timeseries_schema["limit"]["maximum"], 10)
         self.assertIn("last_90d", timeseries_schema["date_preset"]["description"])
         self.assertIn("landing_page_domain", timeseries_schema["group_by"]["description"])
         self.assertIn("visual_style", timeseries_schema["group_by"]["description"])
@@ -1164,7 +1164,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(timeseries_export_schema["maximum_gap_days"]["default"], 0)
         self.assertEqual(timeseries_export_schema["fatigue_decay_threshold"]["default"], 0.18)
         self.assertEqual(timeseries_export_schema["limit"]["minimum"], 1)
-        self.assertEqual(timeseries_export_schema["limit"]["maximum"], 100)
+        self.assertEqual(timeseries_export_schema["limit"]["maximum"], 10)
         self.assertIn("demographic_segment", timeseries_export_schema["group_by"]["description"])
         self.assertIn("funnel_score", timeseries_export_schema["metric"]["description"])
         self.assertIn("hook_rate", timeseries_export_schema["metric"]["description"])
@@ -1474,14 +1474,19 @@ def _literal_string(node: ast.AST) -> str:
 def _load_pure_helpers(wanted: set[str]) -> dict:
     """Load pure helpers, without importing MCP/httpx dependencies."""
     tree = ast.parse(SERVER.read_text())
+    dependencies = {"_clamped_int_arg"} if "_strategy_params" in wanted else set()
     functions = [
-        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in wanted
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in wanted | dependencies
     ]
     module = ast.Module(body=functions, type_ignores=[])
     ast.fix_missing_locations(module)
 
     namespace = {
         "json": json,
+        "STRATEGY_DECISION_LIMIT": 25,
+        "STRATEGY_WATCH_LIMIT": 10,
         "_text": lambda payload: [SimpleNamespace(text=json.dumps(payload, indent=2))],
     }
     exec(compile(module, str(SERVER), "exec"), namespace)

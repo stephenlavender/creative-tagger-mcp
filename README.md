@@ -312,6 +312,8 @@ fatigue-aware reads, pass the same embedded watch controls the app/API support:
 `watch_group_by`, `watch_metric`, `watch_signal_focus`,
 `watch_trajectory_focus`, `watch_coverage_focus`, `watch_minimum_points`,
 `watch_minimum_calendar_days`, `watch_maximum_gap_days`, and `watch_limit`.
+The decision-queue `limit` is clamped to 1–25, while `watch_limit` is clamped
+to 1–10, before the API request.
 Responses default to `response_format: "concise"` with at most 24 matrix cells
 to keep the result bounded. Set `response_format: "detailed"` explicitly for
 the richer report fields, including `agent_context`. Both formats respect
@@ -392,7 +394,8 @@ CTR by hook, or stable ROAS by `demographic_segment`.
 When `kinds` includes `audience`, `audience_signal_focus` accepts the canonical
 values `all`, `higher_observed_efficiency`, or
 `lower_observed_efficiency`. The same vocabulary applies to get, save, and
-export operations.
+export operations. Across all three operations, story `limit` is clamped to
+1–12 and `audience_limit` is clamped to 1–10 before the API request.
 ```
 {
   "brand_name": "Acme",
@@ -472,7 +475,7 @@ series. Use `coverage_focus` to isolate call-ready, gappy, short-window, or
 windowed-history curves. Add `minimum_calendar_days` when fatigue should only
 count after a trend has been live long enough, not just after a few
 close-together points. Both this tool and its context export clamp `limit` to
-1–100 grouped series locally.
+1–10 grouped series locally.
 ```
 {
   "brand_name": "Acme",
@@ -541,7 +544,7 @@ validate a promising tag with a one-variable controlled test.
 Return ready-made Motion-style reports: best hooks, landing pages, messaging angles,
 audiences, offers, CTAs, visual formats, and brand-custom values. Add
 `start_date` / `end_date` when the report should only cover a specific synced
-window.
+window. `limit` is clamped to 1–50 rows per report before the API request.
 ```
 { "brand_name": "Acme", "report_id": "best_hooks", "limit": 8 }
 { "brand_name": "Acme", "report_id": "best_angles", "start_date": "2026-05-01", "end_date": "2026-05-31", "limit": 8 }
@@ -553,7 +556,8 @@ rank the actual matched dimension combinations by ROAS, funnel score, spend,
 CTR, or CPA. Use this for Motion-style views like best hook x landing page x
 offer, founder x hook, audience x offer, or brand segment x product. Add
 `start_date` and `end_date` when the report should isolate a specific test
-window instead of the full synced history.
+window instead of the full synced history. `limit` is clamped to 1–50 rows
+before the API request.
 ```
 {
   "brand_name": "Acme",
@@ -574,6 +578,7 @@ custom `start_date` / `end_date` window for a specific launch or test period,
 plus dashboard-style preset state such as `view_type`, `date_range`,
 `group_by`, `metrics`, `filters`, `sort`, and `saved_metric_preset`.
 Current chart view types are `table`, `bar`, `line`, and `pie`.
+`save_custom_report` clamps `limit` to 1–50 rows before the API request.
 ```
 {
   "brand_name": "Acme",
@@ -643,6 +648,7 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 
 ### `scan_competitor`
 Classify a competitor's Meta Ad Library ads and get strategy breakdown.
+`limit` is clamped to 1–50 ads before the API request.
 ```
 { "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
 ```
@@ -654,7 +660,8 @@ after native Meta Ad Library access is approved.
 ### `get_competitor_scan_history`
 Read the saved Market scans/imports for a workspace without re-running Meta Ad
 Library access. Useful when the agent needs the latest saved competitor hooks,
-styles, or scan metadata before drafting briefs.
+styles, or scan metadata before drafting briefs. `limit` is clamped to 1–50
+saved scans before the API request.
 ```
 { "brand_name": "Acme", "limit": 6 }
 ```

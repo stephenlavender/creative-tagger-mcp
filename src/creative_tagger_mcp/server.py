@@ -40,7 +40,14 @@ API_URL = os.environ.get("CREATIVE_TAGGER_URL", "https://api.creativetagger.ai")
 API_KEY = os.environ.get("CREATIVE_TAGGER_API_KEY", "")
 INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
 LIBRARY_PAGE_LIMIT = 100
-TIMESERIES_SERIES_LIMIT = 100
+PREBUILT_REPORT_LIMIT = 50
+STRATEGY_DECISION_LIMIT = 25
+STRATEGY_WATCH_LIMIT = 10
+BRAIN_STORY_LIMIT = 12
+BRAIN_AUDIENCE_LIMIT = 10
+TIMESERIES_SERIES_LIMIT = 10
+CUSTOM_REPORT_LIMIT = 50
+COMPETITOR_RESULT_LIMIT = 50
 DEMOGRAPHICS_EXPORT_LIMIT = 100
 
 _AUDIENCE_SIGNAL_FOCUS_ALIASES = {
@@ -149,12 +156,9 @@ def _clamped_int_arg(
     field_name: str,
 ) -> int:
     raw = default if value is None else value
-    if isinstance(raw, bool):
+    if isinstance(raw, bool) or not isinstance(raw, int):
         raise ValueError(f"{field_name} must be an integer")
-    try:
-        parsed = int(raw)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be an integer") from exc
+    parsed = raw
     parsed = max(minimum, parsed)
     if maximum is not None:
         parsed = min(parsed, maximum)
@@ -330,12 +334,27 @@ def _normalize_strategy_axis(value: Any) -> str:
 
 
 def _strategy_params(args: dict) -> dict[str, Any]:
+    limit = _clamped_int_arg(
+        args.get("limit"),
+        default=10,
+        minimum=1,
+        maximum=STRATEGY_DECISION_LIMIT,
+        field_name="limit",
+    )
+    watch_limit = _clamped_int_arg(
+        args.get("watch_limit"),
+        default=5,
+        minimum=1,
+        maximum=STRATEGY_WATCH_LIMIT,
+        field_name="watch_limit",
+    )
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
         "date_preset": args.get("date_preset", "all_time"),
         "start_date": args.get("start_date", ""),
         "end_date": args.get("end_date", ""),
-        "limit": args.get("limit", 10),
+        "limit": limit,
+        "watch_limit": watch_limit,
         "response_format": args.get("response_format", "concise"),
         "max_cells": args.get("max_cells", 24),
     }
@@ -366,7 +385,6 @@ def _strategy_params(args: dict) -> dict[str, Any]:
         "watch_minimum_points",
         "watch_minimum_calendar_days",
         "watch_maximum_gap_days",
-        "watch_limit",
     ):
         if args.get(key) is not None:
             params[key] = args[key]
@@ -1132,6 +1150,8 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "default": 8,
+                        "minimum": 1,
+                        "maximum": 50,
                         "description": "Rows per report",
                     },
                 },
@@ -1297,6 +1317,8 @@ async def list_tools() -> list[Tool]:
                     "watch_limit": {
                         "type": "integer",
                         "default": 5,
+                        "minimum": 1,
+                        "maximum": 10,
                         "description": "Maximum fatigue watch groups to rank in the strategy report",
                     },
                     "response_format": {
@@ -1316,7 +1338,12 @@ async def list_tools() -> list[Tool]:
                         "maximum": 200,
                         "description": "Maximum matrix cells returned in either response format",
                     },
-                    "limit": {"type": "integer", "default": 10},
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
+                        "minimum": 1,
+                        "maximum": 25,
+                    },
                 },
             },
         ),
@@ -1460,11 +1487,15 @@ async def list_tools() -> list[Tool]:
                     "audience_limit": {
                         "type": "integer",
                         "default": 3,
+                        "minimum": 1,
+                        "maximum": 10,
                         "description": "Maximum audience learning stories to return when audience signals are included",
                     },
                     "limit": {
                         "type": "integer",
                         "default": 8,
+                        "minimum": 1,
+                        "maximum": 12,
                         "description": "Maximum learning stories to return",
                     },
                 },
@@ -1611,6 +1642,8 @@ async def list_tools() -> list[Tool]:
                     "audience_limit": {
                         "type": "integer",
                         "default": 3,
+                        "minimum": 1,
+                        "maximum": 10,
                         "description": "Maximum audience learning stories to persist when audience signals are included",
                     },
                     "include_gaps_in_notes": {
@@ -1621,6 +1654,8 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "default": 8,
+                        "minimum": 1,
+                        "maximum": 12,
                         "description": "Maximum learning stories to persist",
                     },
                 },
@@ -1763,11 +1798,15 @@ async def list_tools() -> list[Tool]:
                     "audience_limit": {
                         "type": "integer",
                         "default": 3,
+                        "minimum": 1,
+                        "maximum": 10,
                         "description": "Maximum audience learning stories to include in the exported context",
                     },
                     "limit": {
                         "type": "integer",
                         "default": 8,
+                        "minimum": 1,
+                        "maximum": 12,
                         "description": "Maximum learning stories to include in the exported context",
                     },
                 },
@@ -1852,7 +1891,7 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 10,
                         "minimum": 1,
-                        "maximum": 100,
+                        "maximum": 10,
                         "description": "Maximum grouped series to return",
                     },
                     "minimum_spend": {
@@ -1958,7 +1997,7 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 10,
                         "minimum": 1,
-                        "maximum": 100,
+                        "maximum": 10,
                         "description": "Maximum grouped series to return",
                     },
                     "minimum_spend": {
@@ -2035,7 +2074,12 @@ async def list_tools() -> list[Tool]:
                         "description": "Optional YYYY-MM-DD lookback end for the report window",
                     },
                     "spend_threshold": {"type": "number", "default": 500},
-                    "limit": {"type": "integer", "default": 12},
+                    "limit": {
+                        "type": "integer",
+                        "default": 12,
+                        "minimum": 1,
+                        "maximum": 50,
+                    },
                 },
             },
         ),
@@ -2133,7 +2177,12 @@ async def list_tools() -> list[Tool]:
                         "description": "Optional YYYY-MM-DD lookback end to persist with the saved report",
                     },
                     "spend_threshold": {"type": "number", "default": 500},
-                    "limit": {"type": "integer", "default": 12},
+                    "limit": {
+                        "type": "integer",
+                        "default": 12,
+                        "minimum": 1,
+                        "maximum": 50,
+                    },
                 },
             },
         ),
@@ -2300,7 +2349,12 @@ async def list_tools() -> list[Tool]:
                     "page_name": {"type": "string"},
                     "keyword": {"type": "string"},
                     "country": {"type": "string", "default": "US"},
-                    "limit": {"type": "integer", "default": 25},
+                    "limit": {
+                        "type": "integer",
+                        "default": 25,
+                        "minimum": 1,
+                        "maximum": 50,
+                    },
                     "analyze_creatives": {"type": "boolean", "default": True},
                 },
             },
@@ -2326,6 +2380,8 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "default": 10,
+                        "minimum": 1,
+                        "maximum": 50,
                         "description": "Maximum number of saved scans/imports to return",
                     },
                 },
@@ -3010,10 +3066,20 @@ async def _get_taxonomy_performance(args: dict) -> list[TextContent]:
 
 
 async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=8,
+            minimum=1,
+            maximum=PREBUILT_REPORT_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
         "spend_threshold": args.get("spend_threshold", 500),
-        "limit": args.get("limit", 8),
+        "limit": limit,
     }
     if args.get("report_id"):
         params["report_id"] = args["report_id"]
@@ -3032,7 +3098,10 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
 
 
 async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
-    params = _strategy_params(args)
+    try:
+        params = _strategy_params(args)
+    except ValueError as exc:
+        return _err(str(exc))
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/creative-strategy",
@@ -3044,10 +3113,28 @@ async def _get_creative_strategy_report(args: dict) -> list[TextContent]:
 
 
 async def _get_brain_learnings(args: dict) -> list[TextContent]:
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=8,
+            minimum=1,
+            maximum=BRAIN_STORY_LIMIT,
+            field_name="limit",
+        )
+        audience_limit = _clamped_int_arg(
+            args.get("audience_limit"),
+            default=3,
+            minimum=1,
+            maximum=BRAIN_AUDIENCE_LIMIT,
+            field_name="audience_limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     params: dict[str, Any] = {
         "brand_name": args.get("brand_name", ""),
         "date_preset": args.get("date_preset", "all_time"),
-        "limit": args.get("limit", 8),
+        "limit": limit,
+        "audience_limit": audience_limit,
     }
     for key in (
         "start_date",
@@ -3070,7 +3157,6 @@ async def _get_brain_learnings(args: dict) -> list[TextContent]:
         "conclusion_statuses",
         "conclusion_recency_days",
         "audience_signal_focus",
-        "audience_limit",
     ):
         if key in {"watch_sources", "kinds", "conclusion_statuses"}:
             value = _csv_arg(args.get(key))
@@ -3096,13 +3182,31 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "")
     if not brand_name:
         return _err("brand_name is required")
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=8,
+            minimum=1,
+            maximum=BRAIN_STORY_LIMIT,
+            field_name="limit",
+        )
+        audience_limit = _clamped_int_arg(
+            args.get("audience_limit"),
+            default=3,
+            minimum=1,
+            maximum=BRAIN_AUDIENCE_LIMIT,
+            field_name="audience_limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     body: dict[str, Any] = {
         "brand_name": brand_name,
         "date_preset": args.get("date_preset", "all_time"),
         "include_gaps_in_notes": _coerce_bool(
             args.get("include_gaps_in_notes", False)
         ),
-        "limit": args.get("limit", 8),
+        "limit": limit,
+        "audience_limit": audience_limit,
     }
     for key in (
         "start_date",
@@ -3125,7 +3229,6 @@ async def _save_brain_learnings(args: dict) -> list[TextContent]:
         "conclusion_statuses",
         "conclusion_recency_days",
         "audience_signal_focus",
-        "audience_limit",
     ):
         if key in {"watch_sources", "kinds", "conclusion_statuses"}:
             value = _csv_arg(args.get(key))
@@ -3162,11 +3265,16 @@ async def _export_brain_learnings_context(args: dict) -> list[TextContent]:
     if not isinstance(context, dict):
         return _err("Brain learnings response did not include agent_context")
     summary = parsed.get("summary") or {}
-    requested_limit = summary.get("requested_limit", args.get("limit", 8))
     try:
-        limit = max(1, int(requested_limit))
-    except (TypeError, ValueError):
-        return _err("limit must be an integer")
+        limit = _clamped_int_arg(
+            summary.get("requested_limit", args.get("limit")),
+            default=8,
+            minimum=1,
+            maximum=BRAIN_STORY_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     brand_name = parsed.get("brand_name", args.get("brand_name", ""))
     learnings = [
         item
@@ -3388,6 +3496,16 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
         return _err("brand_name is required")
     if not isinstance(dimensions, list) or not dimensions:
         return _err("dimensions must be a non-empty list")
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=12,
+            minimum=1,
+            maximum=CUSTOM_REPORT_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     payload = {
         "brand_name": brand_name,
         "title": args.get("title") or "Custom Report",
@@ -3395,7 +3513,7 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
         "layer": args.get("layer", "standard"),
         "metric": args.get("metric", "roas"),
         "spend_threshold": args.get("spend_threshold", 500),
-        "limit": args.get("limit", 12),
+        "limit": limit,
     }
     for key in ("start_date", "end_date"):
         if args.get(key) not in (None, ""):
@@ -3432,6 +3550,16 @@ async def _save_custom_report(args: dict) -> list[TextContent]:
         return _err("name is required")
     if not isinstance(dimensions, list) or not dimensions:
         return _err("dimensions must be a non-empty list")
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=12,
+            minimum=1,
+            maximum=CUSTOM_REPORT_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     payload = {
         "brand_name": brand_name,
         "name": name,
@@ -3448,7 +3576,7 @@ async def _save_custom_report(args: dict) -> list[TextContent]:
         "sort": args.get("sort", "desc"),
         "saved_metric_preset": args.get("saved_metric_preset", ""),
         "spend_threshold": args.get("spend_threshold", 500),
-        "limit": args.get("limit", 12),
+        "limit": limit,
     }
     for key in ("start_date", "end_date"):
         if args.get(key) not in (None, ""):
@@ -4351,13 +4479,23 @@ async def _generate_brand_taxonomy(args: dict) -> list[TextContent]:
 
 
 async def _scan_competitor(args: dict) -> list[TextContent]:
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=25,
+            minimum=1,
+            maximum=COMPETITOR_RESULT_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     body = {
         "brand_name": args.get("brand_name"),
         "page_id": args.get("page_id"),
         "page_name": args.get("page_name"),
         "keyword": args.get("keyword"),
         "country": args.get("country", "US"),
-        "limit": args.get("limit", 25),
+        "limit": limit,
         "analyze_creatives": args.get("analyze_creatives", True),
     }
     async with httpx.AsyncClient(timeout=300.0, headers=_headers()) as client:
@@ -4369,9 +4507,19 @@ async def _scan_competitor(args: dict) -> list[TextContent]:
 
 
 async def _get_competitor_scan_history(args: dict) -> list[TextContent]:
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=10,
+            minimum=1,
+            maximum=COMPETITOR_RESULT_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
     params = {
         "brand_name": args.get("brand_name", ""),
-        "limit": args.get("limit", 10),
+        "limit": limit,
     }
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(

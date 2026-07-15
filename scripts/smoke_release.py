@@ -244,6 +244,29 @@ assert "waste" not in tool_catalog.lower()
 strategy_schema = tools_by_name["get_creative_strategy_report"].inputSchema["properties"]
 assert strategy_schema["response_format"]["default"] == "concise"
 assert strategy_schema["max_cells"]["default"] == 24
+collection_bounds = [
+    ("get_prebuilt_reports", "limit", 8, 50),
+    ("get_creative_strategy_report", "limit", 10, 25),
+    ("get_creative_strategy_report", "watch_limit", 5, 10),
+    ("get_brain_learnings", "limit", 8, 12),
+    ("get_brain_learnings", "audience_limit", 3, 10),
+    ("save_brain_learnings", "limit", 8, 12),
+    ("save_brain_learnings", "audience_limit", 3, 10),
+    ("export_brain_learnings_context", "limit", 8, 12),
+    ("export_brain_learnings_context", "audience_limit", 3, 10),
+    ("get_performance_timeseries", "limit", 10, 10),
+    ("export_performance_timeseries_context", "limit", 10, 10),
+    ("create_custom_report", "limit", 12, 50),
+    ("save_custom_report", "limit", 12, 50),
+    ("scan_competitor", "limit", 25, 50),
+    ("get_competitor_scan_history", "limit", 10, 50),
+]
+for tool_name, field_name, default, maximum in collection_bounds:
+    field = tools_by_name[tool_name].inputSchema["properties"][field_name]
+    assert field["type"] == "integer"
+    assert field["default"] == default
+    assert field["minimum"] == 1
+    assert field["maximum"] == maximum
 library_schema = tools_by_name["list_library"].inputSchema["properties"]
 assert library_schema["limit"]["minimum"] == 1
 assert library_schema["limit"]["maximum"] == 100
@@ -254,7 +277,15 @@ assert brain_schema["audience_signal_focus"]["enum"] == [
 ]
 timeseries_schema = tools_by_name["get_performance_timeseries"].inputSchema["properties"]
 assert timeseries_schema["limit"]["minimum"] == 1
-assert timeseries_schema["limit"]["maximum"] == 100
+assert timeseries_schema["limit"]["maximum"] == 10
+assert server._strategy_params({{"limit": 10**9, "watch_limit": 10**9}})["limit"] == 25
+assert server._strategy_params({{"limit": 10**9, "watch_limit": 10**9}})["watch_limit"] == 10
+try:
+    server._strategy_params({{"limit": 1.5}})
+except ValueError as exc:
+    assert str(exc) == "limit must be an integer"
+else:
+    raise AssertionError("non-integer strategy limit was accepted")
 demographics_export_schema = tools_by_name["export_demographics_context"].inputSchema[
     "properties"
 ]

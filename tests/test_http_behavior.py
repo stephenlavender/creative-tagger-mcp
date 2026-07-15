@@ -116,6 +116,8 @@ def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts
     assert by_name["save_brain_learnings"].inputSchema["properties"]["limit"] == {
         "type": "integer",
         "default": 8,
+        "minimum": 1,
+        "maximum": 12,
     }
 
 
@@ -248,7 +250,7 @@ def test_list_library_rejects_non_integer_pagination_without_http_call(mock_api)
 
 @pytest.mark.parametrize(
     ("requested", "expected"),
-    [(-1, "1"), (0, "1"), (10_000, "100")],
+    [(-1, "1"), (0, "1"), (10_000, "10")],
 )
 def test_performance_timeseries_clamps_collection_limit_locally(
     mock_api, requested, expected
@@ -270,7 +272,276 @@ def test_performance_timeseries_export_uses_the_same_local_cap(mock_api):
 
     run(server._export_performance_timeseries_context({"limit": 10_000}))
 
-    assert mock_api.query_params()["limit"] == "100"
+    assert mock_api.query_params()["limit"] == "10"
+
+
+PUBLIC_COLLECTION_LIMITS = [
+    (
+        "prebuilt.limit",
+        "get_prebuilt_reports",
+        "limit",
+        server._get_prebuilt_reports,
+        {"brand_name": "Acme"},
+        8,
+        50,
+        "query",
+        {"reports": []},
+    ),
+    (
+        "strategy.limit",
+        "get_creative_strategy_report",
+        "limit",
+        server._get_creative_strategy_report,
+        {"brand_name": "Acme"},
+        10,
+        25,
+        "query",
+        {"cells": []},
+    ),
+    (
+        "strategy.watch_limit",
+        "get_creative_strategy_report",
+        "watch_limit",
+        server._get_creative_strategy_report,
+        {"brand_name": "Acme"},
+        5,
+        10,
+        "query",
+        {"cells": []},
+    ),
+    (
+        "brain-get.limit",
+        "get_brain_learnings",
+        "limit",
+        server._get_brain_learnings,
+        {"brand_name": "Acme"},
+        8,
+        12,
+        "query",
+        {"learnings": []},
+    ),
+    (
+        "brain-get.audience_limit",
+        "get_brain_learnings",
+        "audience_limit",
+        server._get_brain_learnings,
+        {"brand_name": "Acme"},
+        3,
+        10,
+        "query",
+        {"learnings": []},
+    ),
+    (
+        "brain-save.limit",
+        "save_brain_learnings",
+        "limit",
+        server._save_brain_learnings,
+        {"brand_name": "Acme"},
+        8,
+        12,
+        "json",
+        {"saved": True},
+    ),
+    (
+        "brain-save.audience_limit",
+        "save_brain_learnings",
+        "audience_limit",
+        server._save_brain_learnings,
+        {"brand_name": "Acme"},
+        3,
+        10,
+        "json",
+        {"saved": True},
+    ),
+    (
+        "brain-export.limit",
+        "export_brain_learnings_context",
+        "limit",
+        server._export_brain_learnings_context,
+        {"brand_name": "Acme"},
+        8,
+        12,
+        "query",
+        {"agent_context": {}, "summary": {}, "learnings": []},
+    ),
+    (
+        "brain-export.audience_limit",
+        "export_brain_learnings_context",
+        "audience_limit",
+        server._export_brain_learnings_context,
+        {"brand_name": "Acme"},
+        3,
+        10,
+        "query",
+        {"agent_context": {}, "summary": {}, "learnings": []},
+    ),
+    (
+        "timeseries-get.limit",
+        "get_performance_timeseries",
+        "limit",
+        server._get_performance_timeseries,
+        {"brand_name": "Acme"},
+        10,
+        10,
+        "query",
+        {"series": []},
+    ),
+    (
+        "timeseries-export.limit",
+        "export_performance_timeseries_context",
+        "limit",
+        server._export_performance_timeseries_context,
+        {"brand_name": "Acme"},
+        10,
+        10,
+        "query",
+        {"agent_context": {}, "summary": {}, "series": []},
+    ),
+    (
+        "custom-create.limit",
+        "create_custom_report",
+        "limit",
+        server._create_custom_report,
+        {"brand_name": "Acme", "dimensions": ["hook_type"]},
+        12,
+        50,
+        "json",
+        {"rows": []},
+    ),
+    (
+        "custom-save.limit",
+        "save_custom_report",
+        "limit",
+        server._save_custom_report,
+        {"brand_name": "Acme", "name": "Hooks", "dimensions": ["hook_type"]},
+        12,
+        50,
+        "json",
+        {"saved": True},
+    ),
+    (
+        "competitor-scan.limit",
+        "scan_competitor",
+        "limit",
+        server._scan_competitor,
+        {"brand_name": "Acme", "page_name": "Rival"},
+        25,
+        50,
+        "json",
+        {"ads": []},
+    ),
+    (
+        "competitor-history.limit",
+        "get_competitor_scan_history",
+        "limit",
+        server._get_competitor_scan_history,
+        {"brand_name": "Acme"},
+        10,
+        50,
+        "query",
+        {"items": []},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("case_id", "tool_name", "field_name", "_handler", "_base_args", "default", "maximum", "_transport", "_response"),
+    PUBLIC_COLLECTION_LIMITS,
+    ids=[case[0] for case in PUBLIC_COLLECTION_LIMITS],
+)
+def test_public_collection_limit_schemas_match_runtime_contract(
+    case_id,
+    tool_name,
+    field_name,
+    _handler,
+    _base_args,
+    default,
+    maximum,
+    _transport,
+    _response,
+):
+    del case_id
+    by_name = {tool.name: tool for tool in run(server.list_tools())}
+    field = by_name[tool_name].inputSchema["properties"][field_name]
+
+    assert field["type"] == "integer"
+    assert field["default"] == default
+    assert field["minimum"] == 1
+    assert field["maximum"] == maximum
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    ["default", "below", "minimum", "maximum", "above", "huge"],
+)
+@pytest.mark.parametrize(
+    ("case_id", "_tool_name", "field_name", "handler", "base_args", "default", "maximum", "transport", "response"),
+    PUBLIC_COLLECTION_LIMITS,
+    ids=[case[0] for case in PUBLIC_COLLECTION_LIMITS],
+)
+def test_public_collection_limits_are_clamped_before_http(
+    mock_api,
+    boundary,
+    case_id,
+    _tool_name,
+    field_name,
+    handler,
+    base_args,
+    default,
+    maximum,
+    transport,
+    response,
+):
+    del case_id
+    requested_and_expected = {
+        "default": (None, default),
+        "below": (-7, 1),
+        "minimum": (1, 1),
+        "maximum": (maximum, maximum),
+        "above": (maximum + 1, maximum),
+        "huge": (10**12, maximum),
+    }
+    requested, expected = requested_and_expected[boundary]
+    args = dict(base_args)
+    if requested is not None:
+        args[field_name] = requested
+    mock_api.queue(httpx.Response(200, json=response))
+
+    run(handler(args))
+
+    if transport == "query":
+        actual = int(mock_api.query_params()[field_name])
+    else:
+        actual = json.loads(mock_api.last_request.content)[field_name]
+    assert actual == expected
+
+
+@pytest.mark.parametrize("invalid", ["many", 1.5, True])
+@pytest.mark.parametrize(
+    ("case_id", "_tool_name", "field_name", "handler", "base_args", "_default", "_maximum", "_transport", "_response"),
+    PUBLIC_COLLECTION_LIMITS,
+    ids=[case[0] for case in PUBLIC_COLLECTION_LIMITS],
+)
+def test_public_collection_limits_reject_non_integers_without_http(
+    mock_api,
+    invalid,
+    case_id,
+    _tool_name,
+    field_name,
+    handler,
+    base_args,
+    _default,
+    _maximum,
+    _transport,
+    _response,
+):
+    del case_id
+    args = {**base_args, field_name: invalid}
+
+    result = run(handler(args))
+
+    assert as_text(result) == f"Error: {field_name} must be an integer"
+    assert mock_api.requests == []
 
 
 @pytest.mark.parametrize(

@@ -12,8 +12,9 @@
   causal audience or budget-allocation claims.
 - Exposed that same canonical vocabulary on every Brain audience filter while
   retaining legacy aliases only inside the stdio compatibility layer.
-- Clamped stdio library pagination and performance-series collection limits so
-  negative or oversized arguments cannot bypass bounded agent responses.
+- Aligned every public collection limit with the API contract and clamped it
+  in stdio before transport, including library pagination, prebuilt/strategy/
+  Brain/custom reports, performance series, and competitor results.
 - Made validation and transport failures protocol-visible, strengthened agent
   instructions around objective-aware observational evidence, and advertised
   the installed package version in MCP initialization metadata.
