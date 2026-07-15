@@ -2,11 +2,12 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Status note (verified 2026-07-15): the production API and hosted remote MCP
-surface are live, but PyPI still serves `creative-tagger-mcp==0.1.0`. This
-README documents the repository's unpublished `0.2.1` release candidate. Use
-`https://api.creativetagger.ai/mcp/` for the current hosted tool surface; do not
-assume the installed `0.1.0` package includes the tools documented below.
+Status note (verified 2026-07-15): the production API, hosted remote MCP, and
+`creative-tagger-mcp==0.2.1` package are published. The hosted and stdio
+surfaces are separate clients of the same API and may expose different tool
+counts. This branch documents the unreleased `0.2.2` candidate; install `0.2.1`
+for the current PyPI release until `0.2.2` passes independent review, its API
+dependencies are deployed, trusted-publishing CI succeeds, and PyPI is verified.
 
 Your AI of choice gets:
 
@@ -28,12 +29,11 @@ Authorization: Bearer ct_your_key
 ```
 
 The repository package is the stdio path for clients that require a local
-command. Until `0.2.1` is published, installing from PyPI gives the older tool
-surface:
+command:
 
 ```bash
-# Install (PyPI currently resolves to 0.1.0)
-pip install creative-tagger-mcp
+# Install the verified release
+pip install creative-tagger-mcp==0.2.1
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
@@ -55,8 +55,8 @@ wheel that will be uploaded to PyPI:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.1.tar.gz
+  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.2.tar.gz
 ```
 
 The smoke test installs the wheel into a temporary virtualenv, verifies the
@@ -68,11 +68,11 @@ confirms the V1 tool surface is present from the installed artifact.
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-Recommended path:
+After the `0.2.2` review and API-dependency gates pass, tag the candidate:
 
 ```bash
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.2.2
+git push origin v0.2.2
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
@@ -102,11 +102,11 @@ Local fallback:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.1.tar.gz
+  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.2.tar.gz
 python -m twine upload \
-  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.1.tar.gz
+  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.2.tar.gz
 ```
 
 Always select the exact release artifacts for a local upload. A reused checkout
@@ -165,12 +165,22 @@ Taxonomy v2 splits three dimensions the old model mixed together: **media type**
 `Static Image` and `Carousel` are media types and are no longer valid
 `visual_format` values. `messaging_angle` is the canonical angle dimension.
 
+### `list_workspaces`
+List the authenticated user's available workspaces. Start every connected
+account workflow here, select one returned `brand_name`, and pass that exact
+value to every library, Meta status, report, and strategist call. Do not blend
+observations across workspaces unless the user explicitly requests a comparison.
+```
+{}
+```
+
 ### `list_library`
 Browse saved analyses. Search by filename or hook, filter by format, messaging
 angle, emotion, CTA, talent, offer, audio type, or seasonality, and sort by
 joined performance.
 ```
 {
+  "brand_name": "Acme",
   "limit": 50,
   "search": "BFCM",
   "format": "video",
@@ -182,11 +192,12 @@ joined performance.
 
 ### `get_library_patterns`
 Cross-library pattern insights — concentration and diversity per dimension, plus rule-based diversification flags.
+Pass the exact workspace `brand_name` returned by `list_workspaces`.
 
 ### `get_analysis`
 Pull the full 21-dimension result for one library item.
 ```
-{ "analysis_id": 42 }
+{ "brand_name": "Acme", "analysis_id": 42 }
 ```
 
 ### `recommend` ⭐
@@ -279,8 +290,9 @@ window and Creative Tagger should match Ads Manager exactly.
 ### `get_creative_strategy_report`
 Pull the same strategy matrix shown in Creative Tagger Reports. Defaults to
 visual formats by messaging angles, with states for next tests, live learning,
-winners, losers, fatigue, and gaps. Returns the decision queue plus an
-`agent_context` payload that can be handed directly to an LLM for strategy work.
+winners, losers, fatigue, and gaps. Returns the decision queue and a bounded
+matrix slice for agent strategy work. Detailed responses also include an
+`agent_context` payload that can be handed directly to an LLM.
 Supports creative-diagnostics metrics such as CTR, thumbstop, hook, hold, video
 milestone rates, CPA, CVR, ROAS, revenue, spend, and funnel score. For
 audience-mode reads, switch the axes to demographic dimensions such as
@@ -300,6 +312,10 @@ fatigue-aware reads, pass the same embedded watch controls the app/API support:
 `watch_group_by`, `watch_metric`, `watch_signal_focus`,
 `watch_trajectory_focus`, `watch_coverage_focus`, `watch_minimum_points`,
 `watch_minimum_calendar_days`, `watch_maximum_gap_days`, and `watch_limit`.
+Responses default to `response_format: "concise"` with at most 24 matrix cells
+to keep the result bounded. Set `response_format: "detailed"` explicitly for
+the richer report fields, including `agent_context`. Both formats respect
+`max_cells`; raise it (up to 200) when a larger matrix slice is needed.
 
 ```
 {
@@ -307,7 +323,9 @@ fatigue-aware reads, pass the same embedded watch controls the app/API support:
   "report_template": "next-tests",
   "rows": "visual_format",
   "columns": "messaging_angle",
-  "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa"
+  "metrics": "spend,ctr,thumbstop_rate,hook_rate,hold_rate,cpa",
+  "response_format": "concise",
+  "max_cells": 24
 }
 ```
 
@@ -490,9 +508,10 @@ Each aggregate can include `funnel_score` and a `funnel` explanation object for
 capture -> hold -> bring-to-site -> convert diagnosis.
 
 ### `get_taxonomy_performance`
-Find which tags scale, which are unproven, and which standard taxonomy values have
-not been tested yet. Rows include ROAS, CTR, thumbstop, and funnel scores when
-performance memory exists.
+Find historical tag associations, under-observed tags, and standard taxonomy
+values that have not been tested. Rows include ROAS, CTR, thumbstop, and funnel
+scores when performance memory exists. These are observational comparisons;
+validate a promising tag with a one-variable controlled test.
 ```
 { "brand_name": "Acme", "dimension": "hook_type", "spend_threshold": 500 }
 ```
@@ -533,12 +552,13 @@ delete them when they are no longer needed. Saved reports can also persist a
 custom `start_date` / `end_date` window for a specific launch or test period,
 plus dashboard-style preset state such as `view_type`, `date_range`,
 `group_by`, `metrics`, `filters`, `sort`, and `saved_metric_preset`.
+Current chart view types are `table`, `bar`, `line`, and `pie`.
 ```
 {
   "brand_name": "Acme",
   "name": "Hook + LP + Offer",
   "dimensions": ["hook_type", "landing_page", "offer_type"],
-  "view_type": "matrix",
+  "view_type": "table",
   "date_range": "custom",
   "group_by": "dimension",
   "metrics": ["spend", "roas", "cpa", "ctr"],
@@ -555,9 +575,11 @@ Tools: `save_custom_report`, `list_custom_reports`, `run_saved_custom_report`,
 `delete_custom_report`.
 
 ### `predict_creative`
-Score a saved analysis or draft attributes before it spends, using the brand's
-own performance memory. Returns a fit score, per-tag ratings, and recommended
-swaps.
+Despite the legacy tool name, this is not a forecast. It compares a saved
+analysis or draft attributes with the brand's historical tag-level performance
+and returns an observational fit score plus explicit causal guardrails. Turn a
+promising association into a falsifiable, one-variable controlled test with a
+predeclared primary metric, minimum data, guardrails, and ship/stop criteria.
 ```
 { "brand_name": "Acme", "attributes": { "hook_type": "Question", "cta": "Shop Now" } }
 ```
@@ -621,8 +643,8 @@ Build naming strings from already-classified attributes (rarely needed — `anal
 ```
 Your AI agent  ←—stdio—→  creative-tagger-mcp  ←—HTTPS—→  api.creativetagger.ai
                                                               │
-                                                              ├── Gemini 2.5 Flash (classifier)
-                                                              ├── Claude Sonnet (fallback)
+                                                              ├── Gemini 3.5 Flash (default classifier)
+                                                              ├── Claude Sonnet 5 (configured fallback)
                                                               ├── SQLite (library + brand memory)
                                                               └── Meta Ad Library
 ```

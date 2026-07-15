@@ -24,7 +24,9 @@ from typing import Any, BinaryIO
 import httpx
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import CallToolResult, TextContent, Tool
+
+from creative_tagger_mcp import __version__
 
 from creative_tagger_mcp.taxonomy import (
     CONTROLLED_DIMENSIONS,
@@ -38,7 +40,23 @@ API_URL = os.environ.get("CREATIVE_TAGGER_URL", "https://api.creativetagger.ai")
 API_KEY = os.environ.get("CREATIVE_TAGGER_API_KEY", "")
 INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
 
-server = Server("creative-tagger")
+PLAYBOOK_INSTRUCTIONS = """\
+Creative Tagger is observational decision support, not a causal attribution or
+forecasting system. For authenticated work, call list_workspaces first and pass
+the exact returned brand_name to every scoped tool; never blend or infer across
+workspaces. Treat ROAS, CPA, CTR, fatigue, demographic, and taxonomy outputs as
+historical associations. Turn a promising association into a falsifiable
+controlled test: state the hypothesis, change one variable, choose a primary
+metric and guardrails, define a minimum data/duration rule, and set ship/stop
+criteria before launch. Preserve read-only behavior and say when evidence is
+sparse, confounded, stale, or missing.
+"""
+
+server = Server(
+    "creative-tagger",
+    version=__version__,
+    instructions=PLAYBOOK_INSTRUCTIONS,
+)
 
 
 def _headers() -> dict:
@@ -62,11 +80,30 @@ def _text(payload: Any) -> list[TextContent]:
     """Wrap any JSON-able payload as a TextContent response."""
     if isinstance(payload, str):
         return [TextContent(type="text", text=payload)]
-    return [TextContent(type="text", text=json.dumps(payload, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        )
+    ]
 
 
 def _err(msg: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Error: {msg}")]
+
+
+def _mcp_error(msg: str) -> CallToolResult:
+    """Return a protocol-level tool error, not successful text that says Error."""
+    return CallToolResult(content=_err(msg), isError=True)
+
+
+def _mcp_result(result: list[TextContent] | CallToolResult) -> list[TextContent] | CallToolResult:
+    """Promote local validation errors to MCP's isError contract."""
+    if isinstance(result, CallToolResult):
+        return result
+    if result and isinstance(result[0], TextContent) and result[0].text.startswith("Error: "):
+        return CallToolResult(content=result, isError=True)
+    return result
 
 
 def _coerce_bool(value: Any, *, default: bool = False) -> bool:
@@ -107,6 +144,31 @@ def _string_list_arg(value: Any) -> list[str] | None:
         return parts or None
     text = str(value).strip()
     return [text] if text else None
+
+
+def _observational_prediction(payload: Any) -> Any:
+    """Qualify the legacy /predict response so agents cannot mistake it for causality."""
+    if not isinstance(payload, dict):
+        return payload
+    guarded = dict(payload)
+    guarded.update(
+        {
+            "evidence_type": "observational_association",
+            "causal_claim": False,
+            "decision_boundary": (
+                "The score summarizes historical tag associations. It does not "
+                "forecast performance or justify a budget change without a control."
+            ),
+            "test_protocol": {
+                "hypothesis": "A single named creative change improves the primary metric.",
+                "single_variable": "choose one tag or execution change",
+                "primary_metric": "declare CPA, ROAS, or another metric before launch",
+                "guardrails": ["spend", "frequency", "conversion volume"],
+                "decision_rule": "Predeclare minimum data and ship/stop thresholds.",
+            },
+        }
+    )
+    return guarded
 
 
 def _infer_strategy_template(
@@ -232,6 +294,8 @@ def _strategy_params(args: dict) -> dict[str, Any]:
         "start_date": args.get("start_date", ""),
         "end_date": args.get("end_date", ""),
         "limit": args.get("limit", 10),
+        "response_format": args.get("response_format", "concise"),
+        "max_cells": args.get("max_cells", 24),
     }
     report_template = _infer_strategy_template(
         args.get("report_template"),
@@ -277,12 +341,91 @@ def _visible_tools(tools: list[Tool]) -> list[Tool]:
     return [tool for tool in tools if tool.name not in INTERNAL_BACKFILL_TOOLS]
 
 
+_COMPACT_TOOL_DESCRIPTIONS = {
+    "get_creative_strategy_report": (
+        "Read one workspace's observational Strategy matrix and decision queue. "
+        "Defaults to a bounded concise response; use detailed only for an explicit "
+        "deep dive. Treat cells as test hypotheses, not causal effects."
+    ),
+    "get_brain_learnings": (
+        "Read one workspace's current Brand Brain observations, conclusions, "
+        "watchouts, audience signals, gaps, and agent_context. Validate associations "
+        "with controlled tests before changing allocation."
+    ),
+    "save_brain_learnings": (
+        "Persist a reviewed get_brain_learnings slice as Brand Brain notes. Uses the "
+        "same filters; saving memory does not prove causality."
+    ),
+    "export_brain_learnings_context": (
+        "Export a bounded, prompt-ready context from get_brain_learnings, including "
+        "follow-up Strategy and time-series queries."
+    ),
+    "get_performance_timeseries": (
+        "Read one workspace's saved performance series for observational fatigue, "
+        "trajectory, and data-coverage checks."
+    ),
+    "export_performance_timeseries_context": (
+        "Export the bounded agent_context from get_performance_timeseries with its "
+        "decision queue and data-quality warnings."
+    ),
+}
+
+_SCHEMA_DESCRIPTION_FIELDS = {
+    "get_creative_strategy_report": {
+        "report_template",
+        "rows",
+        "columns",
+        "status_focus",
+        "metrics",
+        "metric_preset",
+        "watch_group_by",
+        "watch_metric",
+        "watch_signal_focus",
+        "watch_trajectory_focus",
+        "watch_coverage_focus",
+        "response_format",
+        "max_cells",
+    },
+    "get_brain_learnings": {
+        "kinds",
+        "conclusion_statuses",
+        "watch_group_by",
+        "watch_metric",
+        "watch_signal_focus",
+        "watch_trajectory_focus",
+        "watch_coverage_focus",
+        "watch_sources",
+        "audience_signal_focus",
+    },
+    "save_brain_learnings": set(),
+    "export_brain_learnings_context": set(),
+    "export_performance_timeseries_context": set(),
+}
+
+
+def _compact_tool_catalog(tools: list[Tool]) -> list[Tool]:
+    """Remove duplicated prose while keeping names, types, defaults, and enums."""
+    for tool in tools:
+        description = _COMPACT_TOOL_DESCRIPTIONS.get(tool.name)
+        if description:
+            tool.description = description
+        keep = _SCHEMA_DESCRIPTION_FIELDS.get(tool.name)
+        if keep is None:
+            continue
+        schema = json.loads(json.dumps(tool.inputSchema))
+        for field_name, field_schema in schema.get("properties", {}).items():
+            if field_name not in keep and isinstance(field_schema, dict):
+                field_schema.pop("description", None)
+        tool.inputSchema = schema
+    return tools
+
+
 # ---------- Tools ----------
 
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    return _visible_tools([
+    tools = [
         Tool(
             name="analyze_creative",
             description=(
@@ -384,6 +527,15 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="list_workspaces",
+            description=(
+                "List the authenticated user's workspaces and their exact brand_name "
+                "scope. Call this first, then reuse one returned brand_name on every "
+                "library, status, report, and strategist request."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
             name="list_library",
             description=(
                 "Browse the authenticated user's saved analysis library (memory). "
@@ -396,6 +548,10 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "brand_name": {
+                        "type": "string",
+                        "description": "Exact workspace brand_name from list_workspaces",
+                    },
                     "limit": {"type": "integer", "default": 50},
                     "offset": {"type": "integer", "default": 0},
                     "search": {
@@ -469,7 +625,15 @@ async def list_tools() -> list[Tool]:
                 "rule-based diversification insights. Use this for portfolio analysis "
                 "before recommending what to make next."
             ),
-            inputSchema={"type": "object", "properties": {}},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {
+                        "type": "string",
+                        "description": "Exact workspace brand_name from list_workspaces",
+                    },
+                },
+            },
         ),
         Tool(
             name="get_analysis",
@@ -482,6 +646,10 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "required": ["analysis_id"],
                 "properties": {
+                    "brand_name": {
+                        "type": "string",
+                        "description": "Exact workspace brand_name from list_workspaces",
+                    },
                     "analysis_id": {
                         "type": "integer",
                         "description": "ID of the analysis to fetch",
@@ -746,7 +914,15 @@ async def list_tools() -> list[Tool]:
                 "authenticated user. Returns account id, scopes, read-only status, "
                 "and latest sync metadata."
             ),
-            inputSchema={"type": "object", "properties": {}},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {
+                        "type": "string",
+                        "description": "Exact workspace brand_name from list_workspaces",
+                    },
+                },
+            },
         ),
         Tool(
             name="sync_meta_performance",
@@ -836,8 +1012,9 @@ async def list_tools() -> list[Tool]:
             name="get_taxonomy_performance",
             description=(
                 "Return tag-level performance with significance gating and coverage "
-                "gaps. Use this to find which taxonomy values scale, which are "
-                "unproven, and which standard values have never been tried. Rows include "
+                "gaps. Use this to find which taxonomy values are associated with "
+                "stronger historical outcomes, which are under-observed, and which "
+                "standard values have never been tried. Rows include "
                 "ROAS, CTR, thumbstop, and funnel_score when performance memory exists. "
                 "Supports the same date presets as the main performance summary."
             ),
@@ -852,7 +1029,7 @@ async def list_tools() -> list[Tool]:
                     "spend_threshold": {
                         "type": "number",
                         "default": 500,
-                        "description": "Spend floor before a tag is treated as proven",
+                        "description": "Spend floor before reporting a tag-level observation",
                     },
                     "date_preset": {
                         "type": "string",
@@ -893,7 +1070,7 @@ async def list_tools() -> list[Tool]:
                     "spend_threshold": {
                         "type": "number",
                         "default": 500,
-                        "description": "Spend floor before a row is treated as proven",
+                        "description": "Spend floor before reporting a row-level observation",
                     },
                     "start_date": {
                         "type": "string",
@@ -923,8 +1100,9 @@ async def list_tools() -> list[Tool]:
                 "demographic_age, demographic_gender, demographic_segment, and "
                 "demographic_signal axes, plus mixed creative x audience reads such "
                 "as messaging_angle by demographic_segment. Includes the decision "
-                "queue, report table, and agent_context payload so an LLM can brief "
-                "next tests from the same source of truth as the Creative Tagger UI. "
+                "queue and report table so an LLM can brief next tests from the same "
+                "report contract as the Creative Tagger UI; detailed responses also "
+                "include the agent_context payload. "
                 "Supports CTR, thumbstop, hook, hold, video milestone, CPA, CVR, "
                 "ROAS, revenue, spend, and funnel metrics."
             ),
@@ -1071,6 +1249,23 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "default": 5,
                         "description": "Maximum fatigue watch groups to rank in the strategy report",
+                    },
+                    "response_format": {
+                        "type": "string",
+                        "enum": ["concise", "detailed"],
+                        "default": "concise",
+                        "description": (
+                            "concise returns an agent-ready bounded report; detailed "
+                            "adds richer report fields for explicit deep dives. Both "
+                            "formats remain bounded by max_cells"
+                        ),
+                    },
+                    "max_cells": {
+                        "type": "integer",
+                        "default": 24,
+                        "minimum": 1,
+                        "maximum": 200,
+                        "description": "Maximum matrix cells returned in either response format",
                     },
                     "limit": {"type": "integer", "default": 10},
                 },
@@ -1625,7 +1820,7 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Return the reusable agent_context payload from saved performance "
                 "time series so another agent can decide what to refresh, watch, "
-                "scale, hold, or sync more data without opening the dashboard. "
+                "validate, hold, or sync more data without opening the dashboard. "
                 "Exports the decision queue, summary text, action mix, top fatigue "
                 "or coverage-risk groups, and the prompt-ready context built from "
                 "the same fatigue/time-series logic as the Creative Tagger UI."
@@ -1897,12 +2092,11 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="predict_creative",
             description=(
-                "Pre-flight: predict how a creative will perform for a brand BEFORE it "
-                "spends, by scoring its classified tags against the brand's OWN historical "
-                "tag-level ROAS. Returns a 0-100 fit score, per-tag brand-relative ratings, "
-                "and concrete 'swap X for Y' fixes. The one thing connected-account tools "
-                "can't do: grade a concept before launch. Pass a saved analysis_id (from "
-                "analyze_creative) or a raw attributes object."
+                "Legacy-named observational pre-flight. Compare a creative's tags with "
+                "the brand's historical tag-level performance; this is not a forecast "
+                "or causal estimate. Use the fit score and tag associations to form a "
+                "one-variable controlled-test hypothesis with predeclared success and "
+                "stop criteria. Pass an analysis_id or raw attributes."
             ),
             inputSchema={
                 "type": "object",
@@ -2138,125 +2332,91 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
-    ])
+    ]
+    return _visible_tools(_compact_tool_catalog(tools))
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+async def call_tool(
+    name: str, arguments: dict
+) -> list[TextContent] | CallToolResult:
     try:
         if name in INTERNAL_BACKFILL_TOOLS and not _is_internal_backfill_enabled():
-            return _err(
+            return _mcp_error(
                 "Internal backfill tools are disabled. Connect Meta through "
                 "Creative Tagger OAuth and use sync_meta_performance or "
                 "scan_competitor for launch customer workflows."
             )
-        if name == "analyze_creative":
-            return await _analyze_creative(arguments)
-        if name == "get_taxonomy":
-            return await _get_taxonomy(arguments)
-        if name == "list_library":
-            return await _list_library(arguments)
-        if name == "get_library_patterns":
-            return await _get_library_patterns(arguments)
-        if name == "get_analysis":
-            return await _get_analysis(arguments)
-        if name == "recommend":
-            return await _recommend(arguments)
-        if name == "analyze_gaps":
-            return await _analyze_gaps(arguments)
-        if name == "get_brand_context":
-            return await _get_brand_context(arguments)
-        if name == "set_brand_context":
-            return await _set_brand_context(arguments)
-        if name == "get_brand_taxonomy":
-            return await _get_brand_taxonomy(arguments)
-        if name == "set_brand_taxonomy_value":
-            return await _set_brand_taxonomy_value(arguments)
-        if name == "delete_brand_taxonomy_value":
-            return await _delete_brand_taxonomy_value(arguments)
-        if name == "set_brand_entity":
-            return await _set_brand_entity(arguments)
-        if name == "delete_brand_entity":
-            return await _delete_brand_entity(arguments)
-        if name == "get_naming_variables":
-            return await _get_naming_variables(arguments)
-        if name == "list_naming_templates":
-            return await _list_naming_templates(arguments)
-        if name == "save_naming_template":
-            return await _save_naming_template(arguments)
-        if name == "delete_naming_template":
-            return await _delete_naming_template(arguments)
-        if name == "preview_naming_template":
-            return await _preview_naming_template(arguments)
-        if name == "get_meta_status":
-            return await _get_meta_status(arguments)
-        if name == "sync_meta_performance":
-            return await _sync_meta_performance(arguments)
-        if name == "import_meta_performance":
-            return await _import_meta_performance(arguments)
-        if name == "get_meta_performance_summary":
-            return await _get_meta_performance_summary(arguments)
-        if name == "get_taxonomy_performance":
-            return await _get_taxonomy_performance(arguments)
-        if name == "get_prebuilt_reports":
-            return await _get_prebuilt_reports(arguments)
-        if name == "get_creative_strategy_report":
-            return await _get_creative_strategy_report(arguments)
-        if name == "get_brain_learnings":
-            return await _get_brain_learnings(arguments)
-        if name == "save_brain_learnings":
-            return await _save_brain_learnings(arguments)
-        if name == "export_brain_learnings_context":
-            return await _export_brain_learnings_context(arguments)
-        if name == "get_performance_timeseries":
-            return await _get_performance_timeseries(arguments)
-        if name == "export_performance_timeseries_context":
-            return await _export_performance_timeseries_context(arguments)
-        if name == "create_custom_report":
-            return await _create_custom_report(arguments)
-        if name == "list_custom_reports":
-            return await _list_custom_reports(arguments)
-        if name == "save_custom_report":
-            return await _save_custom_report(arguments)
-        if name == "run_saved_custom_report":
-            return await _run_saved_custom_report(arguments)
-        if name == "delete_custom_report":
-            return await _delete_saved_custom_report(arguments)
-        if name == "predict_creative":
-            return await _predict_creative(arguments)
-        if name == "get_demographics_performance":
-            return await _get_demographics_performance(arguments)
-        if name == "export_demographics_context":
-            return await _export_demographics_context(arguments)
-        if name == "generate_brand_taxonomy":
-            return await _generate_brand_taxonomy(arguments)
-        if name == "scan_competitor":
-            return await _scan_competitor(arguments)
-        if name == "get_competitor_scan_history":
-            return await _get_competitor_scan_history(arguments)
-        if name == "import_competitor_ads":
-            return await _import_competitor_ads(arguments)
         if name == "generate_naming":
-            return _generate_naming(arguments)
-        return _err(f"Unknown tool: {name}")
+            return _mcp_result(_generate_naming(arguments))
+        handlers = {
+            "analyze_creative": _analyze_creative,
+            "get_taxonomy": _get_taxonomy,
+            "list_workspaces": _list_workspaces,
+            "list_library": _list_library,
+            "get_library_patterns": _get_library_patterns,
+            "get_analysis": _get_analysis,
+            "recommend": _recommend,
+            "analyze_gaps": _analyze_gaps,
+            "get_brand_context": _get_brand_context,
+            "set_brand_context": _set_brand_context,
+            "get_brand_taxonomy": _get_brand_taxonomy,
+            "set_brand_taxonomy_value": _set_brand_taxonomy_value,
+            "delete_brand_taxonomy_value": _delete_brand_taxonomy_value,
+            "set_brand_entity": _set_brand_entity,
+            "delete_brand_entity": _delete_brand_entity,
+            "get_naming_variables": _get_naming_variables,
+            "list_naming_templates": _list_naming_templates,
+            "save_naming_template": _save_naming_template,
+            "delete_naming_template": _delete_naming_template,
+            "preview_naming_template": _preview_naming_template,
+            "get_meta_status": _get_meta_status,
+            "sync_meta_performance": _sync_meta_performance,
+            "import_meta_performance": _import_meta_performance,
+            "get_meta_performance_summary": _get_meta_performance_summary,
+            "get_taxonomy_performance": _get_taxonomy_performance,
+            "get_prebuilt_reports": _get_prebuilt_reports,
+            "get_creative_strategy_report": _get_creative_strategy_report,
+            "get_brain_learnings": _get_brain_learnings,
+            "save_brain_learnings": _save_brain_learnings,
+            "export_brain_learnings_context": _export_brain_learnings_context,
+            "get_performance_timeseries": _get_performance_timeseries,
+            "export_performance_timeseries_context": _export_performance_timeseries_context,
+            "create_custom_report": _create_custom_report,
+            "list_custom_reports": _list_custom_reports,
+            "save_custom_report": _save_custom_report,
+            "run_saved_custom_report": _run_saved_custom_report,
+            "delete_custom_report": _delete_saved_custom_report,
+            "predict_creative": _predict_creative,
+            "get_demographics_performance": _get_demographics_performance,
+            "export_demographics_context": _export_demographics_context,
+            "generate_brand_taxonomy": _generate_brand_taxonomy,
+            "scan_competitor": _scan_competitor,
+            "get_competitor_scan_history": _get_competitor_scan_history,
+            "import_competitor_ads": _import_competitor_ads,
+        }
+        handler = handlers.get(name)
+        if handler is None:
+            return _mcp_error(f"Unknown tool: {name}")
+        return _mcp_result(await handler(arguments))
     except httpx.HTTPStatusError as e:
         try:
             detail = e.response.json().get("detail", str(e))
         except Exception:
             detail = str(e)
-        return _err(f"API error ({e.response.status_code}): {detail}")
+        return _mcp_error(f"API error ({e.response.status_code}): {detail}")
     except httpx.ConnectError:
-        return _err(
+        return _mcp_error(
             f"Cannot connect to Creative Tagger API at {API_URL}. "
             "Set CREATIVE_TAGGER_URL or check the API is running."
         )
     except httpx.TimeoutException:
-        return _err(
+        return _mcp_error(
             f"Timed out waiting for a response from {API_URL}. "
             "The API may be slow or unreachable."
         )
     except Exception as e:
-        return _err(str(e))
+        return _mcp_error(str(e))
 
 
 # ---------- Tool Implementations ----------
@@ -2387,9 +2547,17 @@ async def _get_taxonomy(args: dict) -> list[TextContent]:
     return _err(f"Unknown dimension: {dimension}. Available: {', '.join(available)}")
 
 
+async def _list_workspaces(args: dict) -> list[TextContent]:
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(f"{API_URL}/auth/workspaces", params=_auth_params())
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
 async def _list_library(args: dict) -> list[TextContent]:
     params: dict[str, Any] = {**_auth_params()}
     for k in (
+        "brand_name",
         "limit",
         "offset",
         "search",
@@ -2413,10 +2581,11 @@ async def _list_library(args: dict) -> list[TextContent]:
 
 
 async def _get_library_patterns(args: dict) -> list[TextContent]:
+    params = {**_auth_params()}
+    if args.get("brand_name") is not None:
+        params["brand_name"] = args["brand_name"]
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
-        resp = await client.get(
-            f"{API_URL}/auth/library/patterns", params=_auth_params()
-        )
+        resp = await client.get(f"{API_URL}/auth/library/patterns", params=params)
         resp.raise_for_status()
         return _text(resp.json())
 
@@ -2425,10 +2594,11 @@ async def _get_analysis(args: dict) -> list[TextContent]:
     analysis_id = args.get("analysis_id")
     if not analysis_id:
         return _err("analysis_id is required")
+    params = {**_auth_params()}
+    if args.get("brand_name") is not None:
+        params["brand_name"] = args["brand_name"]
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
-        resp = await client.get(
-            f"{API_URL}/auth/library/{analysis_id}", params=_auth_params()
-        )
+        resp = await client.get(f"{API_URL}/auth/library/{analysis_id}", params=params)
         resp.raise_for_status()
         return _text(resp.json())
 
@@ -2651,8 +2821,13 @@ async def _preview_naming_template(args: dict) -> list[TextContent]:
 
 
 async def _get_meta_status(args: dict) -> list[TextContent]:
+    params = {**_auth_params()}
+    if args.get("brand_name") is not None:
+        params["brand_name"] = args["brand_name"]
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
-        resp = await client.get(f"{API_URL}/auth/meta/status", headers=_headers())
+        resp = await client.get(
+            f"{API_URL}/auth/meta/status", params=params, headers=_headers()
+        )
         resp.raise_for_status()
         return _text(resp.json())
 
@@ -2719,7 +2894,7 @@ async def _predict_creative(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=60.0, headers=_headers()) as client:
         resp = await client.post(f"{API_URL}/predict", data=data, headers=_headers())
         resp.raise_for_status()
-        return _text(resp.json())
+        return _text(_observational_prediction(resp.json()))
 
 
 async def _get_taxonomy_performance(args: dict) -> list[TextContent]:
@@ -3268,12 +3443,24 @@ def _build_demographics_decision_queue(opportunities, waste, *, limit):
         queue.append(
             {
                 **compact,
-                "action": "scale",
+                "action": "validate_opportunity",
                 "recommendation": (
-                    f"Scale or brief more creative for {compact['segment']} because it is "
-                    "efficient relative to the rest of the account."
+                    f"{compact['segment']} showed stronger relative efficiency in this "
+                    "historical window. Validate that association before changing spend."
                 ),
                 "evidence_summary": _format_demographic_evidence(compact),
+                "evidence_type": "observational_association",
+                "causal_claim": False,
+                "controlled_test": {
+                    "hypothesis": (
+                        f"Holding offer and placement constant, one creative variant "
+                        f"tailored to {compact['segment']} improves the primary metric."
+                    ),
+                    "single_variable": "creative treatment",
+                    "primary_metric": "CPA or ROAS selected before launch",
+                    "guardrails": ["spend", "frequency", "conversion volume"],
+                    "decision_rule": "Predeclare minimum data and ship/stop thresholds.",
+                },
             }
         )
     remaining = max(1, capped_limit - len(queue))
@@ -3282,12 +3469,25 @@ def _build_demographics_decision_queue(opportunities, waste, *, limit):
         queue.append(
             {
                 **compact,
-                "action": "cut_or_fix",
+                "action": "validate_risk",
                 "recommendation": (
-                    f"Cut spend or isolate a different creative for {compact['segment']} "
-                    "before it keeps burning budget."
+                    f"{compact['segment']} showed weaker relative efficiency in this "
+                    "historical window. Check delivery confounds and run a controlled "
+                    "creative comparison before changing allocation."
                 ),
                 "evidence_summary": _format_demographic_evidence(compact),
+                "evidence_type": "observational_association",
+                "causal_claim": False,
+                "controlled_test": {
+                    "hypothesis": (
+                        f"Holding audience, offer, and placement constant, a single "
+                        f"creative change improves the primary metric for {compact['segment']}."
+                    ),
+                    "single_variable": "creative treatment",
+                    "primary_metric": "CPA or ROAS selected before launch",
+                    "guardrails": ["spend", "frequency", "conversion volume"],
+                    "decision_rule": "Predeclare minimum data and ship/stop thresholds.",
+                },
             }
         )
     for index, item in enumerate(queue, start=1):
@@ -3314,7 +3514,7 @@ def _build_demographic_focus_views(
             "columns": "demographic_segment",
             "fill_metric": "roas",
             "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
-            "why": "Open the audience-segment column first, then compare which messaging angles win inside that pocket.",
+            "why": "Open the audience-segment column first, then compare historical messaging-angle associations inside that pocket.",
         },
         {
             "label_prefix": "Hooks for",
@@ -3416,7 +3616,7 @@ def _build_demographic_timeseries_views(
             "signal_focus": "all",
             "trajectory_focus": "all",
             "coverage_focus": "all",
-            "why": "Track which audience pockets are improving, fatiguing, or still too sparse before you scale spend.",
+            "why": "Track which audience pockets are improving, fatiguing, or too sparse before testing an allocation change.",
         },
         {
             "label": "Audience signal trend",
@@ -3547,7 +3747,7 @@ def _build_demographics_strategy_views(
             "columns": "demographic_segment",
             "fill_metric": "roas",
             "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
-            "why": "Compare which messaging angles win inside each audience pocket before briefing the next test.",
+            "why": "Compare historical messaging-angle associations inside each audience pocket before briefing the next test.",
         },
         {
             "label": "Hook x audience",
@@ -3577,10 +3777,10 @@ def _build_demographics_strategy_views(
 def _brain_learning_status_action(status: str) -> tuple[str, str]:
     normalized = str(status or "").strip().lower()
     if normalized == "winner":
-        return "scale", "Scale what just cleared the learning threshold."
+        return "validate", "Retest the observed pattern before changing allocation."
     if normalized in {"fatigued", "loser"}:
-        return "refresh", "Refresh or cut the slice that just fell below the threshold."
-    return "investigate", "Inspect the underlying slice before you brief the next move."
+        return "investigate", "Test one refresh variable before changing allocation."
+    return "investigate", "Inspect the underlying slice before briefing a test."
 
 
 def _brain_learning_strategy_query(
@@ -3736,11 +3936,11 @@ def _build_brain_learning_decision_queue(
         if kind == "conclusion":
             action, why = _brain_learning_status_action(evidence.get("current_status") or "")
         elif kind == "working":
-            action, why = "scale", "Double down on the pattern that is already clearing benchmark."
+            action, why = "validate", "Retest the observed association against a control."
         elif kind == "watch":
-            action, why = "refresh", "Open the fatigue view before this pattern absorbs more spend."
+            action, why = "investigate", "Open the fatigue view and test one refresh variable."
         elif kind == "audience":
-            action, why = "segment", "Open the mixed audience matrix before broadening spend."
+            action, why = "validate_segment", "Open the mixed matrix before testing a segment-specific variant."
         elif kind == "gap":
             action, why = "test", "Brief the missing pattern instead of repeating a covered cell."
         else:
@@ -3751,9 +3951,21 @@ def _build_brain_learning_decision_queue(
                 "kind": kind,
                 "action": action,
                 "title": learning.get("title") or "",
-                "recommendation": learning.get("action") or learning.get("summary") or "",
+                "recommendation": (
+                    "Hypothesis to validate: "
+                    f"{learning.get('action') or learning.get('summary') or ''}"
+                ),
                 "evidence_summary": learning.get("summary") or "",
+                "evidence_type": "observational_association",
+                "causal_claim": False,
                 "why": why,
+                "controlled_test": {
+                    "hypothesis": "Changing one named creative variable changes the primary metric.",
+                    "single_variable": "declare from the selected Strategy slice",
+                    "primary_metric": "declare before launch",
+                    "guardrails": ["spend", "frequency", "conversion volume"],
+                    "decision_rule": "Predeclare minimum data and ship/stop thresholds.",
+                },
                 "strategy_query": _brain_learning_strategy_query(
                     learning=learning,
                     brand_name=brand_name,
@@ -3799,7 +4011,10 @@ def _build_brain_learning_strategy_views(
                 "kind": learning.get("kind") or "",
                 "title": learning.get("title") or "",
                 "focus_value": evidence.get("value") or "",
-                "why": learning.get("action") or learning.get("summary") or "",
+                "why": (
+                    "Observation to validate: "
+                    f"{learning.get('action') or learning.get('summary') or ''}"
+                ),
                 "strategy_query": _brain_learning_strategy_query(
                     learning=learning,
                     brand_name=brand_name,
@@ -3855,7 +4070,10 @@ def _build_brain_learning_timeseries_views(
                 "kind": learning.get("kind") or "",
                 "title": learning.get("title") or "",
                 "focus_value": evidence.get("value") or "",
-                "why": learning.get("action") or learning.get("summary") or "",
+                "why": (
+                    "Observation to validate: "
+                    f"{learning.get('action') or learning.get('summary') or ''}"
+                ),
                 "timeseries_query": query,
             }
         )
@@ -3969,11 +4187,11 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
         ),
         "summary_text": summary_text,
         "prompt": (
-            "Use these audience signals as the source of truth for the next "
-            "creative or targeting decision. Scale the strongest opportunity "
-            "segments, cut or isolate waste, then open the per-segment mixed "
-            "creative x audience views and audience trend queries to see which "
-            "hooks or angles fit each pocket and whether the signal is holding."
+            "Treat these audience signals as historical associations, not causal "
+            "effects. Open the per-segment mixed creative and trend views, state "
+            "a falsifiable hypothesis, vary one creative factor, predeclare the "
+            "primary metric, guardrails, minimum data, and ship/stop criteria, then "
+            "change allocation only if the controlled result supports it."
         ),
     }
     return _text(export)

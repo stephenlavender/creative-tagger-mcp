@@ -31,8 +31,9 @@ import json
 
 import httpx
 import pytest
+from mcp.types import CallToolRequest, CallToolRequestParams
 
-from creative_tagger_mcp import server
+from creative_tagger_mcp import __version__, server
 
 
 def run(coro):
@@ -40,13 +41,15 @@ def run(coro):
 
 
 def as_json(result) -> object:
-    assert len(result) == 1
-    return json.loads(result[0].text)
+    content = result.content if hasattr(result, "content") else result
+    assert len(content) == 1
+    return json.loads(content[0].text)
 
 
 def as_text(result) -> str:
-    assert len(result) == 1
-    return result[0].text
+    content = result.content if hasattr(result, "content") else result
+    assert len(content) == 1
+    return content[0].text
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +95,59 @@ def test_list_tools_shows_internal_backfill_tools_when_env_flag_set(monkeypatch)
     assert "import_competitor_ads" in names
 
 
+def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts(
+    monkeypatch,
+):
+    monkeypatch.delenv("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", raising=False)
+    tools = run(server.list_tools())
+    payload = json.dumps(
+        [tool.model_dump(exclude_none=True) for tool in tools],
+        separators=(",", ":"),
+    )
+    by_name = {tool.name: tool for tool in tools}
+
+    assert len(payload) < 40_000  # <10k conservative char/4 proxy tokens
+    strategy = by_name["get_creative_strategy_report"]
+    assert "observational" in strategy.description
+    assert strategy.inputSchema["properties"]["response_format"]["default"] == "concise"
+    assert strategy.inputSchema["properties"]["rows"]["description"]
+    assert by_name["save_brain_learnings"].inputSchema["properties"]["limit"] == {
+        "type": "integer",
+        "default": 8,
+    }
+
+
+def test_initialize_reports_package_version_and_workspace_first_playbook():
+    options = server.server.create_initialization_options()
+
+    assert options.server_version == __version__ == "0.2.2"
+    assert "call list_workspaces first" in options.instructions
+    assert "historical associations" in options.instructions
+    assert "falsifiable" in options.instructions
+    assert "ship/stop" in options.instructions
+
+
+def test_registered_mcp_handler_sets_is_error_for_tool_failures(mock_api):
+    request = CallToolRequest(
+        params=CallToolRequestParams(name="not_a_real_tool", arguments={})
+    )
+    result = run(server.server.request_handlers[CallToolRequest](request)).root
+
+    assert result.isError is True
+    assert result.content[0].text == "Error: Unknown tool: not_a_real_tool"
+
+
+def test_registered_mcp_handler_sets_is_error_for_http_failures(mock_api):
+    mock_api.queue(httpx.Response(401, json={"detail": "Invalid API key"}))
+    request = CallToolRequest(
+        params=CallToolRequestParams(name="list_workspaces", arguments={})
+    )
+    result = run(server.server.request_handlers[CallToolRequest](request)).root
+
+    assert result.isError is True
+    assert result.content[0].text == "Error: API error (401): Invalid API key"
+
+
 # ---------------------------------------------------------------------------
 # call_tool() dispatcher contract
 # ---------------------------------------------------------------------------
@@ -100,6 +156,7 @@ def test_list_tools_shows_internal_backfill_tools_when_env_flag_set(monkeypatch)
 def test_call_tool_unknown_tool_returns_clean_error(mock_api):
     result = run(server.call_tool("not_a_real_tool", {}))
     assert as_text(result) == "Error: Unknown tool: not_a_real_tool"
+    assert result.isError is True
     assert mock_api.requests == []
 
 
@@ -112,6 +169,7 @@ def test_call_tool_blocks_internal_backfill_tool_without_env_flag(
     )
     text = as_text(result)
     assert text.startswith("Error: Internal backfill tools are disabled")
+    assert result.isError is True
     assert mock_api.requests == []  # never touches the network
 
 
@@ -156,6 +214,187 @@ def test_get_tool_sends_header_auth_and_query_params_without_api_key(mock_api):
     params = mock_api.query_params()
     assert params == {"limit": "5", "search": "BFCM", "sort": "roas"}
     assert "api_key" not in params
+
+
+def test_list_workspaces_uses_authenticated_workspace_endpoint(mock_api):
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "workspaces": [
+                    {"brand_name": "Acme"},
+                    {"brand_name": "Beta Brand"},
+                ],
+                "total": 2,
+            },
+        )
+    )
+
+    payload = as_json(run(server._list_workspaces({})))
+
+    assert payload["total"] == 2
+    assert mock_api.last_request.url.path == "/auth/workspaces"
+    assert mock_api.last_request.headers["x-api-key"] == "test-api-key-123"
+
+
+@pytest.mark.parametrize(
+    "handler,args,expected_path",
+    [
+        (server._list_library, {"brand_name": "Beta Brand"}, "/auth/library"),
+        (
+            server._get_library_patterns,
+            {"brand_name": "Beta Brand"},
+            "/auth/library/patterns",
+        ),
+        (
+            server._get_analysis,
+            {"brand_name": "Beta Brand", "analysis_id": 42},
+            "/auth/library/42",
+        ),
+        (
+            server._get_meta_status,
+            {"brand_name": "Beta Brand"},
+            "/auth/meta/status",
+        ),
+    ],
+)
+def test_workspace_sensitive_gets_forward_exact_brand_name(
+    mock_api, handler, args, expected_path
+):
+    mock_api.queue(httpx.Response(200, json={"ok": True}))
+
+    run(handler(args))
+
+    assert mock_api.last_request.url.path == expected_path
+    assert mock_api.query_params()["brand_name"] == "Beta Brand"
+
+
+@pytest.mark.parametrize(
+    "handler,args,expected_path",
+    [
+        (server._list_library, {"brand_name": ""}, "/auth/library"),
+        (
+            server._get_library_patterns,
+            {"brand_name": ""},
+            "/auth/library/patterns",
+        ),
+        (
+            server._get_analysis,
+            {"brand_name": "", "analysis_id": 42},
+            "/auth/library/42",
+        ),
+        (
+            server._get_meta_status,
+            {"brand_name": ""},
+            "/auth/meta/status",
+        ),
+    ],
+)
+def test_workspace_sensitive_gets_preserve_explicit_default_workspace(
+    mock_api, handler, args, expected_path
+):
+    mock_api.queue(httpx.Response(200, json={"ok": True}))
+
+    run(handler(args))
+
+    assert mock_api.last_request.url.path == expected_path
+    assert "brand_name=" in str(mock_api.last_request.url)
+    assert mock_api.query_params()["brand_name"] == ""
+
+
+def test_get_analysis_keeps_default_and_named_workspace_queries_isolated(mock_api):
+    mock_api.queue(httpx.Response(200, json={"id": 42, "workspace": "default"}))
+    mock_api.queue(httpx.Response(200, json={"id": 42, "workspace": "Beta Brand"}))
+
+    default_result = as_json(
+        run(server._get_analysis({"brand_name": "", "analysis_id": 42}))
+    )
+    named_result = as_json(
+        run(server._get_analysis({"brand_name": "Beta Brand", "analysis_id": 42}))
+    )
+
+    assert default_result["workspace"] == "default"
+    assert named_result["workspace"] == "Beta Brand"
+    assert mock_api.query_params(0) == {"brand_name": ""}
+    assert mock_api.query_params(1) == {"brand_name": "Beta Brand"}
+
+
+def test_two_workspace_calls_never_reuse_the_other_workspace_scope(mock_api):
+    mock_api.queue(httpx.Response(200, json={"items": [{"id": 1}]}))
+    mock_api.queue(httpx.Response(200, json={"items": [{"id": 2}]}))
+
+    first = as_json(run(server._list_library({"brand_name": "Acme", "limit": 1})))
+    second = as_json(
+        run(server._list_library({"brand_name": "Beta Brand", "limit": 1}))
+    )
+
+    assert first["items"][0]["id"] == 1
+    assert second["items"][0]["id"] == 2
+    assert mock_api.query_params(0)["brand_name"] == "Acme"
+    assert mock_api.query_params(1)["brand_name"] == "Beta Brand"
+
+
+def test_strategy_defaults_to_bounded_concise_response_and_forwards_max_cells(
+    mock_api,
+):
+    mock_api.queue(httpx.Response(200, json={"cells": []}))
+
+    run(server._get_creative_strategy_report({"brand_name": "Acme"}))
+
+    params = mock_api.query_params()
+    assert params["response_format"] == "concise"
+    assert params["max_cells"] == "24"
+
+
+def test_strategy_preserves_explicit_detailed_opt_in(mock_api):
+    mock_api.queue(httpx.Response(200, json={"cells": []}))
+
+    run(
+        server._get_creative_strategy_report(
+            {
+                "brand_name": "Acme",
+                "response_format": "detailed",
+                "max_cells": 80,
+            }
+        )
+    )
+
+    params = mock_api.query_params()
+    assert params["response_format"] == "detailed"
+    assert params["max_cells"] == "80"
+
+
+def test_compact_concise_strategy_fixture_stays_within_agent_token_budget(mock_api):
+    cells = [
+        {
+            "row": f"format-{index}",
+            "column": f"angle-{index}",
+            "status": "learning",
+            "spend": 123.45,
+            "roas": 2.1,
+            "next_test": "Change one hook and hold audience/offer constant.",
+        }
+        for index in range(24)
+    ]
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "response_format": "concise",
+                "cells": cells,
+                "agent_context": {
+                    "evidence_type": "observational_association",
+                    "prompt": "Run one-variable controlled tests.",
+                },
+            },
+        )
+    )
+
+    result = run(server._get_creative_strategy_report({"brand_name": "Acme"}))
+    text = as_text(result)
+
+    assert "\n  " not in text
+    assert len(text) / 4 < 2_000
 
 
 def test_get_tool_with_path_param_builds_url_from_argument(mock_api):
@@ -203,6 +442,33 @@ def test_post_form_tool_sends_header_auth_and_form_body(mock_api):
     assert req.headers["content-type"] == "application/x-www-form-urlencoded"
     body = dict(httpx.QueryParams(req.content.decode()))
     assert body == {"brand_name": "Acme", "question": "What next?"}
+
+
+def test_predict_response_is_explicitly_observational_and_testable(mock_api):
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={"fit_score": 78, "recommended_swaps": ["Hook A -> Hook B"]},
+        )
+    )
+
+    payload = as_json(
+        run(
+            server._predict_creative(
+                {
+                    "brand_name": "Acme",
+                    "attributes": {"hook_type": "Question"},
+                }
+            )
+        )
+    )
+
+    assert payload["fit_score"] == 78
+    assert payload["evidence_type"] == "observational_association"
+    assert payload["causal_claim"] is False
+    assert "does not forecast" in payload["decision_boundary"]
+    assert payload["test_protocol"]["single_variable"]
+    assert "ship/stop" in payload["test_protocol"]["decision_rule"]
 
 
 def test_delete_tool_sends_header_auth_and_no_api_key_query_param(mock_api):

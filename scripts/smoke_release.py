@@ -32,6 +32,7 @@ DIST = ROOT / "dist"
 EXPECTED_TOOLS = {
     "analyze_creative",
     "get_taxonomy",
+    "list_workspaces",
     "list_library",
     "get_library_patterns",
     "get_analysis",
@@ -202,6 +203,9 @@ from creative_tagger_mcp.taxonomy import taxonomy_payload
 
 expected_tools = {sorted(EXPECTED_TOOLS)!r}
 dist_version = metadata.version("creative-tagger-mcp")
+package_metadata = metadata.metadata("creative-tagger-mcp")
+requirements = metadata.requires("creative-tagger-mcp") or []
+readme = package_metadata.get_payload()
 entry_points = list(metadata.entry_points().select(
     group="console_scripts",
     name="creative-tagger-mcp",
@@ -209,13 +213,31 @@ entry_points = list(metadata.entry_points().select(
 tools = asyncio.run(server.list_tools())
 tool_names = sorted(tool.name for tool in tools)
 tool_descriptions = {{tool.name: tool.description for tool in tools}}
+tools_by_name = {{tool.name: tool for tool in tools}}
+tool_catalog = json.dumps(
+    [tool.model_dump(exclude_none=True) for tool in tools],
+    separators=(",", ":"),
+)
 taxonomy = taxonomy_payload()
+initialization = server.server.create_initialization_options()
 
 assert creative_tagger_mcp.__version__ == {expected_version!r}
 assert dist_version == {expected_version!r}
+assert any(requirement.startswith("mcp<2,>=1.28.1") for requirement in requirements)
+assert initialization.server_version == {expected_version!r}
+assert "call list_workspaces first" in initialization.instructions
+assert "historical associations" in initialization.instructions
+assert "creative-tagger-mcp==0.2.1` package are published" in readme
+assert "unreleased `0.2.2` candidate" in readme
+assert "PyPI still serves `creative-tagger-mcp==0.1.0`" not in readme
 assert len(entry_points) == 1
 assert entry_points[0].value == "creative_tagger_mcp.server:main"
 assert tool_names == expected_tools
+assert len(tool_catalog) < 40_000
+strategy_schema = tools_by_name["get_creative_strategy_report"].inputSchema["properties"]
+assert strategy_schema["response_format"]["default"] == "concise"
+assert strategy_schema["max_cells"]["default"] == 24
+assert "brand_name" in tools_by_name["get_meta_status"].inputSchema["properties"]
 internal_backfill_tools = {sorted(INTERNAL_BACKFILL_TOOLS)!r}
 assert not (set(internal_backfill_tools) & set(tool_names))
 assert server.API_URL == "https://api.creativetagger.ai"
@@ -232,8 +254,10 @@ assert "social proof" not in tool_descriptions["analyze_creative"].lower()
 
 print(json.dumps({{
     "version": dist_version,
+    "server_version": initialization.server_version,
     "entry_point": entry_points[0].value,
     "tool_count": len(tool_names),
+    "tool_catalog_bytes": len(tool_catalog),
     "controlled_dimension_count": taxonomy["controlled_dimension_count"],
     "derived_open_dimension_count": taxonomy["derived_open_dimension_count"],
     "dynamic_dimension_count": taxonomy["dynamic_dimension_count"],

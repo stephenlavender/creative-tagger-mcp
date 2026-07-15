@@ -20,6 +20,7 @@ README = ROOT / "README.md"
 PUBLIC_EXPECTED_TOOLS = {
     "analyze_creative",
     "get_taxonomy",
+    "list_workspaces",
     "list_library",
     "get_library_patterns",
     "get_analysis",
@@ -83,11 +84,83 @@ class ToolSurfaceTest(unittest.TestCase):
         source = SERVER.read_text()
 
         for name in EXPECTED_DECLARED_TOOLS:
-            self.assertIn(f'if name == "{name}":', source)
+            if name == "generate_naming":
+                self.assertIn('if name == "generate_naming":', source)
+            else:
+                self.assertRegex(source, rf'"{name}":\s+_[a-z_]+')
 
     def test_package_version_matches_v2_surface(self) -> None:
         init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
-        self.assertIn('__version__ = "0.2.1"', init_file.read_text())
+        self.assertIn('__version__ = "0.2.2"', init_file.read_text())
+        pyproject = (ROOT / "pyproject.toml").read_text()
+        self.assertIn('version = "0.2.2"', pyproject)
+        self.assertIn('"mcp>=1.28.1,<2"', pyproject)
+
+    def test_workspace_first_surface_and_brand_scopes_are_declared(self) -> None:
+        tools = _declared_tools()
+
+        self.assertIn("list_workspaces", tools)
+        self.assertEqual(
+            tools["list_workspaces"]["inputSchema"],
+            {"type": "object", "properties": {}},
+        )
+        for name in (
+            "list_library",
+            "get_library_patterns",
+            "get_analysis",
+            "get_meta_status",
+        ):
+            self.assertIn("brand_name", tools[name]["inputSchema"]["properties"])
+
+    def test_server_instructions_are_workspace_safe_and_causally_honest(self) -> None:
+        source = SERVER.read_text()
+
+        self.assertIn("version=__version__", source)
+        self.assertIn("instructions=PLAYBOOK_INSTRUCTIONS", source)
+        self.assertIn("call list_workspaces first", source)
+        self.assertIn("never blend or infer across", source)
+        self.assertIn("historical associations", source)
+        self.assertIn("falsifiable", source)
+        self.assertIn("ship/stop", source)
+
+        predict = _declared_tools()["predict_creative"]["description"]
+        self.assertIn("not a forecast", predict)
+        self.assertIn("controlled-test hypothesis", predict)
+        self.assertNotIn("predict how a creative will perform", predict.lower())
+
+    def test_strategy_is_concise_by_default_with_detailed_opt_in(self) -> None:
+        schema = _declared_tools()["get_creative_strategy_report"]["inputSchema"]
+        props = schema["properties"]
+
+        self.assertEqual(props["response_format"]["default"], "concise")
+        self.assertEqual(props["response_format"]["enum"], ["concise", "detailed"])
+        self.assertEqual(props["max_cells"]["default"], 24)
+        self.assertEqual(props["max_cells"]["maximum"], 200)
+
+        namespace = _load_pure_helpers(
+            {
+                "_csv_arg",
+                "_infer_strategy_template",
+                "_normalize_strategy_axis",
+                "_strategy_params",
+            }
+        )
+        params = namespace["_strategy_params"]({"brand_name": "Acme"})
+        self.assertEqual(params["response_format"], "concise")
+        self.assertEqual(params["max_cells"], 24)
+
+    def test_readme_matches_published_surface_and_current_models(self) -> None:
+        readme = README.read_text()
+
+        self.assertIn("`creative-tagger-mcp==0.2.1` package are published", readme)
+        self.assertIn("pip install creative-tagger-mcp==0.2.1", readme)
+        self.assertIn("unreleased `0.2.2` candidate", readme)
+        self.assertIn("trusted-publishing CI succeeds", readme)
+        self.assertIn("Current chart view types are `table`, `bar`, `line`, and `pie`", readme)
+        self.assertNotIn('"view_type": "matrix"', readme)
+        self.assertIn("Gemini 3.5 Flash", readme)
+        self.assertIn("Claude Sonnet 5", readme)
+        self.assertNotIn("Gemini 2.5 Flash", readme)
 
     def test_tool_copy_uses_current_taxonomy_dimension_count(self) -> None:
         source = SERVER.read_text()
@@ -102,7 +175,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("15 controlled dimensions", readme)
         self.assertIn("one derived/open `aspect_ratio` dimension", readme)
         self.assertIn("`allow_other_values: true`", readme)
-        self.assertIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
+        self.assertIn("`creative-tagger-mcp==0.2.1` package are published", readme)
+        self.assertNotIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
 
         tools = _declared_tools()
@@ -147,9 +221,9 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertNotIn("python -m twine upload dist/*", readme)
         self.assertIn(
-            "dist/creative_tagger_mcp-0.2.1-py3-none-any.whl", readme
+            "dist/creative_tagger_mcp-0.2.2-py3-none-any.whl", readme
         )
-        self.assertIn("dist/creative_tagger_mcp-0.2.1.tar.gz", readme)
+        self.assertIn("dist/creative_tagger_mcp-0.2.2.tar.gz", readme)
         self.assertIn("never publish with\n`twine upload dist/*`", readme)
 
     def test_release_smoke_does_not_require_tomli_on_old_python(self) -> None:
@@ -168,6 +242,18 @@ class ToolSurfaceTest(unittest.TestCase):
         # sequence lookup. Materializing the selected collection keeps the
         # release assertion portable across every supported Python version.
         self.assertIn("entry_points = list(metadata.entry_points().select(", source)
+
+    def test_release_smoke_checks_server_version_and_packaged_readme(self) -> None:
+        smoke = ROOT / "scripts" / "smoke_release.py"
+        source = smoke.read_text()
+
+        self.assertIn("initialization.server_version", source)
+        self.assertIn('requirement.startswith("mcp<2,>=1.28.1")', source)
+        self.assertIn("package_metadata.get_payload()", source)
+        self.assertIn("call list_workspaces first", source)
+        self.assertIn("creative-tagger-mcp==0.2.1` package are published", source)
+        self.assertIn("len(tool_catalog) < 40_000", source)
+        self.assertIn('strategy_schema["response_format"]["default"] == "concise"', source)
 
     def test_release_smoke_rejects_generated_paths_in_sdist(self) -> None:
         smoke = ROOT / "scripts" / "smoke_release.py"
@@ -466,10 +552,12 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertEqual(len(queue), 2)
         self.assertEqual(queue[0]["rank"], 1)
-        self.assertEqual(queue[0]["action"], "scale")
+        self.assertEqual(queue[0]["action"], "validate_opportunity")
         self.assertIn("25-34 / female", queue[0]["recommendation"])
         self.assertIn("$1250 spend", queue[0]["evidence_summary"])
-        self.assertEqual(queue[1]["action"], "cut_or_fix")
+        self.assertFalse(queue[0]["causal_claim"])
+        self.assertIn("controlled_test", queue[0])
+        self.assertEqual(queue[1]["action"], "validate_risk")
         self.assertIn("45-54 / male", queue[1]["recommendation"])
         self.assertIn("0.90x ROAS", queue[1]["evidence_summary"])
 
@@ -579,10 +667,10 @@ class ToolSurfaceTest(unittest.TestCase):
             limit=4,
         )
         self.assertEqual([item["rank"] for item in queue], [1, 2, 3, 4])
-        self.assertEqual(queue[0]["action"], "scale")
+        self.assertEqual(queue[0]["action"], "validate")
         self.assertEqual(queue[0]["strategy_query"]["report_template"], "hook-performance")
         self.assertEqual(queue[0]["strategy_query"]["rows"], "hook")
-        self.assertEqual(queue[1]["action"], "refresh")
+        self.assertEqual(queue[1]["action"], "investigate")
         self.assertEqual(queue[1]["strategy_query"]["report_template"], "angle-audience-fit")
         self.assertEqual(queue[1]["strategy_query"]["columns"], "demographic_segment")
         self.assertEqual(queue[1]["timeseries_query"]["tool"], "get_performance_timeseries")
@@ -590,7 +678,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(queue[1]["timeseries_query"]["signal_focus"], "fatigued")
         self.assertEqual(queue[1]["timeseries_query"]["coverage_focus"], "gappy")
         self.assertEqual(queue[1]["timeseries_query"]["focus_value"], "25-34 / female")
-        self.assertEqual(queue[2]["action"], "scale")
+        self.assertEqual(queue[2]["action"], "validate")
         self.assertEqual(queue[2]["strategy_query"]["report_template"], "creative-winners")
         self.assertEqual(queue[2]["strategy_query"]["focus_status"], "winner")
         self.assertEqual(queue[3]["action"], "test")
@@ -974,7 +1062,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("windowed-history", timeseries_desc)
         self.assertIn("agent_context payload", timeseries_export_desc)
         self.assertIn("decision queue", timeseries_export_desc)
-        self.assertIn("scale, hold, or sync more data", timeseries_export_desc)
+        self.assertIn("validate, hold, or sync more data", timeseries_export_desc)
         summary_schema = tools["get_meta_performance_summary"]["inputSchema"]["properties"]
         self.assertEqual(summary_schema["date_preset"]["default"], "all_time")
         self.assertIn("last_30_days", summary_schema["date_preset"]["description"])
@@ -1107,6 +1195,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('for key in ("rows", "columns", "status_focus", "metric_preset"):', source)
         self.assertIn('metrics = _csv_arg(args.get("metrics"))', source)
         self.assertIn('params["metrics"] = metrics', source)
+        self.assertIn('"response_format": args.get("response_format", "concise")', source)
+        self.assertIn('"max_cells": args.get("max_cells", 24)', source)
         self.assertIn("params = _strategy_params(args)", strategy_handler)
         self.assertIn('"roas_target"', source)
         self.assertIn('"fatigue_minimum_calendar_days"', source)
@@ -1147,7 +1237,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('f"{API_URL}/performance/by-taxonomy"', source)
         self.assertIn('f"{API_URL}/reports/prebuilt"', source)
         self.assertIn('f"{API_URL}/performance/demographics"', source)
-        self.assertIn('if name == "export_demographics_context":', source)
+        self.assertIn('"export_demographics_context": _export_demographics_context', source)
         self.assertIn("async def _export_demographics_context(args: dict)", source)
         self.assertIn('payload = await _get_demographics_performance(args)', source)
         self.assertIn('"decision_queue": decision_queue', source)
@@ -1158,11 +1248,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"suggested_timeseries_views": _build_demographic_timeseries_views(', source)
         self.assertIn('"strategy_query"] = _build_demographics_strategy_query(', source)
         self.assertIn('"tool": "export_demographics_context"', source)
-        self.assertIn('if name == "get_competitor_scan_history":', source)
+        self.assertIn('"get_competitor_scan_history": _get_competitor_scan_history', source)
         self.assertIn('f"{API_URL}/competitors/history"', source)
-        self.assertIn('if name == "save_brain_learnings":', source)
+        self.assertIn('"save_brain_learnings": _save_brain_learnings', source)
         self.assertIn('f"{API_URL}/brain/learnings/save"', source)
-        self.assertIn('if name == "export_brain_learnings_context":', source)
+        self.assertIn('"export_brain_learnings_context": _export_brain_learnings_context', source)
         self.assertIn("async def _export_brain_learnings_context(args: dict)", source)
         self.assertIn('payload = await _get_brain_learnings(args)', source)
         self.assertIn('parsed.get("agent_context")', source)
@@ -1170,7 +1260,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"suggested_strategy_views": _build_brain_learning_strategy_views(', source)
         self.assertIn('"suggested_timeseries_views": _build_brain_learning_timeseries_views(', source)
         self.assertIn('"timeseries_query": _brain_learning_timeseries_query(', source)
-        self.assertIn('if name == "export_performance_timeseries_context":', source)
+        self.assertIn(
+            '"export_performance_timeseries_context": _export_performance_timeseries_context',
+            source,
+        )
         self.assertIn("async def _export_performance_timeseries_context(args: dict)", source)
         self.assertIn('payload = await _get_performance_timeseries(args)', source)
         self.assertIn("Performance timeseries response did not include agent_context", source)
