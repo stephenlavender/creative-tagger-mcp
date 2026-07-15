@@ -2,9 +2,9 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Status note (verified 2026-07-13): the production API and hosted remote MCP
+Status note (verified 2026-07-15): the production API and hosted remote MCP
 surface are live, but PyPI still serves `creative-tagger-mcp==0.1.0`. This
-README documents the repository's unpublished `0.2.0` stdio bridge. Use
+README documents the repository's unpublished `0.2.1` release candidate. Use
 `https://api.creativetagger.ai/mcp/` for the current hosted tool surface; do not
 assume the installed `0.1.0` package includes the tools documented below.
 
@@ -28,7 +28,7 @@ Authorization: Bearer ct_your_key
 ```
 
 The repository package is the stdio path for clients that require a local
-command. Until `0.2.0` is published, installing from PyPI gives the older tool
+command. Until `0.2.1` is published, installing from PyPI gives the older tool
 surface:
 
 ```bash
@@ -54,7 +54,9 @@ wheel that will be uploaded to PyPI:
 ```bash
 python -m build
 python scripts/smoke_release.py
-python -m twine check dist/*
+python -m twine check \
+  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.1.tar.gz
 ```
 
 The smoke test installs the wheel into a temporary virtualenv, verifies the
@@ -69,8 +71,8 @@ runs `scripts/smoke_release.py`, and passes `twine check`.
 Recommended path:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
@@ -99,9 +101,17 @@ Local fallback:
 ```bash
 python -m build
 python scripts/smoke_release.py
-python -m twine check dist/*
-python -m twine upload dist/*
+python -m twine check \
+  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.1.tar.gz
+python -m twine upload \
+  dist/creative_tagger_mcp-0.2.1-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.1.tar.gz
 ```
+
+Always select the exact release artifacts for a local upload. A reused checkout
+may contain older valid distributions in `dist/`; never publish with
+`twine upload dist/*`.
 
 ## Add to Claude Desktop
 

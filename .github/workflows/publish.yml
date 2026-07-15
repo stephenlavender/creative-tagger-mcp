@@ -2,6 +2,11 @@ name: Publish MCP Package
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to publish (select the matching vX.Y.Z tag)"
+        required: true
+        type: string
   push:
     tags:
       - "v*.*.*"
@@ -21,11 +26,35 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Verify release ref matches package version
+        env:
+          REQUESTED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          PROJECT_VERSION="$(python -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          EXPECTED_TAG="v${PROJECT_VERSION}"
+          if [ "${GITHUB_REF_TYPE}" != "tag" ] || [ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]; then
+            echo "Ref ${GITHUB_REF} does not match package version ${PROJECT_VERSION}" >&2
+            exit 1
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${REQUESTED_VERSION}" != "${PROJECT_VERSION}" ]; then
+            echo "Requested version ${REQUESTED_VERSION} does not match package version ${PROJECT_VERSION}" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+          if [ "${GITHUB_SHA}" != "${MAIN_SHA}" ]; then
+            echo "Tagged commit ${GITHUB_SHA} is not current origin/main ${MAIN_SHA}" >&2
+            exit 1
+          fi
+          echo "PROJECT_VERSION=${PROJECT_VERSION}" >> "${GITHUB_ENV}"
 
       - name: Install release tooling
         run: python -m pip install --upgrade build twine
@@ -33,18 +62,39 @@ jobs:
       - name: Build package
         run: python -m build
 
+      - name: Stage exact release artifact set
+        run: |
+          WHEEL="dist/creative_tagger_mcp-${PROJECT_VERSION}-py3-none-any.whl"
+          SDIST="dist/creative_tagger_mcp-${PROJECT_VERSION}.tar.gz"
+          test -f "${WHEEL}"
+          test ! -L "${WHEEL}"
+          test -f "${SDIST}"
+          test ! -L "${SDIST}"
+          test "$(find dist -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = "2"
+          rm -rf release-dist
+          mkdir release-dist
+          cp -- "${WHEEL}" "${SDIST}" release-dist/
+          test "$(find release-dist -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+          test "$(find release-dist -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = "2"
+
       - name: Smoke-test built wheel
         run: python scripts/smoke_release.py
 
       - name: Check package metadata
-        run: python -m twine check dist/*
+        run: |
+          python -m twine check \
+            "release-dist/creative_tagger_mcp-${PROJECT_VERSION}-py3-none-any.whl" \
+            "release-dist/creative_tagger_mcp-${PROJECT_VERSION}.tar.gz"
 
       - name: Publish to PyPI with API token
         if: env.HAS_PYPI_API_TOKEN == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          packages-dir: release-dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
 
       - name: Publish to PyPI with trusted publishing
         if: env.HAS_PYPI_API_TOKEN != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: release-dist/
