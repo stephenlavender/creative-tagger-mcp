@@ -63,7 +63,7 @@ PUBLIC_EXPECTED_TOOLS = {
     "get_competitor_scan_history",
     "generate_naming",
 }
-INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
+INTERNAL_BACKFILL_TOOLS = {"import_competitor_ads"}
 EXPECTED_DECLARED_TOOLS = PUBLIC_EXPECTED_TOOLS | INTERNAL_BACKFILL_TOOLS
 
 
@@ -867,9 +867,6 @@ class ToolSurfaceTest(unittest.TestCase):
         competitor_history_desc = tools["get_competitor_scan_history"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
-        import_rows = (
-            tools["import_meta_performance"]["inputSchema"]["properties"]["rows"]
-        )
 
         self.assertIn("funnel_score", summary_desc)
         self.assertIn("capture", summary_desc)
@@ -1242,7 +1239,6 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("end_date", saved_schema)
         self.assertIn("YYYY-MM-DD", saved_schema["start_date"]["description"])
         self.assertIn("YYYY-MM-DD", saved_schema["end_date"]["description"])
-        self.assertIn("video_p100", import_rows["description"])
 
     def test_strategy_tool_forwards_demographic_and_date_controls(self) -> None:
         source = SERVER.read_text()

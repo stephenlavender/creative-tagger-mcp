@@ -92,7 +92,7 @@ def test_list_tools_shows_internal_backfill_tools_when_env_flag_set(monkeypatch)
     monkeypatch.setenv("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", "1")
     tools = run(server.list_tools())
     names = {tool.name for tool in tools}
-    assert "import_meta_performance" in names
+    assert "import_meta_performance" not in names
     assert "import_competitor_ads" in names
 
 
@@ -165,28 +165,14 @@ def test_call_tool_unknown_tool_returns_clean_error(mock_api):
     assert mock_api.requests == []
 
 
-def test_call_tool_blocks_internal_backfill_tool_without_env_flag(
-    mock_api, monkeypatch
-):
-    monkeypatch.delenv("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", raising=False)
-    result = run(
-        server.call_tool("import_meta_performance", {"rows": [{"ad_id": "1"}]})
-    )
-    text = as_text(result)
-    assert text.startswith("Error: Internal backfill tools are disabled")
-    assert result.isError is True
-    assert mock_api.requests == []  # never touches the network
-
-
-def test_call_tool_allows_internal_backfill_tool_with_env_flag(mock_api, monkeypatch):
+def test_call_tool_rejects_removed_meta_import_tool(mock_api, monkeypatch):
     monkeypatch.setenv("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", "1")
-    mock_api.queue(httpx.Response(200, json={"imported": 1}))
     result = run(
         server.call_tool("import_meta_performance", {"rows": [{"ad_id": "1"}]})
     )
-    assert as_json(result) == {"imported": 1}
-    assert mock_api.last_request.method == "POST"
-    assert mock_api.last_request.url.path == "/meta/import"
+    assert as_text(result) == "Error: Unknown tool: import_meta_performance"
+    assert result.isError is True
+    assert mock_api.requests == []
 
 
 def test_call_tool_dispatches_sync_tool_without_any_http_call(mock_api):
