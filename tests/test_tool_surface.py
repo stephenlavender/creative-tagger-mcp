@@ -61,6 +61,7 @@ PUBLIC_EXPECTED_TOOLS = {
     "generate_brand_taxonomy",
     "scan_competitor",
     "get_competitor_scan_history",
+    "get_competitor_scan_detail",
     "generate_naming",
 }
 INTERNAL_BACKFILL_TOOLS = {"import_competitor_ads"}
@@ -865,6 +866,7 @@ class ToolSurfaceTest(unittest.TestCase):
         demographics_export_desc = tools["export_demographics_context"]["description"]
         competitor_desc = tools["scan_competitor"]["description"]
         competitor_history_desc = tools["get_competitor_scan_history"]["description"]
+        competitor_detail_desc = tools["get_competitor_scan_detail"]["description"]
         custom_desc = tools["create_custom_report"]["description"]
         saved_desc = tools["save_custom_report"]["description"]
 
@@ -951,6 +953,13 @@ class ToolSurfaceTest(unittest.TestCase):
         competitor_history_schema = tools["get_competitor_scan_history"]["inputSchema"]["properties"]
         self.assertEqual(competitor_history_schema["limit"]["default"], 10)
         self.assertIn("brand_name", competitor_history_schema)
+        self.assertIn("strategy breakdown", competitor_detail_desc)
+        competitor_detail_schema = tools["get_competitor_scan_detail"]["inputSchema"]
+        self.assertEqual(competitor_detail_schema["required"], ["scan_id"])
+        self.assertIn("scan_id", competitor_detail_schema["properties"])
+        self.assertEqual(
+            competitor_detail_schema["properties"]["scan_id"]["type"], "integer"
+        )
         self.assertIn("Brand Brain learnings", brain_desc)
         self.assertIn("agent_context", brain_desc)
         self.assertIn("audience efficiency observations", brain_desc)
@@ -1312,6 +1321,9 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"tool": "export_demographics_context"', source)
         self.assertIn('"get_competitor_scan_history": _get_competitor_scan_history', source)
         self.assertIn('f"{API_URL}/competitors/history"', source)
+        self.assertIn('"get_competitor_scan_detail": _get_competitor_scan_detail', source)
+        self.assertIn("async def _get_competitor_scan_detail(args: dict)", source)
+        self.assertIn('f"{API_URL}/competitors/history/{scan_id}"', source)
         self.assertIn('"save_brain_learnings": _save_brain_learnings', source)
         self.assertIn('f"{API_URL}/brain/learnings/save"', source)
         self.assertIn('"export_brain_learnings_context": _export_brain_learnings_context', source)
@@ -1438,6 +1450,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("spend_lower", props["ads"]["description"])
         self.assertIn("ad_id", props["analyses"]["description"])
         self.assertIn("get_competitor_scan_history", _declared_tools())
+        self.assertIn("get_competitor_scan_detail", _declared_tools())
 
 
 def _declared_tool_names() -> set[str]:

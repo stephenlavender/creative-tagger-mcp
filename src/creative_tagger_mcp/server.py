@@ -2411,6 +2411,20 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_competitor_scan_detail",
+            description=(
+                "Return one saved competitor scan/import: ads, analyses, and "
+                "strategy breakdown."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["scan_id"],
+                "properties": {
+                    "scan_id": {"type": "integer"},
+                },
+            },
+        ),
+        Tool(
             name="import_competitor_ads",
             description=(
                 "Import normalized competitor Meta Ad Library rows for internal "
@@ -2544,6 +2558,7 @@ async def call_tool(
             "generate_brand_taxonomy": _generate_brand_taxonomy,
             "scan_competitor": _scan_competitor,
             "get_competitor_scan_history": _get_competitor_scan_history,
+            "get_competitor_scan_detail": _get_competitor_scan_detail,
             "import_competitor_ads": _import_competitor_ads,
         }
         handler = handlers.get(name)
@@ -4544,6 +4559,18 @@ async def _get_competitor_scan_history(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/competitors/history", params=params, headers=_headers()
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_competitor_scan_detail(args: dict) -> list[TextContent]:
+    scan_id = args.get("scan_id")
+    if not scan_id:
+        return _err("scan_id is required")
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(
+            f"{API_URL}/competitors/history/{scan_id}", headers=_headers()
         )
         resp.raise_for_status()
         return _text(resp.json())
