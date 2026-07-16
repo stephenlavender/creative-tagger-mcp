@@ -199,29 +199,47 @@ def _string_list_arg(value: Any) -> list[str] | None:
     return [text] if text else None
 
 
-def _observational_prediction(payload: Any) -> Any:
-    """Qualify the legacy /predict response so agents cannot mistake it for causality."""
+PREDICTION_CONTRACT_VERSION = "predict_observational.v2"
+_LEGACY_PREDICTION_FIELDS = frozenset(
+    {"fit_score", "verdict", "headline", "recommended_swaps", "lift_pct"}
+)
+
+
+def _validated_observational_prediction(payload: Any) -> dict[str, Any]:
+    """Accept only the explicit observational contract; never decorate legacy data."""
+
     if not isinstance(payload, dict):
+        raise ValueError("Creative Tagger returned an invalid prediction response")
+    # A free-floor response is a pricing boundary, not prediction evidence, and
+    # is safe to pass through without inventing a contract around it.
+    if set(payload) == {"free_floor"}:
         return payload
-    guarded = dict(payload)
-    guarded.update(
-        {
-            "evidence_type": "observational_association",
-            "causal_claim": False,
-            "decision_boundary": (
-                "The score summarizes historical tag associations. It does not "
-                "forecast performance or justify a budget change without a control."
-            ),
-            "test_protocol": {
-                "hypothesis": "A single named creative change improves the primary metric.",
-                "single_variable": "choose one tag or execution change",
-                "primary_metric": "declare CPA, ROAS, or another metric before launch",
-                "guardrails": ["spend", "frequency", "conversion volume"],
-                "decision_rule": "Predeclare minimum data and ship/stop thresholds.",
-            },
-        }
-    )
-    return guarded
+    if (
+        payload.get("schema_version") != PREDICTION_CONTRACT_VERSION
+        or payload.get("evidence_type") != "observational_association"
+        or payload.get("causal_claim") is not False
+        or payload.get("outcome_prediction") is not False
+    ):
+        raise ValueError(
+            "Creative Tagger prediction contract mismatch; no evidence was returned"
+        )
+
+    def walk(value: Any):
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                yield str(key)
+                yield from walk(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                yield from walk(nested)
+
+    legacy = _LEGACY_PREDICTION_FIELDS.intersection(walk(payload))
+    if legacy:
+        raise ValueError(
+            "Creative Tagger prediction response contained legacy causal fields; "
+            "no evidence was returned"
+        )
+    return payload
 
 
 def _infer_strategy_template(
@@ -2225,11 +2243,10 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="predict_creative",
             description=(
-                "Legacy-named observational pre-flight. Compare a creative's tags with "
-                "the brand's historical tag-level performance; this is not a forecast "
-                "or causal estimate. Use the fit score and tag associations to form a "
-                "one-variable controlled-test hypothesis with predeclared success and "
-                "stop criteria. Pass an analysis_id or raw attributes."
+                "Observational pre-flight against the brand's tag-level history; not a "
+                "forecast or causal estimate. Pass analysis_id or attributes. Returns "
+                "evidence and controlled-test hypothesis candidates; predeclare objective_metric "
+                "for mixed, blank, or unknown objectives."
             ),
             inputSchema={
                 "type": "object",
@@ -2246,6 +2263,23 @@ async def list_tools() -> list[Tool]:
                             "Creative attributes, alternative to analysis_id, e.g. "
                             "{hook_type, visual_format, cta, emotion, offer_type}"
                         ),
+                    },
+                    "objective_metric": {
+                        "type": "string",
+                        "enum": [
+                            "roas",
+                            "cpa",
+                            "ctr",
+                            "thumbstop_rate",
+                            "video_completion_rate",
+                            "funnel_score",
+                        ],
+                        "description": "Predeclared metric for mixed/blank/unknown objectives",
+                    },
+                    "goal_direction": {
+                        "type": "string",
+                        "enum": ["higher_better", "lower_better"],
+                        "description": "Optional direction; must agree with the metric",
                     },
                 },
             },
@@ -3043,17 +3077,24 @@ async def _predict_creative(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "")
     if not brand_name:
         return _err("brand_name is required")
-    data: dict[str, Any] = {"brand_name": brand_name}
+    data: dict[str, Any] = {
+        "contract_version": PREDICTION_CONTRACT_VERSION,
+        "brand_name": brand_name,
+    }
     if args.get("analysis_id") is not None:
         data["analysis_id"] = args["analysis_id"]
     if args.get("attributes"):
         import json as _json
 
         data["attributes"] = _json.dumps(args["attributes"])
+    if args.get("objective_metric"):
+        data["objective_metric"] = str(args["objective_metric"])
+    if args.get("goal_direction"):
+        data["goal_direction"] = str(args["goal_direction"])
     async with httpx.AsyncClient(timeout=60.0, headers=_headers()) as client:
         resp = await client.post(f"{API_URL}/predict", data=data, headers=_headers())
         resp.raise_for_status()
-        return _text(_observational_prediction(resp.json()))
+        return _text(_validated_observational_prediction(resp.json()))
 
 
 async def _get_taxonomy_performance(args: dict) -> list[TextContent]:

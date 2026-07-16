@@ -228,9 +228,9 @@ assert initialization.server_version == {expected_version!r}
 assert "call list_workspaces first" in initialization.instructions
 assert "historical associations" in initialization.instructions
 assert "packaged metadata are" in readme
-assert "version `0.2.2`" in readme
-assert "pip install creative-tagger-mcp==0.2.2" in readme
-assert "unreleased `0.2.2` candidate" not in readme
+assert "version `0.2.3`" in readme
+assert "pip install creative-tagger-mcp==0.2.3" in readme
+assert "unreleased `0.2.3` candidate" not in readme
 assert "pip install creative-tagger-mcp==0.2.1" not in readme
 assert "PyPI still serves `creative-tagger-mcp==0.1.0`" not in readme
 assert "`higher_observed_efficiency`" in readme
