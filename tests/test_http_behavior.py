@@ -1147,6 +1147,12 @@ AUTH_SWEEP_CASES = [
         "GET",
         "/competitors/history",
     ),
+    (
+        "get_competitor_scan_detail",
+        {"scan_id": 42},
+        "GET",
+        "/competitors/history/42",
+    ),
     ("list_custom_reports", {"brand_name": "Acme"}, "GET", "/reports/custom/saved"),
     (
         "run_saved_custom_report",

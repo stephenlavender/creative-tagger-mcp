@@ -677,6 +677,16 @@ saved scans before the API request.
 { "brand_name": "Acme", "limit": 6 }
 ```
 
+### `get_competitor_scan_detail`
+Read one saved competitor scan/import in full, including the stored ads,
+per-ad analyses, original query, and aggregate strategy breakdown. Use the
+`scan_id` returned by `get_competitor_scan_history` to reopen a specific past
+market read for grounded follow-up briefing without re-running Meta Ad Library
+access.
+```
+{ "scan_id": 42 }
+```
+
 ### `generate_naming`
 Build naming strings from already-classified attributes (rarely needed — `analyze_creative` already includes naming).
 
