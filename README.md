@@ -3,7 +3,7 @@
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
 Release note (2026-07-15): this source tree and its packaged metadata are
-version `0.2.2`. The hosted and stdio surfaces are separate clients of the same
+version `0.2.3`. The hosted and stdio surfaces are separate clients of the same
 API and may expose different tool counts. The companion API must be deployed
 and live before this stdio release is tagged and published.
 
@@ -31,7 +31,7 @@ command:
 
 ```bash
 # Install this release after it appears on PyPI
-pip install creative-tagger-mcp==0.2.2
+pip install creative-tagger-mcp==0.2.3
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
@@ -53,8 +53,8 @@ wheel that will be uploaded to PyPI:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.2.tar.gz
+  dist/creative_tagger_mcp-0.2.3-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.3.tar.gz
 ```
 
 The smoke test installs the wheel into a temporary virtualenv, verifies the
@@ -66,12 +66,12 @@ confirms the V1 tool surface is present from the installed artifact.
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-After the `0.2.2` review and API-dependency gates pass, tag the exact current
+After the `0.2.3` review and API-dependency gates pass, tag the exact current
 `main` commit:
 
 ```bash
-git tag -a v0.2.2 -m "Creative Tagger MCP v0.2.2"
-git push origin refs/tags/v0.2.2
+git tag -a v0.2.3 -m "Creative Tagger MCP v0.2.3"
+git push origin refs/tags/v0.2.3
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
@@ -101,11 +101,11 @@ Local fallback:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.2.tar.gz
+  dist/creative_tagger_mcp-0.2.3-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.3.tar.gz
 python -m twine upload \
-  dist/creative_tagger_mcp-0.2.2-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.2.tar.gz
+  dist/creative_tagger_mcp-0.2.3-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.3.tar.gz
 ```
 
 Always select the exact release artifacts for a local upload. A reused checkout
@@ -603,11 +603,20 @@ Tools: `save_custom_report`, `list_custom_reports`, `run_saved_custom_report`,
 ### `predict_creative`
 Despite the legacy tool name, this is not a forecast. It compares a saved
 analysis or draft attributes with the brand's historical tag-level performance
-and returns an observational fit score plus explicit causal guardrails. Turn a
+and returns an explicit observational association score and controlled-test
+hypotheses—never a forecast, lift estimate, or causal recommendation. Turn a
 promising association into a falsifiable, one-variable controlled test with a
 predeclared primary metric, minimum data, guardrails, and ship/stop criteria.
+Version 0.2.3 sends the required `predict_observational.v2` request handshake
+and rejects legacy or mixed response shapes instead of decorating them. A
+contract mismatch returns no prediction evidence.
 ```
-{ "brand_name": "Acme", "attributes": { "hook_type": "Question", "cta": "Shop Now" } }
+{
+  "brand_name": "Acme",
+  "attributes": { "hook_type": "Question", "cta": "Shop Now" },
+  "objective_metric": "cpa",
+  "goal_direction": "lower_better"
+}
 ```
 
 ### `get_demographics_performance`

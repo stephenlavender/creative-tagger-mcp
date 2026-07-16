@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 - 2026-07-16
+
+- Require and validate the `predict_observational.v2` handshake for the
+  legacy-named `predict_creative` tool.
+- Expose objective metric and direction inputs and fail closed on legacy or
+  mixed causal-looking prediction payloads.
+
 ## 0.2.2 - 2026-07-15
 
 - Added authenticated workspace discovery and explicit `brand_name` scoping

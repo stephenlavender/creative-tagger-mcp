@@ -92,9 +92,9 @@ class ToolSurfaceTest(unittest.TestCase):
 
     def test_package_version_matches_v2_surface(self) -> None:
         init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
-        self.assertIn('__version__ = "0.2.2"', init_file.read_text())
+        self.assertIn('__version__ = "0.2.3"', init_file.read_text())
         pyproject = (ROOT / "pyproject.toml").read_text()
-        self.assertIn('version = "0.2.2"', pyproject)
+        self.assertIn('version = "0.2.3"', pyproject)
         self.assertIn('"mcp>=1.28.1,<2"', pyproject)
 
     def test_workspace_first_surface_and_brand_scopes_are_declared(self) -> None:
@@ -131,7 +131,11 @@ class ToolSurfaceTest(unittest.TestCase):
         predict = _declared_tools()["predict_creative"]["description"]
         self.assertIn("not a forecast", predict)
         self.assertIn("controlled-test hypothesis", predict)
+        self.assertNotIn("fit score", predict.lower())
         self.assertNotIn("predict how a creative will perform", predict.lower())
+        predict_props = _declared_tools()["predict_creative"]["inputSchema"]["properties"]
+        self.assertIn("objective_metric", predict_props)
+        self.assertIn("goal_direction", predict_props)
 
     def test_strategy_is_concise_by_default_with_detailed_opt_in(self) -> None:
         schema = _declared_tools()["get_creative_strategy_report"]["inputSchema"]
@@ -158,10 +162,10 @@ class ToolSurfaceTest(unittest.TestCase):
     def test_readme_matches_published_surface_and_current_models(self) -> None:
         readme = README.read_text()
 
-        self.assertIn("packaged metadata are\nversion `0.2.2`", readme)
-        self.assertIn("pip install creative-tagger-mcp==0.2.2", readme)
+        self.assertIn("packaged metadata are\nversion `0.2.3`", readme)
+        self.assertIn("pip install creative-tagger-mcp==0.2.3", readme)
         self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
-        self.assertNotIn("unreleased `0.2.2` candidate", readme)
+        self.assertNotIn("unreleased `0.2.3` candidate", readme)
         self.assertIn("companion API must be deployed", readme)
         self.assertIn("Current chart view types are `table`, `bar`, `line`, and `pie`", readme)
         self.assertNotIn('"view_type": "matrix"', readme)
@@ -189,7 +193,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("15 controlled dimensions", readme)
         self.assertIn("one derived/open `aspect_ratio` dimension", readme)
         self.assertIn("`allow_other_values: true`", readme)
-        self.assertIn("packaged metadata are\nversion `0.2.2`", readme)
+        self.assertIn("packaged metadata are\nversion `0.2.3`", readme)
         self.assertNotIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
 
@@ -235,9 +239,9 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertNotIn("python -m twine upload dist/*", readme)
         self.assertIn(
-            "dist/creative_tagger_mcp-0.2.2-py3-none-any.whl", readme
+            "dist/creative_tagger_mcp-0.2.3-py3-none-any.whl", readme
         )
-        self.assertIn("dist/creative_tagger_mcp-0.2.2.tar.gz", readme)
+        self.assertIn("dist/creative_tagger_mcp-0.2.3.tar.gz", readme)
         self.assertIn("never publish with\n`twine upload dist/*`", readme)
 
     def test_release_smoke_does_not_require_tomli_on_old_python(self) -> None:
@@ -266,8 +270,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("package_metadata.get_payload()", source)
         self.assertIn("call list_workspaces first", source)
         self.assertIn('"packaged metadata are"', source)
-        self.assertIn('"version `0.2.2`"', source)
-        self.assertIn('"pip install creative-tagger-mcp==0.2.2"', source)
+        self.assertIn('"version `0.2.3`"', source)
+        self.assertIn('"pip install creative-tagger-mcp==0.2.3"', source)
         self.assertIn('"pip install creative-tagger-mcp==0.2.1" not in readme', source)
         self.assertIn("len(tool_catalog) < 40_000", source)
         self.assertIn('strategy_schema["response_format"]["default"] == "concise"', source)

@@ -125,7 +125,7 @@ def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts
 def test_initialize_reports_package_version_and_workspace_first_playbook():
     options = server.server.create_initialization_options()
 
-    assert options.server_version == __version__ == "0.2.2"
+    assert options.server_version == __version__ == "0.2.3"
     assert "call list_workspaces first" in options.instructions
     assert "historical associations" in options.instructions
     assert "falsifiable" in options.instructions
@@ -993,11 +993,22 @@ def test_post_form_tool_sends_header_auth_and_form_body(mock_api):
     assert body == {"brand_name": "Acme", "question": "What next?"}
 
 
-def test_predict_response_is_explicitly_observational_and_testable(mock_api):
+def test_predict_requires_and_preserves_observational_v2_contract(mock_api):
     mock_api.queue(
         httpx.Response(
             200,
-            json={"fit_score": 78, "recommended_swaps": ["Hook A -> Hook B"]},
+            json={
+                "schema_version": "predict_observational.v2",
+                "evidence_type": "observational_association",
+                "causal_claim": False,
+                "outcome_prediction": False,
+                "available": True,
+                "association_score": 78,
+                "observed_metric": "cpa",
+                "goal_direction": "lower_better",
+                "dimensions": [],
+                "test_hypotheses": [],
+            },
         )
     )
 
@@ -1007,17 +1018,43 @@ def test_predict_response_is_explicitly_observational_and_testable(mock_api):
                 {
                     "brand_name": "Acme",
                     "attributes": {"hook_type": "Question"},
+                    "objective_metric": "cpa",
+                    "goal_direction": "lower_better",
                 }
             )
         )
     )
 
-    assert payload["fit_score"] == 78
+    assert payload["association_score"] == 78
     assert payload["evidence_type"] == "observational_association"
     assert payload["causal_claim"] is False
-    assert "does not forecast" in payload["decision_boundary"]
-    assert payload["test_protocol"]["single_variable"]
-    assert "ship/stop" in payload["test_protocol"]["decision_rule"]
+    assert payload["outcome_prediction"] is False
+    assert "fit_score" not in payload
+    assert "recommended_swaps" not in payload
+
+    request = mock_api.last_request
+    body = dict(httpx.QueryParams(request.content.decode()))
+    assert body["contract_version"] == "predict_observational.v2"
+    assert body["objective_metric"] == "cpa"
+    assert body["goal_direction"] == "lower_better"
+
+
+def test_predict_fails_closed_on_legacy_or_mixed_contract(mock_api):
+    for response in (
+        {"fit_score": 78, "recommended_swaps": ["Hook A -> Hook B"]},
+        {
+            "schema_version": "predict_observational.v2",
+            "evidence_type": "observational_association",
+            "causal_claim": False,
+            "outcome_prediction": False,
+            "available": True,
+            "association_score": 78,
+            "recommended_swaps": ["legacy field"],
+        },
+    ):
+        mock_api.queue(httpx.Response(200, json=response))
+        with pytest.raises(ValueError, match="no evidence was returned"):
+            run(server._predict_creative({"brand_name": "Acme", "analysis_id": 1}))
 
 
 def test_delete_tool_sends_header_auth_and_no_api_key_query_param(mock_api):
