@@ -125,7 +125,7 @@ def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts
 def test_initialize_reports_package_version_and_workspace_first_playbook():
     options = server.server.create_initialization_options()
 
-    assert options.server_version == __version__ == "0.2.3"
+    assert options.server_version == __version__ == "0.2.4"
     assert "call list_workspaces first" in options.instructions
     assert "historical associations" in options.instructions
     assert "falsifiable" in options.instructions
@@ -956,7 +956,7 @@ def test_get_tool_with_path_param_builds_url_from_argument(mock_api):
     assert req.headers.get("x-api-key") == "test-api-key-123"
 
 
-def test_post_json_tool_sends_header_auth_and_json_body(mock_api):
+def test_partial_brand_context_tool_sends_only_supplied_fields(mock_api):
     mock_api.queue(httpx.Response(200, json={"saved": True}))
     run(
         server._set_brand_context(
@@ -969,7 +969,7 @@ def test_post_json_tool_sends_header_auth_and_json_body(mock_api):
     )
 
     req = mock_api.last_request
-    assert req.method == "POST"
+    assert req.method == "PATCH"
     assert req.url.path == "/auth/brand-context"
     assert req.headers.get("x-api-key") == "test-api-key-123"
     assert req.headers["content-type"] == "application/json"
@@ -978,6 +978,29 @@ def test_post_json_tool_sends_header_auth_and_json_body(mock_api):
     assert body["brand_name"] == "Acme"
     assert body["voice"] == "clinical, precise"
     assert body["top_performers"] == ["UGC TalkHead"]
+    assert "target_audience" not in body
+    assert "anti_patterns" not in body
+    assert "notes" not in body
+
+
+def test_partial_brand_context_tool_keeps_explicit_empty_clears(mock_api):
+    mock_api.queue(httpx.Response(200, json={"saved": True}))
+    run(
+        server._set_brand_context(
+            {
+                "brand_name": "Acme",
+                "voice": "",
+                "top_performers": [],
+            }
+        )
+    )
+
+    body = json.loads(mock_api.last_request.content)
+    assert body == {
+        "brand_name": "Acme",
+        "voice": "",
+        "top_performers": [],
+    }
 
 
 def test_post_form_tool_sends_header_auth_and_form_body(mock_api):
@@ -1159,7 +1182,7 @@ AUTH_SWEEP_CASES = [
     ),
     ("delete_naming_template", {}, "DELETE", "/auth/naming/templates"),
     ("delete_custom_report", {"report_id": 7}, "DELETE", "/reports/custom/saved/7"),
-    ("set_brand_context", {"brand_name": "Acme"}, "POST", "/auth/brand-context"),
+    ("set_brand_context", {"brand_name": "Acme"}, "PATCH", "/auth/brand-context"),
     (
         "recommend",
         {"brand_name": "Acme", "question": "q"},

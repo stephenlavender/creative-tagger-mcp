@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4 - 2026-07-16
+
+- Make `set_brand_context` a sparse PATCH so notes-only or voice-only updates
+  preserve every omitted long-term-memory field and all saved reference assets.
+- Preserve explicit empty strings/lists as intentional field clears.
+
 ## 0.2.3 - 2026-07-16
 
 - Require and validate the `predict_observational.v2` handshake for the

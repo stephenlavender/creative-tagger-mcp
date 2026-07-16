@@ -819,7 +819,9 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="set_brand_context",
             description=(
-                "Create or update brand context for a brand. Stored per-user. This is "
+                "Create or partially update brand context for a brand. Stored per-user. "
+                "Omitted fields retain their saved values; an explicit empty string or "
+                "list clears only that field. This is "
                 "the brand's long-term memory — voice, audience, what works, what to "
                 "avoid. Future strategist and brief calls automatically include this "
                 "context. Upserts on (user, brand_name)."
@@ -2844,16 +2846,22 @@ async def _set_brand_context(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "")
     if not brand_name:
         return _err("brand_name is required")
-    body = {
-        "brand_name": brand_name,
-        "voice": args.get("voice", ""),
-        "target_audience": args.get("target_audience", ""),
-        "top_performers": args.get("top_performers") or [],
-        "anti_patterns": args.get("anti_patterns") or [],
-        "notes": args.get("notes", ""),
-    }
+    # PATCH is intentionally sparse: the API distinguishes an omitted field
+    # (preserve) from an explicit empty string/list (clear). Materializing
+    # defaults here would erase long-term memory and reference assets during a
+    # notes-only or voice-only update.
+    body = {"brand_name": brand_name}
+    for field in (
+        "voice",
+        "target_audience",
+        "top_performers",
+        "anti_patterns",
+        "notes",
+    ):
+        if field in args:
+            body[field] = args[field]
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
-        resp = await client.post(
+        resp = await client.patch(
             f"{API_URL}/auth/brand-context",
             params=_auth_params(),
             json=body,
