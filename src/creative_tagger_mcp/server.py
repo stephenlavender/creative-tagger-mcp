@@ -39,7 +39,7 @@ from creative_tagger_mcp.taxonomy import (
 
 API_URL = os.environ.get("CREATIVE_TAGGER_URL", "https://api.creativetagger.ai")
 API_KEY = os.environ.get("CREATIVE_TAGGER_API_KEY", "")
-INTERNAL_BACKFILL_TOOLS = {"import_meta_performance", "import_competitor_ads"}
+INTERNAL_BACKFILL_TOOLS = {"import_competitor_ads"}
 LIBRARY_PAGE_LIMIT = 100
 PREBUILT_REPORT_LIMIT = 50
 STRATEGY_DECISION_LIMIT = 25
@@ -819,7 +819,9 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="set_brand_context",
             description=(
-                "Create or update brand context for a brand. Stored per-user. This is "
+                "Create or partially update brand context for a brand. Stored per-user. "
+                "Omitted fields retain their saved values; an explicit empty string or "
+                "list clears only that field. This is "
                 "the brand's long-term memory — voice, audience, what works, what to "
                 "avoid. Future strategist and brief calls automatically include this "
                 "context. Upserts on (user, brand_name)."
@@ -1047,33 +1049,6 @@ async def list_tools() -> list[Tool]:
                             "7d_click + 1d_view reporting if omitted."
                         ),
                     },
-                },
-            },
-        ),
-        Tool(
-            name="import_meta_performance",
-            description=(
-                "Import Meta-style performance rows for internal backfills or "
-                "controlled migrations. The launch customer flow should use native "
-                "Creative Tagger Meta OAuth plus sync_meta_performance. Does not "
-                "create campaigns or edit budgets."
-            ),
-            inputSchema={
-                "type": "object",
-                "required": ["rows"],
-                "properties": {
-                    "brand_name": {"type": "string"},
-                    "rows": {
-                        "type": "array",
-                        "items": {"type": "object"},
-                        "description": (
-                            "Rows with ad_name/ad_id/spend/impressions/clicks/"
-                            "conversions/revenue/date fields. Video metrics such as "
-                            "video_plays, video_p50, and video_p100 are used for "
-                            "thumbstop, retention, and funnel scoring."
-                        ),
-                    },
-                    "source": {"type": "string", "default": "meta_mcp"},
                 },
             },
         ),
@@ -2549,7 +2524,6 @@ async def call_tool(
             "preview_naming_template": _preview_naming_template,
             "get_meta_status": _get_meta_status,
             "sync_meta_performance": _sync_meta_performance,
-            "import_meta_performance": _import_meta_performance,
             "get_meta_performance_summary": _get_meta_performance_summary,
             "get_taxonomy_performance": _get_taxonomy_performance,
             "get_prebuilt_reports": _get_prebuilt_reports,
@@ -2844,16 +2818,22 @@ async def _set_brand_context(args: dict) -> list[TextContent]:
     brand_name = args.get("brand_name", "")
     if not brand_name:
         return _err("brand_name is required")
-    body = {
-        "brand_name": brand_name,
-        "voice": args.get("voice", ""),
-        "target_audience": args.get("target_audience", ""),
-        "top_performers": args.get("top_performers") or [],
-        "anti_patterns": args.get("anti_patterns") or [],
-        "notes": args.get("notes", ""),
-    }
+    # PATCH is intentionally sparse: the API distinguishes an omitted field
+    # (preserve) from an explicit empty string/list (clear). Materializing
+    # defaults here would erase long-term memory and reference assets during a
+    # notes-only or voice-only update.
+    body = {"brand_name": brand_name}
+    for field in (
+        "voice",
+        "target_audience",
+        "top_performers",
+        "anti_patterns",
+        "notes",
+    ):
+        if field in args:
+            body[field] = args[field]
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
-        resp = await client.post(
+        resp = await client.patch(
             f"{API_URL}/auth/brand-context",
             params=_auth_params(),
             json=body,
@@ -3036,21 +3016,6 @@ async def _sync_meta_performance(args: dict) -> list[TextContent]:
         resp = await client.post(
             f"{API_URL}/meta/sync", json=body, headers=_headers()
         )
-        resp.raise_for_status()
-        return _text(resp.json())
-
-
-async def _import_meta_performance(args: dict) -> list[TextContent]:
-    rows = args.get("rows") or []
-    if not isinstance(rows, list) or not rows:
-        return _err("rows must be a non-empty list of Meta performance objects")
-    body = {
-        "brand_name": args.get("brand_name", ""),
-        "rows": rows,
-        "source": args.get("source", "meta_mcp"),
-    }
-    async with httpx.AsyncClient(timeout=120.0, headers=_headers()) as client:
-        resp = await client.post(f"{API_URL}/meta/import", json=body, headers=_headers())
         resp.raise_for_status()
         return _text(resp.json())
 

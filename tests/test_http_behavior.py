@@ -92,7 +92,7 @@ def test_list_tools_shows_internal_backfill_tools_when_env_flag_set(monkeypatch)
     monkeypatch.setenv("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", "1")
     tools = run(server.list_tools())
     names = {tool.name for tool in tools}
-    assert "import_meta_performance" in names
+    assert "import_meta_performance" not in names
     assert "import_competitor_ads" in names
 
 
@@ -125,7 +125,7 @@ def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts
 def test_initialize_reports_package_version_and_workspace_first_playbook():
     options = server.server.create_initialization_options()
 
-    assert options.server_version == __version__ == "0.2.3"
+    assert options.server_version == __version__ == "0.2.4"
     assert "call list_workspaces first" in options.instructions
     assert "historical associations" in options.instructions
     assert "falsifiable" in options.instructions
@@ -165,28 +165,14 @@ def test_call_tool_unknown_tool_returns_clean_error(mock_api):
     assert mock_api.requests == []
 
 
-def test_call_tool_blocks_internal_backfill_tool_without_env_flag(
-    mock_api, monkeypatch
-):
-    monkeypatch.delenv("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", raising=False)
-    result = run(
-        server.call_tool("import_meta_performance", {"rows": [{"ad_id": "1"}]})
-    )
-    text = as_text(result)
-    assert text.startswith("Error: Internal backfill tools are disabled")
-    assert result.isError is True
-    assert mock_api.requests == []  # never touches the network
-
-
-def test_call_tool_allows_internal_backfill_tool_with_env_flag(mock_api, monkeypatch):
+def test_call_tool_rejects_removed_meta_import_tool(mock_api, monkeypatch):
     monkeypatch.setenv("CREATIVE_TAGGER_INTERNAL_BACKFILL_TOOLS", "1")
-    mock_api.queue(httpx.Response(200, json={"imported": 1}))
     result = run(
         server.call_tool("import_meta_performance", {"rows": [{"ad_id": "1"}]})
     )
-    assert as_json(result) == {"imported": 1}
-    assert mock_api.last_request.method == "POST"
-    assert mock_api.last_request.url.path == "/meta/import"
+    assert as_text(result) == "Error: Unknown tool: import_meta_performance"
+    assert result.isError is True
+    assert mock_api.requests == []
 
 
 def test_call_tool_dispatches_sync_tool_without_any_http_call(mock_api):
@@ -956,7 +942,7 @@ def test_get_tool_with_path_param_builds_url_from_argument(mock_api):
     assert req.headers.get("x-api-key") == "test-api-key-123"
 
 
-def test_post_json_tool_sends_header_auth_and_json_body(mock_api):
+def test_partial_brand_context_tool_sends_only_supplied_fields(mock_api):
     mock_api.queue(httpx.Response(200, json={"saved": True}))
     run(
         server._set_brand_context(
@@ -969,7 +955,7 @@ def test_post_json_tool_sends_header_auth_and_json_body(mock_api):
     )
 
     req = mock_api.last_request
-    assert req.method == "POST"
+    assert req.method == "PATCH"
     assert req.url.path == "/auth/brand-context"
     assert req.headers.get("x-api-key") == "test-api-key-123"
     assert req.headers["content-type"] == "application/json"
@@ -978,6 +964,29 @@ def test_post_json_tool_sends_header_auth_and_json_body(mock_api):
     assert body["brand_name"] == "Acme"
     assert body["voice"] == "clinical, precise"
     assert body["top_performers"] == ["UGC TalkHead"]
+    assert "target_audience" not in body
+    assert "anti_patterns" not in body
+    assert "notes" not in body
+
+
+def test_partial_brand_context_tool_keeps_explicit_empty_clears(mock_api):
+    mock_api.queue(httpx.Response(200, json={"saved": True}))
+    run(
+        server._set_brand_context(
+            {
+                "brand_name": "Acme",
+                "voice": "",
+                "top_performers": [],
+            }
+        )
+    )
+
+    body = json.loads(mock_api.last_request.content)
+    assert body == {
+        "brand_name": "Acme",
+        "voice": "",
+        "top_performers": [],
+    }
 
 
 def test_post_form_tool_sends_header_auth_and_form_body(mock_api):
@@ -1159,7 +1168,7 @@ AUTH_SWEEP_CASES = [
     ),
     ("delete_naming_template", {}, "DELETE", "/auth/naming/templates"),
     ("delete_custom_report", {"report_id": 7}, "DELETE", "/reports/custom/saved/7"),
-    ("set_brand_context", {"brand_name": "Acme"}, "POST", "/auth/brand-context"),
+    ("set_brand_context", {"brand_name": "Acme"}, "PATCH", "/auth/brand-context"),
     (
         "recommend",
         {"brand_name": "Acme", "question": "q"},
