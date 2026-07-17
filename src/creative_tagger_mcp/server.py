@@ -702,7 +702,9 @@ _COMPACT_TOOL_DESCRIPTIONS = {
     "export_demographics_context": (
         "Agent-ready audience context from saved age x gender memory: higher/lower "
         "observed-efficiency bands, account totals, a descriptive review queue, and "
-        "date-scoped mixed creative x audience plus time-series follow-up queries."
+        "date-scoped demographic strategy plus time-series follow-up queries. "
+        "Demographics are account-level only -- never a joined tag x demographic cross; "
+        "the API states this via cross_contract: not_applicable, not a populated grid."
     ),
     "generate_brand_taxonomy": (
         "Auto-build a brand's entire custom taxonomy from its analyzed library: "
@@ -1477,13 +1479,16 @@ async def list_tools() -> list[Tool]:
                 "taxonomy v2 splits visual_format, asset_type, and media_type into "
                 "three separate axes) by messaging_angle columns, with text and "
                 "color-coded states for next tests, live learning, winners, losers, "
-                "fatigue, and gaps. Also supports audience-mode matrices with "
-                "demographic_age, demographic_gender, demographic_segment, and "
-                "demographic_signal axes, plus mixed creative x audience reads such "
-                "as messaging_angle by demographic_segment. Includes the decision "
-                "queue and report table so an LLM can brief next tests from the same "
-                "report contract as the Creative Tagger UI; detailed responses also "
-                "include the agent_context payload. "
+                "fatigue, and gaps. Also supports audience-mode matrices when BOTH "
+                "rows and columns are demographic axes (demographic_age, "
+                "demographic_gender, demographic_segment, or demographic_signal — "
+                "e.g. age by gender). Demographics are account-level only, with no "
+                "per-ad key: pairing a creative tag axis with a demographic axis is "
+                "structurally not_applicable and returns an explicit cross_contract "
+                "instead of a populated grid. Includes the decision queue and report "
+                "table so an LLM can brief next tests from the same report contract "
+                "as the Creative Tagger UI; detailed responses also include the "
+                "agent_context payload. "
                 "Supports CTR, thumbstop, hook, hold, video milestone, CPA, CVR, "
                 "ROAS, revenue, spend, and funnel metrics."
             ),
@@ -1502,9 +1507,12 @@ async def list_tools() -> list[Tool]:
                         "description": (
                             "Template preset: next-tests, creative-winners, fatigue-watch, "
                             "coverage-gaps, hook-performance, persona-read, demographic-read, "
-                            "or audience-signals. You can also skip the preset and request a "
-                            "mixed creative x audience cut via rows/columns such as "
-                            "messaging_angle by demographic_segment."
+                            "or audience-signals. demographic-read and audience-signals are "
+                            "the only demographic templates — both rows and columns are "
+                            "demographic axes there. There is no template, and no rows/columns "
+                            "pairing, for crossing a creative tag with a demographic axis: that "
+                            "pairing is structurally not_applicable, not a hidden feature to "
+                            "request manually."
                         ),
                     },
                     "rows": {
@@ -1518,8 +1526,11 @@ async def list_tools() -> list[Tool]:
                             "demographic_segment, or demographic_signal. Taxonomy v2 "
                             "splits media type, asset type, and visual format into three "
                             "separate axes; ad_type is a deprecated alias for "
-                            "visual_format. Combine a creative dimension here with a "
-                            "demographic column for mixed audience reads."
+                            "visual_format. A demographic row only returns a populated "
+                            "matrix when columns is also a demographic axis (e.g. "
+                            "demographic_age by demographic_gender) — demographics are "
+                            "account-level only, so pairing this with a creative tag "
+                            "column is not_applicable, not a mixed audience read."
                         ),
                     },
                     "columns": {
@@ -1530,9 +1541,12 @@ async def list_tools() -> list[Tool]:
                             "asset_type, media_type, format, hook, persona, product, "
                             "offer_type, demographic_gender, demographic_age, "
                             "demographic_segment, or demographic_signal (ad_type is a "
-                            "deprecated alias for visual_format). Set one axis to a "
-                            "creative tag and the other to a demographic axis for a mixed "
-                            "creative x audience matrix."
+                            "deprecated alias for visual_format). Demographics are "
+                            "account-level only, with no per-ad key: pairing a creative "
+                            "tag row with a demographic column returns cross_contract: "
+                            "not_applicable, never a populated cross — pair two "
+                            "demographic axes instead (e.g. demographic_age by "
+                            "demographic_gender)."
                         ),
                     },
                     "status_focus": {
@@ -2916,8 +2930,11 @@ async def list_tools() -> list[Tool]:
                 "gender performance memory. Use this when another agent or workflow "
                 "needs the higher and lower observed-efficiency bands, account totals, "
                 "summary text, a prompt-ready descriptive review queue, and date-scoped "
-                "mixed creative x audience strategy queries plus time-series "
-                "follow-up queries without opening the dashboard."
+                "demographic strategy queries plus time-series follow-up queries "
+                "without opening the dashboard. Demographics are account-level only, "
+                "with no per-ad key — every follow-up query stays a separate "
+                "demographic-only or tag-only read, never a joined tag x demographic "
+                "cross, which the API refuses as not_applicable."
             ),
             inputSchema={
                 "type": "object",
@@ -5942,18 +5959,20 @@ Call these tools in order:
 4. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", report_template="hook-performance", minimum_spend={_fmt_num(spend_threshold)})` —
    the named hook x messaging_angle matrix with hook/hold/thumbstop/CPA metrics, so a hook's
    read can be qualified by which angle it was paired with.
-5. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", rows="hook", columns="demographic_segment", minimum_spend={_fmt_num(spend_threshold)})` —
-   hook-by-audience fit. get_creative_strategy_report's rows/columns dimension is named
-   "hook" (not "hook_type" — that spelling is for get_taxonomy_performance/
-   get_performance_timeseries only). There is no named report_template for this cut — set
-   rows/columns explicitly, exactly as shown, rather than guessing a template name.
+5. `get_demographics_performance(brand_name="{brand_name}", date_preset="{date_preset}")` —
+   account-level age x gender efficiency bands for the SAME window, as a SEPARATE read next
+   to the hook numbers above. Demographics are account-level only (creative_demographics has
+   no per-ad key), so this MCP surface cannot cross a hook with a demographic segment — the
+   API returns cross_contract: not_applicable if that pairing is attempted. Never state or
+   imply "this hook wins with this audience."
 
 For every hook type with spend >= {_fmt_num(spend_threshold)}: report thumbstop_rate
 AND the downstream metric (CPA or ROAS) side by side — flag any hook with high thumbstop but
 poor downstream as a "stops the scroll, doesn't convert" trap, not a winner. Flag any hook with
 a worsening thumbstop trend from step 3 as wearing out, even if its all-time average still looks
-fine. Close with which hooks are proven enough to cut onto a different (winning) body next, and
-which hook types in coverage_gaps are untested whitespace.
+fine. Report step 5's account-level demographic bands in their own section, never attributed to
+a specific hook. Close with which hooks are proven enough to cut onto a different (winning) body
+next, and which hook types in coverage_gaps are untested whitespace.
 
 {_PROMPT_REPORT_CONTRACT}
 """
@@ -6197,26 +6216,31 @@ Call these tools in order:
 2. `export_demographics_context(brand_name="{brand_name}", date_preset="{date_preset}", limit=5)` —
    the bounded, prompt-ready review queue plus follow-up strategy/time-series queries the API
    already drafted for these segments.
-3. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", rows="messaging_angle", columns="demographic_segment")` —
-   which messaging angles fit which audience segments. No named report_template covers this
-   mixed cut — rows/columns are set explicitly.
-4. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", rows="hook", columns="demographic_segment")` —
-   the same cut for hooks (dimension name "hook", not "hook_type", for this tool specifically).
+3. `get_taxonomy_performance(brand_name="{brand_name}", dimension="messaging_angle", date_preset="{date_preset}")` —
+   messaging-angle performance across the WHOLE account, as a SEPARATE read next to steps
+   1-2 above — never a join. Demographics are account-level only (creative_demographics has
+   no per-ad key), so this MCP surface cannot cross messaging_angle with demographic_segment
+   — the API returns cross_contract: not_applicable if that pairing is attempted.
+4. `get_taxonomy_performance(brand_name="{brand_name}", dimension="hook_type", date_preset="{date_preset}")` —
+   the same account-wide, separate read for hooks.
 
 This tool covers age x gender only — no geo or placement axis exists on this MCP surface; do
 not claim a placement or geo read. Report segments in higher_observed_efficiency vs
 lower_observed_efficiency bands (never "best"/"worst audience" — these are observed
-associations, not causal outcomes), then which hooks/angles from steps 3-4 pair with which
-segments. Close every efficiency claim with the controlled test that would confirm it (e.g. a
-holdout or geo split), and explicitly do NOT issue a budget/spend-shift instruction from this
-observational read alone — that requires the validation test, not this report.
+associations, not causal outcomes), then report steps 3-4's messaging-angle and hook
+performance in their OWN section, scoped to the whole account — never state or imply that a
+specific angle or hook performs better FOR a specific segment; that cross does not exist on
+this surface. Close every efficiency claim with the controlled test that would confirm it
+(e.g. a holdout or geo split), and explicitly do NOT issue a budget/spend-shift instruction
+from this observational read alone — that requires the validation test, not this report.
 
 {_PROMPT_REPORT_CONTRACT}
 """
     return _prompt_result(
         "Who your spend is reaching vs who is efficiently converting, broken by age and "
-        "gender and crossed with hooks and angles — reported as observed associations with "
-        "the controlled tests that would confirm them.",
+        "gender, reported alongside (never crossed with) messaging-angle and hook "
+        "performance — as observed associations with the controlled tests that would "
+        "confirm them.",
         text,
     )
 
@@ -6568,8 +6592,9 @@ _PROMPTS: list[Prompt] = [
         title="Audience Read",
         description=(
             "Who your spend is reaching vs who is efficiently converting, broken by age "
-            "and gender and crossed with hooks and angles — reported as observed "
-            "associations with the controlled tests that would confirm them."
+            "and gender, reported alongside (never crossed with) messaging-angle and hook "
+            "performance — as observed associations with the controlled tests that would "
+            "confirm them."
         ),
         arguments=[
             PromptArgument(
