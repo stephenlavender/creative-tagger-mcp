@@ -19,6 +19,7 @@ Usage:
 import json
 import math
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -129,6 +130,60 @@ def _mcp_result(result: list[TextContent] | CallToolResult) -> list[TextContent]
     if result and isinstance(result[0], TextContent) and result[0].text.startswith("Error: "):
         return CallToolResult(content=result, isError=True)
     return result
+
+
+def _parse_utc_timestamp(value: Any) -> datetime | None:
+    """Parse an ISO-8601 timestamp the same way the API's own connection
+    freshness calculation does: naive timestamps are treated as UTC."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _freshness_envelope(payload: Any) -> dict[str, Any] | None:
+    """Build a last_synced_at / data_age_hours / stale envelope from a
+    response the API already stamped with Meta sync freshness.
+
+    Only tools whose API response already carries an explicit top-level
+    `stale` verdict (get_meta_status, get_meta_performance_summary today)
+    are eligible: this never invents a staleness verdict for a tool the API
+    itself hasn't judged. data_age_hours is the one derived value here — a
+    precision upgrade over the API's own boolean, computed from the same
+    last_synced_at the API already returned, never a new source of truth.
+    Returns None when the payload carries no such signal, so callers never
+    stamp a tool the API hasn't informed.
+    """
+    if not isinstance(payload, dict) or "stale" not in payload:
+        return None
+    last_synced_at = payload.get("last_synced_at")
+    parsed = _parse_utc_timestamp(last_synced_at)
+    data_age_hours = None
+    if parsed is not None:
+        age_hours = (datetime.now(timezone.utc) - parsed).total_seconds() / 3600
+        data_age_hours = round(age_hours, 2)
+    return {
+        "last_synced_at": last_synced_at,
+        "data_age_hours": data_age_hours,
+        "stale": bool(payload.get("stale")),
+    }
+
+
+def _with_freshness_stamp(payload: Any) -> Any:
+    """Attach a `freshness` envelope to a dict response when the underlying
+    API payload already exposes sync freshness. The one shared helper every
+    freshness-eligible tool handler calls before returning — no per-tool
+    copies of the last_synced_at/stale extraction or age math.
+    """
+    envelope = _freshness_envelope(payload)
+    if envelope is None or not isinstance(payload, dict):
+        return payload
+    return {**payload, "freshness": envelope}
 
 
 def _coerce_bool(value: Any, *, default: bool = False) -> bool:
@@ -3017,7 +3072,7 @@ async def _get_meta_status(args: dict) -> list[TextContent]:
             f"{API_URL}/auth/meta/status", params=params, headers=_headers()
         )
         resp.raise_for_status()
-        return _text(resp.json())
+        return _text(_with_freshness_stamp(resp.json()))
 
 
 async def _sync_meta_performance(args: dict) -> list[TextContent]:
@@ -3050,7 +3105,7 @@ async def _get_meta_performance_summary(args: dict) -> list[TextContent]:
             headers=_headers(),
         )
         resp.raise_for_status()
-        return _text(resp.json())
+        return _text(_with_freshness_stamp(resp.json()))
 
 
 async def _predict_creative(args: dict) -> list[TextContent]:
