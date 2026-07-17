@@ -93,10 +93,15 @@ sparse, confounded, stale, or missing.
 
 Conventions shared across scoped tools (stated once here instead of on every
 tool): every scoped tool takes brand_name (pass the exact list_workspaces
-value). Date windows accept the presets all_time, last_7_days, last_30_days,
-last_90_days, and custom, with start_date/end_date as YYYY-MM-DD;
-get_performance_timeseries uses the short forms last_7d/last_30d/last_90d and
-maximum instead. Reporting tools that rank or judge creatives withhold the
+value). Most single-window reporting tools take a date_preset of all_time,
+last_7_days, last_30_days, last_90_days, or custom, with start_date/end_date
+as YYYY-MM-DD; get_performance_timeseries uses the short forms
+last_7d/last_30d/last_90d/maximum instead. compare_periods has its own,
+narrower preset family -- period_a_preset/period_b_preset accept only
+this_week, last_week, last_7_days, last_14_days, last_30_days, last_90_days,
+this_month, or last_month (no all_time, and no literal "custom" value -- an
+explicit period_a_start/period_a_end or period_b_start/period_b_end pair IS
+that tool's custom window). Reporting tools that rank or judge creatives withhold the
 comparative layer (rankings_withheld / outcome_verdicts_withheld) when the
 workspace's performance evidence is not decision-safe -- stale sync, no Meta
 connection -- while still returning the raw measured facts; a row spending below
@@ -770,6 +775,7 @@ _SCHEMA_DESCRIPTION_FIELDS = {
     "save_brain_learnings": {"audience_signal_focus"},
     "export_brain_learnings_context": {"audience_signal_focus"},
     "get_performance_timeseries": {
+        "date_preset",
         "group_by",
         "metric",
     },
@@ -786,7 +792,7 @@ _SCHEMA_DESCRIPTION_FIELDS = {
     },
     "get_creative_leaderboard": {"window"},
     "get_batch_readout": {"window"},
-    "compare_periods": {"group_by"},
+    "compare_periods": {"period_a_preset", "period_b_preset", "group_by"},
     "predict_creative": {"attributes", "objective_metric", "goal_direction"},
     "get_demographics_performance": set(),
     "export_demographics_context": set(),
