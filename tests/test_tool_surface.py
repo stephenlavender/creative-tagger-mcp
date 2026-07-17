@@ -899,8 +899,17 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("hook", strategy_desc)
         self.assertIn("hold", strategy_desc)
         self.assertIn("demographic_age", strategy_desc)
-        self.assertIn("mixed creative x audience", strategy_desc)
-        self.assertIn("messaging_angle by demographic_segment", strategy_desc)
+        # Demographics are account-level only (no per-ad key, see
+        # app.pipeline.creative_strategy._demographic_tag_cross_contract on the
+        # API side) -- pairing a creative tag axis with a demographic axis is
+        # structurally not_applicable, never a populated "mixed" grid. The
+        # description must state that real contract, not advertise the cross.
+        self.assertIn("age by gender", strategy_desc)
+        self.assertIn("account-level only", strategy_desc)
+        self.assertIn("not_applicable", strategy_desc)
+        self.assertIn("cross_contract", strategy_desc)
+        self.assertNotIn("mixed creative x audience", strategy_desc)
+        self.assertNotIn("messaging_angle by demographic_segment", strategy_desc)
         strategy_schema = tools["get_creative_strategy_report"]["inputSchema"]["properties"]
         self.assertEqual(strategy_schema["date_preset"]["default"], "all_time")
         self.assertIn("last_30_days", strategy_schema["date_preset"]["description"])
@@ -910,8 +919,12 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("offer_type", strategy_schema["rows"]["description"])
         self.assertIn("messaging_angle", strategy_schema["columns"]["description"])
         self.assertIn("persona", strategy_schema["columns"]["description"])
-        self.assertIn("mixed audience reads", strategy_schema["rows"]["description"])
-        self.assertIn("mixed creative x audience matrix", strategy_schema["columns"]["description"])
+        self.assertIn("account-level", strategy_schema["rows"]["description"])
+        self.assertIn("not_applicable", strategy_schema["rows"]["description"])
+        self.assertIn("not_applicable", strategy_schema["columns"]["description"])
+        self.assertIn("cross_contract", strategy_schema["columns"]["description"])
+        self.assertNotIn("mixed audience reads", strategy_schema["rows"]["description"])
+        self.assertNotIn("mixed creative x audience matrix", strategy_schema["columns"]["description"])
         self.assertIn("demographic_gender", strategy_schema["columns"]["description"])
         self.assertIn("demographic_segment", strategy_schema["columns"]["description"])
         self.assertNotIn("funnel_stage", strategy_schema["columns"]["description"])
@@ -919,7 +932,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("audience-signals", strategy_schema["report_template"]["description"])
         self.assertIn("hook-performance", strategy_schema["report_template"]["description"])
         self.assertIn("coverage-gaps", strategy_schema["report_template"]["description"])
-        self.assertIn("messaging_angle by demographic_segment", strategy_schema["report_template"]["description"])
+        self.assertIn("not_applicable", strategy_schema["report_template"]["description"])
+        self.assertNotIn(
+            "messaging_angle by demographic_segment",
+            strategy_schema["report_template"]["description"],
+        )
         self.assertIn("metric_preset", strategy_schema)
         self.assertIn("delivery", strategy_schema["metric_preset"]["description"])
         self.assertEqual(strategy_schema["fatigue_minimum_calendar_days"]["default"], 0)
@@ -1196,8 +1213,11 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("higher and lower observed-efficiency bands", demographics_export_desc)
         self.assertNotIn("opportunity", demographics_export_desc.lower())
         self.assertNotIn("waste", demographics_export_desc.lower())
-        self.assertIn("mixed creative x audience strategy queries", demographics_export_desc)
+        self.assertIn("demographic strategy queries", demographics_export_desc)
         self.assertIn("time-series follow-up queries", demographics_export_desc)
+        self.assertIn("account-level only", demographics_export_desc)
+        self.assertIn("not_applicable", demographics_export_desc)
+        self.assertNotIn("mixed creative x audience", demographics_export_desc)
         demographics_schema = tools["get_demographics_performance"]["inputSchema"]["properties"]
         self.assertEqual(demographics_schema["date_preset"]["default"], "all_time")
         self.assertIn("last_30_days", demographics_schema["date_preset"]["description"])
@@ -1251,6 +1271,47 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("end_date", saved_schema)
         self.assertIn("YYYY-MM-DD", saved_schema["start_date"]["description"])
         self.assertIn("YYYY-MM-DD", saved_schema["end_date"]["description"])
+
+    def test_no_catalog_description_advertises_the_impossible_tag_demographic_cross(
+        self,
+    ) -> None:
+        """Demographics (age x gender) are captured at the account level only --
+        creative_demographics has no per-ad key -- so pairing a creative tag axis
+        with a demographic axis is structurally not_applicable on the API (see
+        app.pipeline.creative_strategy._demographic_tag_cross_contract, which the
+        API attaches as matrix["cross_contract"] and surfaces in
+        view_insufficient_detail). No catalog description may advertise that
+        pairing as a supported "mixed" or "crossed" read that an agent should call
+        -- every surface below must instead state the real contract.
+        """
+        tools = _declared_tools()
+        strategy_desc = tools["get_creative_strategy_report"]["description"]
+        strategy_schema = tools["get_creative_strategy_report"]["inputSchema"]["properties"]
+        demographics_export_desc = tools["export_demographics_context"]["description"]
+
+        oversell_phrases = (
+            "mixed creative x audience",
+            "messaging_angle by demographic_segment",
+            "mixed audience reads",
+        )
+        surfaces = (
+            strategy_desc,
+            strategy_schema["rows"]["description"],
+            strategy_schema["columns"]["description"],
+            strategy_schema["report_template"]["description"],
+            demographics_export_desc,
+        )
+        for surface in surfaces:
+            for phrase in oversell_phrases:
+                self.assertNotIn(phrase, surface)
+
+        self.assertIn("not_applicable", strategy_desc)
+        self.assertIn("cross_contract", strategy_desc)
+        self.assertIn("not_applicable", strategy_schema["rows"]["description"])
+        self.assertIn("not_applicable", strategy_schema["columns"]["description"])
+        self.assertIn("cross_contract", strategy_schema["columns"]["description"])
+        self.assertIn("not_applicable", strategy_schema["report_template"]["description"])
+        self.assertIn("not_applicable", demographics_export_desc)
 
     def test_strategy_tool_forwards_demographic_and_date_controls(self) -> None:
         source = SERVER.read_text()

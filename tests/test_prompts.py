@@ -197,6 +197,7 @@ EXPECTED_TOOLS_USED = {
         "get_taxonomy_performance",
         "get_performance_timeseries",
         "get_creative_strategy_report",
+        "get_demographics_performance",
     },
     "batch_readout": {
         "get_batch_readout",
@@ -217,7 +218,7 @@ EXPECTED_TOOLS_USED = {
     "audience_read": {
         "get_demographics_performance",
         "export_demographics_context",
-        "get_creative_strategy_report",
+        "get_taxonomy_performance",
     },
     "client_review_pack": {
         "get_meta_status",
@@ -362,10 +363,46 @@ def test_scale_kill_hold_uses_correct_target_param_name_per_metric():
 def test_hook_report_uses_hook_not_hook_type_for_strategy_report_dimension():
     text = run(server.get_prompt("hook_report", {"brand_name": "Acme"})).messages[0].content.text
 
-    assert 'rows="hook"' in text
+    # get_creative_strategy_report's hook cut is requested by its named
+    # "hook-performance" template, never a hand-set rows="hook_type" (that
+    # spelling belongs to get_taxonomy_performance/get_performance_timeseries
+    # only -- get_creative_strategy_report's own dimension is named "hook").
+    assert 'report_template="hook-performance"' in text
     assert 'rows="hook_type"' not in text
     # But get_taxonomy_performance's own dimension IS hook_type.
     assert 'dimension="hook_type"' in text
+
+
+def test_hook_report_and_audience_read_never_cross_a_tag_with_a_demographic_axis():
+    """hook_report step 5 and audience_read steps 3-4 used to instruct
+    get_creative_strategy_report(rows=<tag>, columns="demographic_segment") --
+    a pairing the API refuses (demographics are account-level only, no
+    per-ad key; the API states this via matrix["cross_contract"]:
+    state=not_applicable, see app.pipeline.creative_strategy on the API repo).
+    Both prompts must route to what IS answerable instead -- account-level
+    demographic efficiency bands alongside tag performance, as separate reads
+    that never imply a join -- and must say so in the rendered text.
+    """
+    hook_text = run(
+        server.get_prompt("hook_report", {"brand_name": "Acme"})
+    ).messages[0].content.text
+    audience_text = run(
+        server.get_prompt(
+            "audience_read",
+            {"brand_name": "Acme", "objective_metric": "roas", "goal_direction": "maximize"},
+        )
+    ).messages[0].content.text
+
+    for text in (hook_text, audience_text):
+        assert 'columns="demographic_segment"' not in text
+        assert "not_applicable" in text
+        assert "cross_contract" in text
+        assert "separate" in text.lower()
+
+    assert "get_demographics_performance" in hook_text
+    assert "account-level" in hook_text.lower()
+    assert "get_taxonomy_performance" in audience_text
+    assert "account-level" in audience_text.lower()
 
 
 def test_batch_readout_defaults_end_date_to_today():

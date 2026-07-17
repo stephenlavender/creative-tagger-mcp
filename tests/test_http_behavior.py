@@ -121,6 +121,21 @@ def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts
         "minimum": 1,
         "maximum": 12,
     }
+    # Demographics are account-level only (no per-ad key) -- pairing a
+    # creative tag axis with a demographic axis is structurally
+    # not_applicable on the API (matrix["cross_contract"]). The RUNTIME
+    # (post-compaction) catalog a real client actually sees must never
+    # advertise that pairing, in either get_creative_strategy_report's kept
+    # rows/columns schema descriptions or export_demographics_context's
+    # compacted top-level description.
+    assert "mixed creative x audience" not in payload.lower()
+    assert "messaging_angle by demographic_segment" not in payload
+    columns_description = strategy.inputSchema["properties"]["columns"]["description"]
+    assert "not_applicable" in columns_description
+    assert "cross_contract" in columns_description
+    demographics_export = by_name["export_demographics_context"]
+    assert "not_applicable" in demographics_export.description
+    assert "cross_contract" in demographics_export.description
 
 
 # ---------------------------------------------------------------------------
