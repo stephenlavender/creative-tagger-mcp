@@ -304,10 +304,13 @@ audience-mode reads, switch the axes to demographic dimensions such as
 `persona-read`. Creative axes follow taxonomy v2: `visual_format` (execution
 style), `asset_type` (production class), and `media_type` (auto-detected
 format) are three separate dimensions, with `ad_type` kept as a deprecated
-alias for `visual_format`. For mixed creative × audience reads, keep one
-creative axis such as `messaging_angle`, `visual_format`, `hook`, `persona`,
-or `offer_type` and
-set the other axis to `demographic_segment` or `demographic_signal`. Add
+alias for `visual_format`. Demographics are account-level only, with no
+per-ad key: pairing a creative tag axis with a demographic axis is
+structurally `not_applicable` and returns an explicit `cross_contract`
+instead of a populated grid. Audience-mode matrices need BOTH axes to be
+demographic instead — e.g. `demographic_age` by `demographic_gender` (the
+`demographic-read` template), or `demographic_segment` by
+`demographic_signal` (the `audience-signals` template). Add
 `fatigue_minimum_calendar_days` when fatigue should only count after a long
 enough live window, not just after a few close-together synced points. For
 fatigue-aware reads, pass the same embedded watch controls the app/API support:
@@ -370,10 +373,10 @@ the richer report fields, including `agent_context`. Both formats respect
 ```json
 {
   "brand_name": "Acme",
-  "rows": "messaging_angle",
-  "columns": "demographic_segment",
-  "status_focus": "all",
-  "metrics": "spend,roas,ctr,cpa,conversions,revenue",
+  "report_template": "hook-performance",
+  "rows": "hook",
+  "columns": "ad_type",
+  "metrics": "spend,hook_rate,hold_rate,roas,ctr,cpa",
   "fatigue_minimum_calendar_days": 7,
   "date_preset": "last_30_days"
 }
@@ -692,10 +695,13 @@ or `start_date` / `end_date` to isolate a specific audience window.
 ### `export_demographics_context`
 Return an agent-ready audience context payload from the saved demographics read.
 Use this when another agent needs higher and lower observed-efficiency bands,
-raw totals, per-segment mixed creative x audience views, and a prompt-ready
-descriptive summary without the full wrapper. Outcome direction stays withheld
-until an objective metric and direction are predeclared. `limit` is clamped to
-1–100 segments per observed-efficiency band.
+raw totals, per-segment account-wide tag reads and trend views, and a
+prompt-ready descriptive summary without the full wrapper. Demographics are
+account-level only, with no per-ad key — every follow-up query stays a
+separate demographic-only or tag-only read, never a joined tag x demographic
+cross. Outcome direction stays withheld until an objective metric and
+direction are predeclared. `limit` is clamped to 1–100 segments per
+observed-efficiency band.
 ```
 {
   "brand_name": "Acme",
@@ -804,8 +810,9 @@ scan), `country` (default `US`), `run_fresh_scan` (default `false`), `date_prese
 `last_7_days` | `last_30_days` | `last_90_days`, default `last_90_days`).
 
 ### `audience_read`
-Who your spend reaches vs. who converts efficiently, crossed with hooks and angles, reported
-as observational associations with the controlled test that would confirm them. `brand_name`
+Who your spend is reaching vs. who is efficiently converting, broken by age and gender,
+reported alongside (never crossed with) messaging-angle and hook performance, as observed
+associations with the controlled tests that would confirm them. `brand_name`
 (required), `objective_metric` (`roas` | `cpa` | `ctr`, required), `goal_direction`
 (`maximize` | `minimize`, required, must agree with `objective_metric`), `date_preset`
 (`all_time` | `last_7_days` | `last_30_days` | `last_90_days`, default `last_30_days`).
