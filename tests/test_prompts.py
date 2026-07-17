@@ -515,6 +515,163 @@ def test_get_prompt_raises_mcperror_for_unknown_prompt_name():
     assert "Unknown prompt: not_a_real_prompt" in exc_info.value.error.message
 
 
+# "custom" is unsafe on every prompt that exposes date_preset as a plain
+# string with no start_date/end_date argument of its own: some of the tools
+# behind these prompts (get_taxonomy_performance, get_demographics_performance)
+# silently resolve a dateless "custom" to all-time history, while
+# get_creative_strategy_report's own API rejects a dateless "custom" with an
+# HTTP 400 — so it must be rejected at the prompt layer for all five, not
+# just scale_kill_hold.
+CUSTOM_PRESET_REJECTION_CASES = {
+    "scale_kill_hold": {
+        "brand_name": "Acme",
+        "objective_metric": "roas",
+        "target_value": "2.5",
+        "date_preset": "custom",
+    },
+    "what_to_make_next_brief": {"brand_name": "Acme", "date_preset": "custom"},
+    "hook_report": {"brand_name": "Acme", "date_preset": "custom"},
+    "competitive_whitespace": {"brand_name": "Acme", "date_preset": "custom"},
+    "audience_read": {
+        "brand_name": "Acme",
+        "objective_metric": "roas",
+        "goal_direction": "maximize",
+        "date_preset": "custom",
+    },
+}
+
+
+@pytest.mark.parametrize("name", sorted(CUSTOM_PRESET_REJECTION_CASES))
+def test_custom_date_preset_is_rejected_where_no_start_end_args_exist(name):
+    # Builder layer: plain ValueError.
+    builder = server._PROMPT_BUILDERS[name]
+    with pytest.raises(ValueError, match="date_preset must be one of"):
+        builder(CUSTOM_PRESET_REJECTION_CASES[name])
+
+    # Protocol layer: McpError(INVALID_PARAMS), the contract a real client sees.
+    with pytest.raises(McpError) as exc_info:
+        run(server.get_prompt(name, CUSTOM_PRESET_REJECTION_CASES[name]))
+    assert exc_info.value.error.code == INVALID_PARAMS
+    assert "custom" in exc_info.value.error.message
+
+
+@pytest.mark.parametrize("name", sorted(CUSTOM_PRESET_REJECTION_CASES))
+def test_validated_date_presets_never_include_custom(name):
+    # list_prompts()'s own description must not advertise a value get_prompt
+    # then rejects.
+    prompts = {p.name: p for p in run(server.list_prompts())}
+    date_preset_arg = next(
+        a for a in prompts[name].arguments if a.name == "date_preset"
+    )
+    assert "custom" not in date_preset_arg.description
+
+
+REVERSED_DATE_PAIR_CASES = [
+    (
+        "batch_readout",
+        {
+            "brand_name": "Acme",
+            "batch_start_date": "2026-07-10",
+            "batch_end_date": "2026-07-01",
+        },
+        "batch_start_date must be on or before batch_end_date",
+    ),
+    (
+        "client_review_pack",
+        {
+            "brand_name": "Acme",
+            "period_start": "2026-07-10",
+            "period_end": "2026-07-01",
+        },
+        "period_start must be on or before period_end",
+    ),
+]
+
+
+@pytest.mark.parametrize("name, args, message_fragment", REVERSED_DATE_PAIR_CASES)
+def test_reversed_date_pair_is_rejected(name, args, message_fragment):
+    builder = server._PROMPT_BUILDERS[name]
+    with pytest.raises(ValueError, match=re.escape(message_fragment)):
+        builder(args)
+
+    with pytest.raises(McpError) as exc_info:
+        run(server.get_prompt(name, args))
+    assert exc_info.value.error.code == INVALID_PARAMS
+    assert message_fragment in exc_info.value.error.message
+
+
+def test_equal_start_and_end_dates_are_not_a_reversed_pair():
+    # A same-day batch/period is valid — the ordering check must be strict
+    # (>), not >=.
+    batch_result = run(
+        server.get_prompt(
+            "batch_readout",
+            {
+                "brand_name": "Acme",
+                "batch_start_date": "2026-07-01",
+                "batch_end_date": "2026-07-01",
+            },
+        )
+    )
+    assert "2026-07-01" in batch_result.messages[0].content.text
+
+    review_result = run(
+        server.get_prompt(
+            "client_review_pack",
+            {
+                "brand_name": "Acme",
+                "period_start": "2026-07-01",
+                "period_end": "2026-07-01",
+            },
+        )
+    )
+    assert "2026-07-01" in review_result.messages[0].content.text
+
+
+def test_batch_readout_default_end_date_never_precedes_explicit_start():
+    # batch_end_date defaults to "today"; a batch_start_date in the future
+    # relative to today must still be caught, not silently accepted.
+    future_start = (datetime.now(timezone.utc).date() + timedelta(days=5)).isoformat()
+    with pytest.raises(McpError) as exc_info:
+        run(
+            server.get_prompt(
+                "batch_readout",
+                {"brand_name": "Acme", "batch_start_date": future_start},
+            )
+        )
+    assert exc_info.value.error.code == INVALID_PARAMS
+    assert "batch_start_date must be on or before batch_end_date" in exc_info.value.error.message
+
+
+def test_shared_contract_documents_utc_anchored_windows():
+    text = run(
+        server.get_prompt("weekly_creative_report", {"brand_name": "Acme"})
+    ).messages[0].content.text
+    assert "UTC" in text
+    assert "WINDOWS." in text
+
+
+def test_monday_money_check_mer_wording_uses_not_applicable_not_unavailable():
+    prompts = {p.name: p for p in run(server.list_prompts())}
+    description = prompts["monday_money_check"].description
+    assert "not_applicable" in description
+    assert "unavailable" not in description
+
+
+def test_competitive_whitespace_competitor_arg_does_not_promise_page_id_routing():
+    prompts = {p.name: p for p in run(server.list_prompts())}
+    competitor_arg = next(
+        a for a in prompts["competitive_whitespace"].arguments if a.name == "competitor"
+    )
+    assert "page_id" not in competitor_arg.description
+    # And the template itself never wires anything but page_name.
+    text = run(
+        server.get_prompt("competitive_whitespace", {"brand_name": "Acme", "competitor": "Rival Co"})
+    ).messages[0].content.text
+    assert "page_name=" in text
+    assert "page_id=" not in text
+
+
 def _drive_handle_request(request):
     """Push one request through the real low-level dispatch path
     (server.server._handle_request), the same machinery a live stdio/HTTP

@@ -698,7 +698,12 @@ order and with what arguments, and how to write up the result: a shared measurem
 vocabulary (`measured` / `not_applicable` / `not_reported` — never a guessed number), spend
 floors before calling winners or losers, explicit insufficient-evidence verdicts, and a
 verdict-first, receipts-after output format. Any MCP client with prompt support can run these
-directly; arguments arrive as strings and are validated the same way tool arguments are.
+directly; arguments arrive as strings and are validated the same way tool arguments are —
+invalid enum values, malformed dates, and reversed date ranges (`start` after `end`) all raise a
+protocol-level `INVALID_PARAMS` error instead of rendering a broken recipe. Default date windows
+are UTC-anchored (`datetime.now(timezone.utc)`); `date_preset` never accepts `custom` on a
+prompt that has no `start_date`/`end_date` argument of its own, since an unpaired `custom` window
+is unsafe across these tools (some silently read all-time history, others reject it outright).
 
 ### `weekly_creative_report`
 The Monday artifact: freshness-stamped totals, tag-level winners/losers, top-spender fatigue
@@ -714,18 +719,18 @@ default `roas`), `date_preset` (`last_30d` | `last_90d`, default `last_30d`).
 ### `scale_kill_hold`
 Morning triage: every material creative bucketed into scale/kill/hold/insufficient-evidence
 against a declared target. `brand_name` (required), `objective_metric` (`roas` | `cpa`,
-required), `target_value` (required), `minimum_spend` (default `500`), `date_preset` (default
-`last_30_days`).
+required), `target_value` (required), `minimum_spend` (default `500`), `date_preset`
+(`all_time` | `last_7_days` | `last_30_days` | `last_90_days`, default `last_30_days`).
 
 ### `what_to_make_next_brief`
 Turns performance and coverage gaps into next sprint's production brief. `brand_name`
 (required), `production_slots` (default `5`), `formats_available` (optional), `date_preset`
-(default `last_30_days`).
+(`all_time` | `last_7_days` | `last_30_days` | `last_90_days`, default `last_30_days`).
 
 ### `hook_report`
 Which hooks earn the view AND the purchase, which get skipped, and which are wearing out.
-`brand_name` (required), `date_preset` (default `last_30_days`), `spend_threshold` (default
-`500`).
+`brand_name` (required), `date_preset` (`all_time` | `last_7_days` | `last_30_days` |
+`last_90_days`, default `last_30_days`), `spend_threshold` (default `500`).
 
 ### `batch_readout`
 Grades a creative batch against the account baseline, with an explicit too-early-to-judge
@@ -740,16 +745,16 @@ attributed only — blended MER is reported `not_applicable`). `brand_name` (req
 
 ### `competitive_whitespace`
 Diffs a competitor's live ad strategy against your own library on the same taxonomy.
-`brand_name` (required), `competitor` (optional page name/page_id — omit to reuse the latest
-saved scan), `country` (default `US`), `run_fresh_scan` (default `false`), `date_preset`
-(default `last_90_days`).
+`brand_name` (required), `competitor` (optional page name — omit to reuse the latest saved
+scan), `country` (default `US`), `run_fresh_scan` (default `false`), `date_preset` (`all_time` |
+`last_7_days` | `last_30_days` | `last_90_days`, default `last_90_days`).
 
 ### `audience_read`
 Who your spend reaches vs. who converts efficiently, crossed with hooks and angles, reported
 as observational associations with the controlled test that would confirm them. `brand_name`
 (required), `objective_metric` (`roas` | `cpa` | `ctr`, required), `goal_direction`
 (`maximize` | `minimize`, required, must agree with `objective_metric`), `date_preset`
-(default `last_30_days`).
+(`all_time` | `last_7_days` | `last_30_days` | `last_90_days`, default `last_30_days`).
 
 ### `client_review_pack`
 The monthly business-review skeleton: totals, winner pattern, testing slide, audience read,

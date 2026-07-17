@@ -4804,6 +4804,10 @@ FRESHNESS. When a tool response includes a freshness envelope (last_synced_at, d
 stale) or its own top-level last_synced_at/stale fields, open with it if stale is true — a stale
 sync can invalidate every verdict built on the same call, so say so before anything else.
 
+WINDOWS. Every "today" and default date window in these tool calls is anchored to UTC
+(datetime.now(timezone.utc)), not the operator's local timezone — near a UTC day boundary,
+"today" here can be a different calendar day than the operator's.
+
 OUTPUT FORMAT. Verdict first, receipts after. The first three lines must give a busy operator
 the answer with no scrolling: the state, the direction/magnitude, and the one thing to do next.
 Then back it with the specific numbers, each labeled measured/not_applicable/not_reported, and
@@ -4895,6 +4899,16 @@ def _prompt_required_date(args: dict[str, str], name: str) -> str:
     return raw
 
 
+def _prompt_require_date_order(
+    start_date: str, end_date: str, *, start_name: str, end_name: str
+) -> None:
+    """Reject a reversed date pair. YYYY-MM-DD strings sort lexically the same
+    as chronologically, so a plain string compare is exact. Mirrors the API's
+    own resolve_reporting_date_window message wording."""
+    if start_date and end_date and start_date > end_date:
+        raise ValueError(f"{start_name} must be on or before {end_name}")
+
+
 def _fmt_num(value: float | int | None) -> str:
     if value is None:
         return ""
@@ -4962,6 +4976,19 @@ def _as_summary_preset(preset: str) -> str:
     """Inverse of _as_timeseries_preset, for prompts whose own date_preset
     argument is expressed in get_performance_timeseries's vocabulary."""
     return _SUMMARY_PRESET_BY_TIMESERIES_PRESET.get(preset, preset)
+
+
+# Deliberately excludes "custom": every prompt below that validates against
+# this set exposes date_preset as a plain string with no accompanying
+# start_date/end_date arguments. "custom" with no dates is not just
+# undocumented here, it is unsafe across these tools' own APIs: some (e.g.
+# get_taxonomy_performance, get_demographics_performance) silently resolve a
+# dateless "custom" to all-time history, while get_creative_strategy_report's
+# own API rejects a dateless "custom" with an HTTP 400 — so the same prompt
+# argument would either lie about its window or hard-fail depending which
+# tool call hit it. Prompts that need an explicit window take real
+# start_date/end_date arguments instead (batch_readout, client_review_pack).
+_SUMMARY_DATE_PRESETS = ("all_time", "last_7_days", "last_30_days", "last_90_days")
 
 
 def _prompt_result(description: str, text: str) -> GetPromptResult:
@@ -5099,7 +5126,6 @@ say so explicitly in your first three lines if any exist.
 # ---------- scale_kill_hold ----------
 
 _SCALE_KILL_HOLD_OBJECTIVE_METRICS = ("roas", "cpa")
-_SCALE_KILL_HOLD_DATE_PRESETS = ("all_time", "last_7_days", "last_30_days", "last_90_days", "custom")
 
 
 def _prompt_scale_kill_hold(args: dict[str, str]) -> GetPromptResult:
@@ -5112,7 +5138,7 @@ def _prompt_scale_kill_hold(args: dict[str, str]) -> GetPromptResult:
     target_value = _prompt_required_float(args, "target_value")
     minimum_spend = _prompt_float(args, "minimum_spend", default=500.0)
     date_preset = _prompt_enum(
-        args, "date_preset", _SCALE_KILL_HOLD_DATE_PRESETS, default="last_30_days"
+        args, "date_preset", _SUMMARY_DATE_PRESETS, default="last_30_days"
     )
     timeseries_preset = _as_timeseries_preset(date_preset)
     better_direction = "higher is better" if objective_metric == "roas" else "lower is better"
@@ -5170,7 +5196,9 @@ def _prompt_what_to_make_next_brief(args: dict[str, str]) -> GetPromptResult:
         args, "production_slots", default=5, minimum=1, maximum=50
     )
     formats_available = _prompt_str(args, "formats_available")
-    date_preset = _prompt_str(args, "date_preset") or "last_30_days"
+    date_preset = _prompt_enum(
+        args, "date_preset", _SUMMARY_DATE_PRESETS, default="last_30_days"
+    )
     formats_clause = (
         f" Available formats this sprint: {formats_available}."
         if formats_available
@@ -5223,7 +5251,9 @@ with it — that risk should shape which slots go to diversification vs doubling
 
 def _prompt_hook_report(args: dict[str, str]) -> GetPromptResult:
     brand_name = _prompt_required_str(args, "brand_name")
-    date_preset = _prompt_str(args, "date_preset") or "last_30_days"
+    date_preset = _prompt_enum(
+        args, "date_preset", _SUMMARY_DATE_PRESETS, default="last_30_days"
+    )
     spend_threshold = _prompt_float(args, "spend_threshold", default=500.0)
     timeseries_preset = _as_timeseries_preset(date_preset)
     approx_start, approx_end = _approx_window_for_preset(date_preset)
@@ -5276,6 +5306,12 @@ def _prompt_batch_readout(args: dict[str, str]) -> GetPromptResult:
     batch_start_date = _prompt_required_date(args, "batch_start_date")
     today = datetime.now(timezone.utc).date().isoformat()
     batch_end_date = _prompt_date(args, "batch_end_date", default=today)
+    _prompt_require_date_order(
+        batch_start_date,
+        batch_end_date,
+        start_name="batch_start_date",
+        end_name="batch_end_date",
+    )
     baseline_preset = _prompt_str(args, "baseline_preset") or "last_90_days"
 
     text = f"""\
@@ -5380,7 +5416,7 @@ nothing does. Everything else is receipts.
     return _prompt_result(
         "Bottom line for the week: above or below your breakeven, better or worse than last "
         "week, and whether anything needs your attention — one verdict, evidence attached, no "
-        "dashboard to interpret. (Meta-attributed only; blended MER noted as unavailable.)",
+        "dashboard to interpret. (Meta-attributed only; blended MER reported as not_applicable.)",
         text,
     )
 
@@ -5393,7 +5429,9 @@ def _prompt_competitive_whitespace(args: dict[str, str]) -> GetPromptResult:
     competitor = _prompt_str(args, "competitor")
     country = _prompt_str(args, "country") or "US"
     run_fresh_scan = _prompt_bool(args, "run_fresh_scan", default=False)
-    date_preset = _prompt_str(args, "date_preset") or "last_90_days"
+    date_preset = _prompt_enum(
+        args, "date_preset", _SUMMARY_DATE_PRESETS, default="last_90_days"
+    )
     competitor_clause = f' for "{competitor}"' if competitor else " (no specific competitor named — use the most recent saved scan)"
     scan_call = (
         f'`scan_competitor(brand_name="{brand_name}", page_name="{competitor}", country="{country}")`'
@@ -5463,7 +5501,9 @@ def _prompt_audience_read(args: dict[str, str]) -> GetPromptResult:
             f"goal_direction must be {expected_direction!r} for objective_metric={objective_metric!r}, "
             f"got {goal_direction!r}"
         )
-    date_preset = _prompt_str(args, "date_preset") or "last_30_days"
+    date_preset = _prompt_enum(
+        args, "date_preset", _SUMMARY_DATE_PRESETS, default="last_30_days"
+    )
     custom_ranking_note = (
         ""
         if objective_metric == "roas"
@@ -5519,6 +5559,9 @@ def _prompt_client_review_pack(args: dict[str, str]) -> GetPromptResult:
     brand_name = _prompt_required_str(args, "brand_name")
     period_start = _prompt_required_date(args, "period_start")
     period_end = _prompt_required_date(args, "period_end")
+    _prompt_require_date_order(
+        period_start, period_end, start_name="period_start", end_name="period_end"
+    )
     client_cpa_target = _prompt_float(args, "client_cpa_target")
     include_competitors = _prompt_bool(args, "include_competitors", default=True)
     target_clause = (
@@ -5679,7 +5722,7 @@ _PROMPTS: list[Prompt] = [
             PromptArgument(
                 name="date_preset",
                 description=(
-                    "all_time, last_7_days, last_30_days, last_90_days, or custom "
+                    "all_time, last_7_days, last_30_days, or last_90_days "
                     "(default last_30_days)"
                 ),
                 required=False,
@@ -5712,7 +5755,10 @@ _PROMPTS: list[Prompt] = [
             ),
             PromptArgument(
                 name="date_preset",
-                description="Date window preset (default last_30_days)",
+                description=(
+                    "all_time, last_7_days, last_30_days, or last_90_days "
+                    "(default last_30_days)"
+                ),
                 required=False,
             ),
         ],
@@ -5733,7 +5779,10 @@ _PROMPTS: list[Prompt] = [
             ),
             PromptArgument(
                 name="date_preset",
-                description="Date window preset (default last_30_days)",
+                description=(
+                    "all_time, last_7_days, last_30_days, or last_90_days "
+                    "(default last_30_days)"
+                ),
                 required=False,
             ),
             PromptArgument(
@@ -5781,7 +5830,7 @@ _PROMPTS: list[Prompt] = [
             "Bottom line for the week: above or below your breakeven, better or worse "
             "than last week, and whether anything needs your attention — one verdict, "
             "evidence attached, no dashboard to interpret. (Meta-attributed only; "
-            "blended MER noted as unavailable.)"
+            "blended MER reported as not_applicable.)"
         ),
         arguments=[
             PromptArgument(
@@ -5822,7 +5871,7 @@ _PROMPTS: list[Prompt] = [
             ),
             PromptArgument(
                 name="competitor",
-                description="Competitor page name or page_id (optional — omit to reuse the latest saved scan)",
+                description="Competitor page name (optional — omit to reuse the latest saved scan)",
                 required=False,
             ),
             PromptArgument(
@@ -5837,7 +5886,10 @@ _PROMPTS: list[Prompt] = [
             ),
             PromptArgument(
                 name="date_preset",
-                description="Window for our own coverage-gaps read (default last_90_days)",
+                description=(
+                    "Window for our own coverage-gaps read: all_time, last_7_days, "
+                    "last_30_days, or last_90_days (default last_90_days)"
+                ),
                 required=False,
             ),
         ],
@@ -5868,7 +5920,10 @@ _PROMPTS: list[Prompt] = [
             ),
             PromptArgument(
                 name="date_preset",
-                description="Date window preset (default last_30_days)",
+                description=(
+                    "all_time, last_7_days, last_30_days, or last_90_days "
+                    "(default last_30_days)"
+                ),
                 required=False,
             ),
         ],
