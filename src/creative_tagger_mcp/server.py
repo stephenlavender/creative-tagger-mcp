@@ -4525,24 +4525,28 @@ def _build_demographic_focus_views(
 ):
     capped_limit = max(1, min(int(limit or 2), 4))
     focus_views = []
+    # Demographics are account-level only (no per-ad key), so a creative tag
+    # can never be filtered to one segment -- get_creative_strategy_report
+    # returns cross_contract: not_applicable for that pairing, never a
+    # populated grid. These account-wide, single-axis tag reads on
+    # get_taxonomy_performance are the real, answerable follow-up: reported
+    # next to this segment's band, never joined to it.
     view_specs = [
         {
-            "label_prefix": "Angles for",
-            "report_template": "angle-audience-fit",
-            "rows": "messaging_angle",
-            "columns": "demographic_segment",
-            "fill_metric": "roas",
-            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
-            "why": "Open the audience-segment column first, then compare historical messaging-angle associations inside that pocket.",
+            "label": "Messaging angles (account-wide)",
+            "dimension": "messaging_angle",
+            "why": (
+                "Messaging-angle performance across the whole account, "
+                "reported alongside (never crossed with) this segment's band."
+            ),
         },
         {
-            "label_prefix": "Hooks for",
-            "report_template": "hook-audience-fit",
-            "rows": "hook",
-            "columns": "demographic_segment",
-            "fill_metric": "hook_rate",
-            "metrics": ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"],
-            "why": "Open the same audience-segment column to see whether the opening pattern, not the whole concept, needs to change.",
+            "label": "Hook types (account-wide)",
+            "dimension": "hook_type",
+            "why": (
+                "Hook-type performance across the whole account, reported "
+                "alongside (never crossed with) this segment's band."
+            ),
         },
     ]
     for segment in list(segments or [])[:capped_limit]:
@@ -4553,21 +4557,16 @@ def _build_demographic_focus_views(
             "strategy_views": [],
         }
         for spec in view_specs:
-            query = _build_demographics_strategy_query(
+            query = _build_taxonomy_performance_query(
                 brand_name=brand_name,
-                report_template=spec["report_template"],
-                rows=spec["rows"],
-                columns=spec["columns"],
-                fill_metric=spec["fill_metric"],
-                metrics=spec["metrics"],
+                dimension=spec["dimension"],
                 date_preset=date_preset,
                 start_date=start_date,
                 end_date=end_date,
             )
-            query["focus_segment"] = compact["segment"]
             item["strategy_views"].append(
                 {
-                    "label": f"{spec['label_prefix']} {compact['segment']}",
+                    "label": spec["label"],
                     "focus_segment": compact["segment"],
                     "observed_efficiency_band": compact[
                         "observed_efficiency_band"
@@ -4737,6 +4736,35 @@ def _build_demographics_strategy_query(
     return query
 
 
+def _build_taxonomy_performance_query(
+    *,
+    brand_name: str,
+    dimension: str,
+    date_preset: str,
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    """Build a get_taxonomy_performance query for a creative tag dimension.
+
+    Demographics are account-level only (no per-ad key), so a creative tag
+    can never be crossed with a demographic axis on get_creative_strategy_report
+    -- that pairing is structurally not_applicable. This is the real,
+    answerable alternative: an account-wide, single-axis tag read reported as
+    a separate view next to demographic context, never a joined matrix.
+    """
+    query = {
+        "tool": "get_taxonomy_performance",
+        "brand_name": brand_name,
+        "dimension": dimension,
+        "date_preset": date_preset or "all_time",
+    }
+    if start_date:
+        query["start_date"] = start_date
+    if end_date:
+        query["end_date"] = end_date
+    return query
+
+
 def _build_demographics_strategy_views(
     *,
     brand_name: str = "",
@@ -4761,25 +4789,7 @@ def _build_demographics_strategy_views(
             "columns": "demographic_signal",
             "fill_metric": "roas",
             "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
-            "why": "Compare higher and lower observed-return-per-spend bands before mixing in creative angles or hooks.",
-        },
-        {
-            "label": "Angle x audience",
-            "report_template": "angle-audience-fit",
-            "rows": "messaging_angle",
-            "columns": "demographic_segment",
-            "fill_metric": "roas",
-            "metrics": ["spend", "roas", "ctr", "cpa", "conversions", "revenue"],
-            "why": "Compare historical messaging-angle associations inside each audience pocket before briefing the next test.",
-        },
-        {
-            "label": "Hook x audience",
-            "report_template": "hook-audience-fit",
-            "rows": "hook",
-            "columns": "demographic_segment",
-            "fill_metric": "hook_rate",
-            "metrics": ["spend", "hook_rate", "hold_rate", "roas", "ctr", "cpa"],
-            "why": "Check whether the opening pattern changes by audience segment before rewriting the whole ad.",
+            "why": "Compare higher and lower observed-return-per-spend bands across the two demographic axes.",
         },
     ]
     for view in views:
@@ -4794,7 +4804,41 @@ def _build_demographics_strategy_views(
             start_date=start_date,
             end_date=end_date,
         )
-    return views
+
+    # Demographics are account-level only (no per-ad key), so a creative tag
+    # can never be crossed with a demographic axis here -- get_creative_strategy_report
+    # returns cross_contract: not_applicable for that pairing, never a populated
+    # grid. These are the real, answerable follow-ups: account-wide, single-axis
+    # tag reads on get_taxonomy_performance, reported as separate views next to
+    # the demographic matrices above, never a joined creative x audience cross.
+    taxonomy_views = [
+        {
+            "label": "Messaging angle performance (account-wide)",
+            "dimension": "messaging_angle",
+            "why": (
+                "Messaging-angle performance across the whole account, reported "
+                "alongside (never crossed with) the audience matrices above."
+            ),
+        },
+        {
+            "label": "Hook performance (account-wide)",
+            "dimension": "hook_type",
+            "why": (
+                "Hook-type performance across the whole account, reported "
+                "alongside (never crossed with) the audience matrices above."
+            ),
+        },
+    ]
+    for view in taxonomy_views:
+        view["strategy_query"] = _build_taxonomy_performance_query(
+            brand_name=brand_name,
+            dimension=view["dimension"],
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    return views + taxonomy_views
 
 
 def _brain_learning_status_action(status: str) -> tuple[str, str]:
@@ -4823,6 +4867,14 @@ def _brain_learning_strategy_query(
     columns = "messaging_angle"
     fill_metric = "roas"
     metrics = ["spend", "roas", "ctr", "cpa", "conversions", "revenue"]
+    # Set only for a learning whose subject is demographic. Demographics are
+    # account-level only (no per-ad key), so they can never be crossed with a
+    # creative tag on get_creative_strategy_report -- that pairing returns
+    # cross_contract: not_applicable, never a populated grid. When set, this
+    # routes the query to get_taxonomy_performance instead: a real,
+    # answerable, account-wide tag read reported as a separate view, never
+    # joined to the demographic learning.
+    taxonomy_dimension = ""
 
     if kind == "conclusion":
         if current_status == "winner":
@@ -4851,9 +4903,7 @@ def _brain_learning_strategy_query(
             "demographic_segment",
             "demographic_signal",
         }:
-            report_template = "angle-audience-fit"
-            rows = "messaging_angle"
-            columns = "demographic_segment"
+            taxonomy_dimension = "messaging_angle"
         elif dimension == "hook":
             rows = "hook"
             columns = "ad_type"
@@ -4863,26 +4913,33 @@ def _brain_learning_strategy_query(
             rows = dimension
             columns = "ad_type" if dimension != "ad_type" else "messaging_angle"
     elif kind == "audience":
-        report_template = "angle-audience-fit"
-        rows = "messaging_angle"
-        columns = "demographic_segment"
+        taxonomy_dimension = "messaging_angle"
     elif kind == "gap":
         report_template = "coverage-gaps"
         if dimension in {"hook", "persona", "offer_type", "messaging_angle", "ad_type"}:
             rows = dimension
             columns = "ad_type" if dimension != "ad_type" else "messaging_angle"
 
-    query = _build_demographics_strategy_query(
-        brand_name=brand_name,
-        report_template=report_template,
-        rows=rows,
-        columns=columns,
-        fill_metric=fill_metric,
-        metrics=metrics,
-        date_preset=date_preset,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    if taxonomy_dimension:
+        query = _build_taxonomy_performance_query(
+            brand_name=brand_name,
+            dimension=taxonomy_dimension,
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    else:
+        query = _build_demographics_strategy_query(
+            brand_name=brand_name,
+            report_template=report_template,
+            rows=rows,
+            columns=columns,
+            fill_metric=fill_metric,
+            metrics=metrics,
+            date_preset=date_preset,
+            start_date=start_date,
+            end_date=end_date,
+        )
     query["focus_value"] = evidence.get("value") or ""
     if current_status:
         query["focus_status"] = current_status
@@ -4963,7 +5020,12 @@ def _build_brain_learning_decision_queue(
         elif kind == "watch":
             action, why = "investigate", "Open the fatigue view and test one refresh variable."
         elif kind == "audience":
-            action, why = "validate_segment", "Open the mixed matrix before testing a segment-specific variant."
+            action, why = (
+                "validate_segment",
+                "Open the account-wide messaging-angle read (reported "
+                "separately, never crossed with this segment) before "
+                "testing a segment-specific variant.",
+            )
         elif kind == "gap":
             action, why = "test", "Brief the missing pattern instead of repeating a covered cell."
         else:
@@ -5234,9 +5296,10 @@ async def _export_demographics_context(args: dict) -> list[TextContent]:
         "summary_text": summary_text,
         "prompt": (
             "Treat these audience bands as descriptive historical associations, "
-            "not causal effects or outcome verdicts. Open the per-segment mixed "
-            "creative and trend views, then predeclare the objective metric and "
-            "direction before interpreting raw movement."
+            "not causal effects or outcome verdicts. Open the per-segment "
+            "account-wide tag reads and trend views -- reported alongside "
+            "each segment, never crossed with it -- then predeclare the "
+            "objective metric and direction before interpreting raw movement."
         ),
     }
     return _text(export)
@@ -5957,8 +6020,9 @@ Call these tools in order:
    is thumbstop for each hook type decaying over time (the hook itself wearing out across the
    account), independent of any one creative? Note the translated {timeseries_preset} value.
 4. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", report_template="hook-performance", minimum_spend={_fmt_num(spend_threshold)})` —
-   the named hook x messaging_angle matrix with hook/hold/thumbstop/CPA metrics, so a hook's
-   read can be qualified by which angle it was paired with.
+   the named hook x format matrix (columns=ad_type, the deprecated alias for visual_format)
+   with hook/hold/thumbstop/CPA metrics, so a hook's read can be qualified by which format
+   it was paired with.
 5. `get_demographics_performance(brand_name="{brand_name}", date_preset="{date_preset}")` —
    account-level age x gender efficiency bands for the SAME window, as a SEPARATE read next
    to the hook numbers above. Demographics are account-level only (creative_demographics has
