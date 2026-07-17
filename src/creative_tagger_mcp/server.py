@@ -63,6 +63,9 @@ TIMESERIES_SERIES_LIMIT = 10
 CUSTOM_REPORT_LIMIT = 50
 COMPETITOR_RESULT_LIMIT = 50
 DEMOGRAPHICS_EXPORT_LIMIT = 100
+CREATIVE_LEADERBOARD_LIMIT = 50
+CREATIVE_BATCH_LIMIT = 50
+PERIOD_COMPARE_LIMIT = 25
 
 _AUDIENCE_SIGNAL_FOCUS_ALIASES = {
     "all": "all",
@@ -87,6 +90,26 @@ controlled test: state the hypothesis, change one variable, choose a primary
 metric and guardrails, define a minimum data/duration rule, and set ship/stop
 criteria before launch. Preserve read-only behavior and say when evidence is
 sparse, confounded, stale, or missing.
+
+Conventions shared across scoped tools (stated once here instead of on every
+tool): every scoped tool takes brand_name (pass the exact list_workspaces
+value). Date windows accept the presets all_time, last_7_days, last_30_days,
+last_90_days, and custom, with start_date/end_date as YYYY-MM-DD;
+get_performance_timeseries uses the short forms last_7d/last_30d/last_90d and
+maximum instead. Reporting tools that rank or judge creatives withhold the
+comparative layer (rankings_withheld / outcome_verdicts_withheld) when the
+workspace's performance evidence is not decision-safe -- stale sync, no Meta
+connection -- while still returning the raw measured facts; a row spending below
+the materiality floor is flagged below_min_spend and left unranked rather than
+crowned on thin spend.
+
+Fatigue-watch filters shared by get_performance_timeseries (signal_focus /
+trajectory_focus / coverage_focus) and the watch_* variants on
+get_brain_learnings and get_creative_strategy_report take fixed vocabularies:
+the fatigue signal is all, fatigued, stable, or insufficient_data; the
+trajectory is all, worsening, improving, flat, or insufficient_data; the
+sync-coverage trust class is all, call_ready, gappy, insufficient_points,
+short_window, or windowed_history.
 """
 
 server = Server(
@@ -499,7 +522,89 @@ def _visible_tools(tools: list[Tool]) -> list[Tool]:
     return [tool for tool in tools if tool.name not in INTERNAL_BACKFILL_TOOLS]
 
 
+# Runtime tool descriptions, compacted from the richer source descriptions above
+# to keep the public catalog under its context budget. The source strings stay
+# verbose for humans and for the source-parsing surface tests; every workspace/
+# date/read-only convention repeated across tools lives once in
+# PLAYBOOK_INSTRUCTIONS, so a compact line only carries what is unique to the
+# tool plus its own honesty caveat.
 _COMPACT_TOOL_DESCRIPTIONS = {
+    "analyze_creative": (
+        "Analyze any ad creative (image, video, carousel, landing page, or email) "
+        "into structured classification across 21 taxonomy dimensions "
+        "(media/asset/visual type, hook, angle, audience, CTA, emotion, audio, "
+        "offer, aspect ratio, duration, and more) plus standardized naming. Provide "
+        "one of file_path, url, or html_content."
+    ),
+    "get_taxonomy": (
+        "Get Creative Tagger taxonomy v2's controlled classification vocabulary and "
+        "allowed values (the API does not expose enums for every field): 15 "
+        "controlled dimensions, one derived/open aspect-ratio dimension, and two "
+        "dynamic brand dimensions. Call before analyze_creative; media_type, "
+        "asset_type, and visual_format are three separate axes."
+    ),
+    "list_library": (
+        "Browse the workspace's saved analysis library -- every analyze_creative "
+        "result is stored. Search by filename, hook, angle, emotion, CTA, talent, "
+        "offer, audio, season, or format, then sort by recency or joined Meta "
+        "performance (spend, reach, roas, ctr, cpm, cpa)."
+    ),
+    "get_library_patterns": (
+        "Portfolio pattern insights across the workspace's whole library: which "
+        "hooks, angles, creative types, and emotions it over- or under-indexes on, "
+        "with percentages and diversification notes. Use before recommending what to "
+        "make next."
+    ),
+    "get_analysis": (
+        "Get the full 21-dimension analysis for one saved library item by id "
+        "(list_library returns summaries; this returns the complete result)."
+    ),
+    "recommend": (
+        "Ask the Creative Strategist an open-ended question, grounded in the "
+        "workspace's library patterns and saved brand context. Returns concrete "
+        "creative recommendations in taxonomy values (what to test next, how to "
+        "approach Q4, what UGC fits an audience)."
+    ),
+    "analyze_gaps": (
+        "Identify coverage gaps in a brand's creative library and propose concrete "
+        "next creatives that fill them. Surfaces concentration risk (e.g. 78% UGC "
+        "TalkHead) and returns gap analysis plus ready-to-produce briefs."
+    ),
+    "set_brand_context": (
+        "Create or partially update a brand's long-term context (voice, audience, "
+        "top performers, anti-patterns, notes) that strategist and brief tools "
+        "auto-include. Omitted fields keep saved values; an explicit empty string or "
+        "list clears one. Upserts on (user, brand_name)."
+    ),
+    "get_brand_taxonomy": (
+        "Retrieve a brand's custom taxonomy: custom values, aliases, and entities "
+        "(founder, creators, products, offers, customer segments, ICPs, campaign "
+        "labels) layered on top of the standard taxonomy."
+    ),
+    "sync_meta_performance": (
+        "Trigger a read-only Meta ads performance sync for a brand, reporting "
+        "summaries by standard and brand-custom taxonomy. Supports explicit "
+        "attribution/lookback windows to match Ads Manager. Never creates campaigns "
+        "or edits budgets."
+    ),
+    "get_meta_performance_summary": (
+        "Read saved Meta performance memory for a brand without triggering a sync: "
+        "account totals plus winners/losers by standard and brand-custom taxonomy, "
+        "with explainable funnel_score signals (capture, hold, bring-to-site, "
+        "convert)."
+    ),
+    "get_taxonomy_performance": (
+        "Tag-level performance with significance gating and coverage gaps: which "
+        "taxonomy values are associated with stronger historical outcomes, which are "
+        "under-observed, and which standard values were never tried. Rows carry "
+        "ROAS/CTR/thumbstop/funnel_score when performance memory exists."
+    ),
+    "get_prebuilt_reports": (
+        "Motion-style prebuilt reports for a brand: best hooks, landing pages, "
+        "angles, audiences, offers, CTAs, visual formats, and brand-custom values, "
+        "with ROAS/spend/CTR/thumbstop/funnel_score when memory exists. Optional "
+        "start_date/end_date scope the window."
+    ),
     "get_creative_strategy_report": (
         "Read one workspace's observational Strategy matrix and decision queue. "
         "Defaults to a bounded concise response; use detailed only for an explicit "
@@ -528,9 +633,120 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "Export the bounded agent_context from get_performance_timeseries with its "
         "decision queue and data-quality warnings."
     ),
+    "create_custom_report": (
+        "Build a custom performance report from chosen standard/brand taxonomy "
+        "dimensions, ranking the actual matched combinations by roas, funnel_score, "
+        "spend, ctr, or cpa (e.g. hook x landing_page x offer_type). Rows include "
+        "parts/values so the winning combination can be explained."
+    ),
+    "save_custom_report": (
+        "Save or update a reusable custom report definition for a brand: the "
+        "taxonomy-combination view plus optional dashboard preset state (view_type, "
+        "date_range, grouping, metric set, filters, sort, metric preset) and a "
+        "persisted report window."
+    ),
+    "get_creative_leaderboard": (
+        "Per-creative ranked leaderboard: which creatives to scale or kill. One row "
+        "per creative for the window (default last 14 days), ranked by rank_by "
+        "(roas/cpa/spend/ctr/thumbstop) with thumbnail, spend_share, measurement "
+        "states, days_running, and a first/second-half trend. A creative below "
+        "min_spend (default $500) is flagged below_min_spend, left unranked, and "
+        "never crowned on thin spend -- but still returned and counted. "
+        "direction=winners/losers slices the ranked half. rankings_withheld=true "
+        "(observation-only, no ranks) when evidence is not decision-safe. "
+        "launched_after/before scope the ranked population; use get_batch_readout for "
+        "a same-period verdict against the rest of the account."
+    ),
+    "get_batch_readout": (
+        "Launch-cohort batch readout: per-creative verdicts vs the rest of the "
+        "account. Given a launch window (launched_after/launched_before, YYYY-MM-DD "
+        "-- at least one required), returns every creative first synced in it with a "
+        "three-way verdict against the same-window baseline of every OTHER creative: "
+        "promising, underperforming, or insufficient_evidence (with a verdict_reason "
+        "-- most often below_min_spend, expected for ~half of batches; or "
+        "metric_not_applicable, e.g. roas on a leads creative, which also excludes it "
+        "from the baseline). The baseline excludes the batch, so a new cohort is "
+        "judged like-for-like. rank_by is roas/cpa/ctr/thumbstop. Verdicts are "
+        "withheld when evidence is not decision-safe."
+    ),
+    "compare_periods": (
+        "Period-over-period comparison: is it the ads, the auction, or the site? "
+        "Compares period_a (baseline) to period_b (after); each period is a preset OR "
+        "an explicit start/end (never both, non-overlapping). Returns account deltas "
+        "with measurement states honored, plus a multiplicative funnel decomposition "
+        "whose dominant_factor NAMES why roas/cpa moved: auction (cpm), "
+        "creative_engagement (ctr), landing_conversion (cvr), order_value (aov), or "
+        "mixed. When revenue reported a measured $0 it falls back to cpa and returns "
+        "revenue_caution -- trust it when present: the revenue collapse, not the "
+        "delivery reading, is then the likely explanation. Optional group_by adds "
+        "per-value deltas and biggest_movers; verdicts withheld when evidence is not "
+        "decision-safe."
+    ),
+    "predict_creative": (
+        "Observational pre-flight against the brand's tag-level history; not a "
+        "forecast or causal estimate. Pass analysis_id or attributes; returns "
+        "evidence and controlled-test hypotheses. Predeclare objective_metric for "
+        "mixed, blank, or unknown objectives."
+    ),
+    "get_demographics_performance": (
+        "Read saved age x gender delivery with account-relative higher/lower "
+        "observed-return-per-spend bands. These are descriptive associations, not "
+        "audience outcome or action verdicts. Use date_preset or start_date/end_date "
+        "to scope the window."
+    ),
+    "export_demographics_context": (
+        "Agent-ready audience context from saved age x gender memory: higher/lower "
+        "observed-efficiency bands, account totals, a descriptive review queue, and "
+        "date-scoped mixed creative x audience plus time-series follow-up queries."
+    ),
+    "generate_brand_taxonomy": (
+        "Auto-build a brand's entire custom taxonomy from its analyzed library: "
+        "messaging themes, intended audiences, and entities (products, founders, "
+        "creators, offers, segments, campaign labels). Optionally persist into Brand "
+        "Taxonomy Studio for future analyses, predictions, and naming."
+    ),
+    "scan_competitor": (
+        "Scan a competitor's Meta Ad Library ads and return classified results plus "
+        "an aggregate strategy breakdown (top hooks, visual styles, CTAs, emotions, "
+        "estimated spend). Provide page_id, page_name, or keyword."
+    ),
+    "get_competitor_scan_history": (
+        "Return saved competitor Market scans/imports for the workspace without "
+        "re-hitting the Meta Ad Library. Use to re-brief past market reads or build "
+        "strategy prompts from saved scans."
+    ),
+    "generate_naming": (
+        "Generate V1-compatible standard, full, compact, and reporting naming "
+        "strings from creative attributes you already have (e.g. from "
+        "analyze_creative), matching the API's naming structure."
+    ),
 }
 
+# Per-tool allowlist of schema properties whose description survives compaction.
+# A property not listed for its tool keeps its type/default/enum but loses the
+# prose description at runtime -- used for boilerplate params (brand_name, dates,
+# limits, obvious filters) whose meaning is already carried by the param name,
+# its enum, or PLAYBOOK_INSTRUCTIONS. Load-bearing enum-prose value lists (the
+# only place those values are documented) are always kept.
 _SCHEMA_DESCRIPTION_FIELDS = {
+    "analyze_creative": {"format"},
+    "get_taxonomy": set(),
+    "list_library": {"sort", "format"},
+    "get_library_patterns": set(),
+    "get_analysis": set(),
+    "recommend": set(),
+    "analyze_gaps": set(),
+    "set_brand_context": set(),
+    "save_naming_template": {"template"},
+    "get_meta_status": set(),
+    "sync_meta_performance": {"attribution_windows"},
+    "get_meta_performance_summary": set(),
+    "get_taxonomy_performance": set(),
+    "get_prebuilt_reports": {"report_id"},
+    # watch_signal_focus / watch_trajectory_focus / watch_coverage_focus (and the
+    # timeseries signal_focus / trajectory_focus / coverage_focus) share one fixed
+    # vocabulary documented once in PLAYBOOK_INSTRUCTIONS, so their per-tool prose
+    # is dropped here; the load-bearing group_by/metric value lists stay in-surface.
     "get_creative_strategy_report": {
         "report_template",
         "rows",
@@ -540,9 +756,6 @@ _SCHEMA_DESCRIPTION_FIELDS = {
         "metric_preset",
         "watch_group_by",
         "watch_metric",
-        "watch_signal_focus",
-        "watch_trajectory_focus",
-        "watch_coverage_focus",
         "response_format",
         "max_cells",
     },
@@ -551,15 +764,35 @@ _SCHEMA_DESCRIPTION_FIELDS = {
         "conclusion_statuses",
         "watch_group_by",
         "watch_metric",
-        "watch_signal_focus",
-        "watch_trajectory_focus",
-        "watch_coverage_focus",
         "watch_sources",
         "audience_signal_focus",
     },
     "save_brain_learnings": {"audience_signal_focus"},
     "export_brain_learnings_context": {"audience_signal_focus"},
+    "get_performance_timeseries": {
+        "group_by",
+        "metric",
+    },
     "export_performance_timeseries_context": set(),
+    "create_custom_report": {"dimensions", "layer", "metric"},
+    "save_custom_report": {
+        "dimensions",
+        "layer",
+        "metric",
+        "view_type",
+        "date_range",
+        "group_by",
+        "saved_metric_preset",
+    },
+    "get_creative_leaderboard": {"window"},
+    "get_batch_readout": {"window"},
+    "compare_periods": {"group_by"},
+    "predict_creative": {"attributes", "objective_metric", "goal_direction"},
+    "get_demographics_performance": set(),
+    "export_demographics_context": set(),
+    "generate_brand_taxonomy": set(),
+    "scan_competitor": set(),
+    "get_competitor_scan_history": set(),
 }
 
 
@@ -2282,6 +2515,321 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_creative_leaderboard",
+            description=(
+                "Per-creative ranked leaderboard: which creatives to scale or kill, "
+                "as one ranked list. One row per creative for the window (default "
+                "last 14 days), ranked by rank_by (roas, cpa, spend, ctr, or "
+                "thumbstop). Each row carries the creative's thumbnail/media, spend, "
+                "spend_share, core metrics with measurement states, days_running, an "
+                "honestly-labeled first/second-half trend, and its rank. Honesty "
+                "contract: a creative spending below min_spend (default $500, the "
+                "shared materiality floor) is flagged below_min_spend, excluded from "
+                "ranks, and never crowned a winner on thin spend -- yet still returned "
+                "and counted, never dropped. direction=winners/losers slices the top "
+                "or bottom half of the ranked rows (sub-floor rows appear only under "
+                "all). When the workspace's performance evidence is not decision-safe "
+                "(stale sync, no Meta connection), rankings_withheld=true and every "
+                "row drops to observation_only with no rank -- the raw measured facts "
+                "stay visible, the comparative ranking does not. launched_after / "
+                "launched_before (YYYY-MM-DD) scope the ranked population to creatives "
+                "first synced in that window; rank and spend_share are then computed "
+                "within that scoped population. Use get_batch_readout for a same-"
+                "period verdict against the REST of the account instead of a rank."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "window": {
+                        "type": "string",
+                        "default": "last_14_days",
+                        "description": (
+                            "Date window preset: last_7_days, last_14_days, "
+                            "last_30_days, last_90_days, this_month, last_month, "
+                            "all_time, or custom (with start_date/end_date)."
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start when window=custom.",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end when window=custom.",
+                    },
+                    "rank_by": {
+                        "type": "string",
+                        "default": "roas",
+                        "enum": ["roas", "cpa", "spend", "ctr", "thumbstop"],
+                        "description": "Metric to rank creatives by.",
+                    },
+                    "order": {
+                        "type": "string",
+                        "default": "desc",
+                        "enum": ["asc", "desc"],
+                        "description": (
+                            "Display order. Rank always reflects best-to-worst "
+                            "quality regardless of order."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 20,
+                        "minimum": 1,
+                        "maximum": 50,
+                        "description": "Rows to return (clamped to 1-50).",
+                    },
+                    "min_spend": {
+                        "type": "number",
+                        "default": 500,
+                        "description": (
+                            "Spend materiality floor. Below it a row is "
+                            "below_min_spend and unranked."
+                        ),
+                    },
+                    "direction": {
+                        "type": "string",
+                        "default": "all",
+                        "enum": ["winners", "losers", "all"],
+                        "description": (
+                            "winners=top ranked half, losers=bottom ranked half, "
+                            "all=every row including sub-floor."
+                        ),
+                    },
+                    "launched_after": {
+                        "type": "string",
+                        "description": (
+                            "Optional YYYY-MM-DD: only creatives first synced on or "
+                            "after this date."
+                        ),
+                    },
+                    "launched_before": {
+                        "type": "string",
+                        "description": (
+                            "Optional YYYY-MM-DD: only creatives first synced on or "
+                            "before this date."
+                        ),
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_batch_readout",
+            description=(
+                "Launch-cohort batch readout: per-creative verdicts vs the rest of "
+                "the account. Given a launch window (launched_after / "
+                "launched_before, YYYY-MM-DD -- at least one is required), returns "
+                "every creative first synced in that window with an explicit three-"
+                "way verdict against the account-wide baseline built from every OTHER "
+                "creative over the same reporting window (default last 14 days): "
+                "promising, underperforming, or insufficient_evidence. The baseline "
+                "excludes the batch, so a brand-new cohort is judged like-for-like "
+                "against a same-period baseline, never against its own numbers or the "
+                "account's lifetime average. insufficient_evidence always carries a "
+                "verdict_reason -- most often below_min_spend (expected for roughly "
+                "half of most batches; that honesty is the feature, not a bug), or "
+                "metric_not_applicable when the creative's own objective/format does "
+                "not track rank_by (e.g. roas on a leads creative, thumbstop on a "
+                "static image), in which case that creative is also excluded from the "
+                "baseline itself, never folded in as a real zero. Verdict_counts "
+                "totals the three buckets. rank_by is roas, cpa, ctr, or thumbstop "
+                "(spend has no baseline-comparison direction). Verdicts are withheld "
+                "when workspace evidence is not decision-safe. Each row also carries "
+                "thumbnail/media, spend_share, measurement states, and a first/second-"
+                "half trend."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "window": {
+                        "type": "string",
+                        "default": "last_14_days",
+                        "description": (
+                            "Reporting window for metrics and baseline: last_7_days, "
+                            "last_14_days, last_30_days, last_90_days, this_month, "
+                            "last_month, all_time, or custom (with start_date/"
+                            "end_date). Distinct from the launch window below."
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD start when window=custom.",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional YYYY-MM-DD end when window=custom.",
+                    },
+                    "launched_after": {
+                        "type": "string",
+                        "description": (
+                            "YYYY-MM-DD lower bound of the launch cohort (first-synced "
+                            "date). At least one launch bound is required."
+                        ),
+                    },
+                    "launched_before": {
+                        "type": "string",
+                        "description": (
+                            "YYYY-MM-DD upper bound of the launch cohort (first-synced "
+                            "date). At least one launch bound is required."
+                        ),
+                    },
+                    "rank_by": {
+                        "type": "string",
+                        "default": "roas",
+                        "enum": ["roas", "cpa", "ctr", "thumbstop"],
+                        "description": "Metric for the verdict and the baseline.",
+                    },
+                    "order": {
+                        "type": "string",
+                        "default": "desc",
+                        "enum": ["asc", "desc"],
+                        "description": "Display order of the returned rows.",
+                    },
+                    "min_spend": {
+                        "type": "number",
+                        "default": 500,
+                        "description": (
+                            "Spend materiality floor. A creative below it verdicts "
+                            "insufficient_evidence / below_min_spend."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 20,
+                        "minimum": 1,
+                        "maximum": 50,
+                        "description": "Rows to return (clamped to 1-50).",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="compare_periods",
+            description=(
+                "Period-over-period comparison: is it the ads, the auction, or the "
+                "site? Compares period_a (the baseline, 'before') to period_b (the "
+                "comparison window, 'after', e.g. this week); every delta is period_b "
+                "minus period_a. Give each period EITHER a preset (this_week, "
+                "last_week, last_7_days, last_14_days, last_30_days, last_90_days, "
+                "this_month, last_month) OR an explicit period_X_start / period_X_end "
+                "(YYYY-MM-DD) pair -- never both, never neither, and the two windows "
+                "must not overlap. Returns account-level deltas (spend, revenue, "
+                "roas, cpa, cpm, ctr, thumbstop_rate, click_to_purchase_rate, aov) "
+                "with measurement states honored: a metric that could not be honestly "
+                "measured in either period gets no fabricated delta. The core payload "
+                "is a multiplicative funnel decomposition that NAMES why a roas/cpa "
+                "change happened -- account.decomposition.dominant_factor is one of "
+                "auction (cpm), creative_engagement (ctr), landing_conversion (cvr), "
+                "order_value (aov), or mixed -- so the move is routed to the auction, "
+                "the ads, the landing page, or basket size instead of being left "
+                "implied by a chart. When revenue reported a measured $0 in a period, "
+                "the decomposition falls back to cpa and returns a non-null "
+                "revenue_caution string: trust it when present -- it means the revenue "
+                "collapse itself is the more likely primary explanation, not the "
+                "delivery/traffic reading, so check the revenue delta directly before "
+                "acting on the routing. Optional group_by (creative or a taxonomy "
+                "dimension such as hook_type or product) adds per-value deltas and "
+                "biggest_movers up/down lists. Comparative verdicts are withheld "
+                "(outcome_verdicts_withheld) when evidence is not decision-safe."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "brand_name": {"type": "string"},
+                    "period_a_preset": {
+                        "type": "string",
+                        "description": (
+                            "Baseline window preset (this_week, last_week, "
+                            "last_7_days, last_14_days, last_30_days, last_90_days, "
+                            "this_month, last_month). Use this OR period_a_start/"
+                            "period_a_end, not both."
+                        ),
+                    },
+                    "period_a_start": {
+                        "type": "string",
+                        "description": "Baseline explicit start (YYYY-MM-DD).",
+                    },
+                    "period_a_end": {
+                        "type": "string",
+                        "description": "Baseline explicit end (YYYY-MM-DD).",
+                    },
+                    "period_b_preset": {
+                        "type": "string",
+                        "description": (
+                            "Comparison ('after') window preset, same vocabulary as "
+                            "period_a_preset. Use this OR period_b_start/period_b_end, "
+                            "not both."
+                        ),
+                    },
+                    "period_b_start": {
+                        "type": "string",
+                        "description": "Comparison explicit start (YYYY-MM-DD).",
+                    },
+                    "period_b_end": {
+                        "type": "string",
+                        "description": "Comparison explicit end (YYYY-MM-DD).",
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "default": "none",
+                        "description": (
+                            "none (account only), creative (per ad_name), or a "
+                            "taxonomy dimension (e.g. hook_type, messaging_angle, "
+                            "product) for per-value deltas and biggest_movers."
+                        ),
+                    },
+                    "layer": {
+                        "type": "string",
+                        "default": "standard",
+                        "enum": ["standard", "brand", "all"],
+                        "description": "Taxonomy layer for a taxonomy group_by.",
+                    },
+                    "metric": {
+                        "type": "string",
+                        "default": "roas",
+                        "enum": [
+                            "spend",
+                            "revenue",
+                            "roas",
+                            "cpa",
+                            "cpm",
+                            "ctr",
+                            "thumbstop_rate",
+                            "click_to_purchase_rate",
+                            "aov",
+                        ],
+                        "description": "Primary metric for the verdict and movers.",
+                    },
+                    "metrics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Optional subset of the delta metrics to compute; "
+                            "defaults to all nine. The primary metric is always "
+                            "included."
+                        ),
+                    },
+                    "spend_threshold": {
+                        "type": "number",
+                        "default": 500,
+                        "description": "Spend floor a group must clear to be a mover.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 25,
+                        "description": (
+                            "Biggest_movers per direction when grouped (clamped to "
+                            "1-25)."
+                        ),
+                    },
+                },
+            },
+        ),
+        Tool(
             name="predict_creative",
             description=(
                 "Observational pre-flight against the brand's tag-level history; not a "
@@ -2618,6 +3166,9 @@ async def call_tool(
             "save_custom_report": _save_custom_report,
             "run_saved_custom_report": _run_saved_custom_report,
             "delete_custom_report": _delete_saved_custom_report,
+            "get_creative_leaderboard": _get_creative_leaderboard,
+            "get_batch_readout": _get_batch_readout,
+            "compare_periods": _compare_periods,
             "predict_creative": _predict_creative,
             "get_demographics_performance": _get_demographics_performance,
             "export_demographics_context": _export_demographics_context,
@@ -3191,6 +3742,113 @@ async def _get_prebuilt_reports(args: dict) -> list[TextContent]:
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
         resp = await client.get(
             f"{API_URL}/reports/prebuilt",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_creative_leaderboard(args: dict) -> list[TextContent]:
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=20,
+            minimum=1,
+            maximum=CREATIVE_LEADERBOARD_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "window": args.get("window", "last_14_days"),
+        "rank_by": args.get("rank_by", "roas"),
+        "order": args.get("order", "desc"),
+        "direction": args.get("direction", "all"),
+        "min_spend": args.get("min_spend", 500),
+        "limit": limit,
+    }
+    for key in ("start_date", "end_date", "launched_after", "launched_before"):
+        if args.get(key):
+            params[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(
+            f"{API_URL}/reports/creatives/leaderboard",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _get_batch_readout(args: dict) -> list[TextContent]:
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=20,
+            minimum=1,
+            maximum=CREATIVE_BATCH_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "window": args.get("window", "last_14_days"),
+        "rank_by": args.get("rank_by", "roas"),
+        "order": args.get("order", "desc"),
+        "min_spend": args.get("min_spend", 500),
+        "limit": limit,
+    }
+    for key in ("start_date", "end_date", "launched_after", "launched_before"):
+        if args.get(key):
+            params[key] = args[key]
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(
+            f"{API_URL}/reports/creatives/batch",
+            params=params,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return _text(resp.json())
+
+
+async def _compare_periods(args: dict) -> list[TextContent]:
+    try:
+        limit = _clamped_int_arg(
+            args.get("limit"),
+            default=5,
+            minimum=1,
+            maximum=PERIOD_COMPARE_LIMIT,
+            field_name="limit",
+        )
+    except ValueError as exc:
+        return _err(str(exc))
+    params: dict[str, Any] = {
+        "brand_name": args.get("brand_name", ""),
+        "group_by": args.get("group_by", "none"),
+        "layer": args.get("layer", "standard"),
+        "metric": args.get("metric", "roas"),
+        "spend_threshold": args.get("spend_threshold", 500),
+        "limit": limit,
+    }
+    for key in (
+        "period_a_preset",
+        "period_a_start",
+        "period_a_end",
+        "period_b_preset",
+        "period_b_start",
+        "period_b_end",
+    ):
+        if args.get(key):
+            params[key] = args[key]
+    metrics = _csv_arg(args.get("metrics"))
+    if metrics:
+        params["metrics"] = metrics
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
+        resp = await client.get(
+            f"{API_URL}/reports/compare",
             params=params,
             headers=_headers(),
         )
@@ -5015,6 +5673,8 @@ def _prompt_weekly_creative_report(args: dict[str, str]) -> GetPromptResult:
     spend_threshold = _prompt_float(args, "spend_threshold", default=500.0)
     timeseries_preset = _as_timeseries_preset(date_preset)
     approx_start, approx_end = _approx_window_for_preset(date_preset)
+    prior_start, prior_end = _prior_window(approx_start, approx_end)
+    compare_metric = "cpa" if (target_cpa is not None and target_roas is None) else "roas"
 
     if target_roas is not None:
         target_line = f"Target: ROAS >= {_fmt_num(target_roas)}."
@@ -5037,26 +5697,29 @@ back from one of them:
    sync, name the freshness.data_age_hours.
 2. `get_meta_performance_summary(brand_name="{brand_name}", date_preset="{date_preset}")` —
    account totals (spend, revenue, ROAS) and winners/losers by standard and brand taxonomy.
-   Creative Tagger has no single-call period-over-period primitive today — if you need last
-   week's comparable figure, make a second call with explicit start_date/end_date for the
-   prior window and label that comparison "two separate calls, approximate", not an atomic
-   delta.
-3. `get_prebuilt_reports(brand_name="{brand_name}", spend_threshold={_fmt_num(spend_threshold)}, start_date="{approx_start}", end_date="{approx_end}")` —
+3. `compare_periods(brand_name="{brand_name}", period_b_start="{approx_start}", period_b_end="{approx_end}", period_a_start="{prior_start}", period_a_end="{prior_end}", metric="{compare_metric}")` —
+   this window (period_b) vs the prior comparable window (period_a) in one call: the
+   period-over-period deltas plus account.decomposition.dominant_factor naming WHY {compare_metric}
+   moved (auction/creative_engagement/landing_conversion/order_value). Use this for the "up or down
+   vs last week, and why" line instead of a second summary call. Trust revenue_caution over the
+   delivery reading when it is present.
+4. `get_prebuilt_reports(brand_name="{brand_name}", spend_threshold={_fmt_num(spend_threshold)}, start_date="{approx_start}", end_date="{approx_end}")` —
    best hooks/angles/formats/landing pages/offers/CTAs. This tool has no date_preset
    parameter, so the start_date/end_date above are an approximate {date_preset} window, not
    an exact match to the other calls' windowing — say so if the two disagree materially.
-4. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="ad_name", metric="roas", limit=5, minimum_spend={_fmt_num(spend_threshold)})` —
+5. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="ad_name", metric="roas", limit=5, minimum_spend={_fmt_num(spend_threshold)})` —
    fatigue/trajectory/coverage for the top 5 spenders. Note: get_performance_timeseries uses
    last_7d/last_30d, not last_7_days/last_30_days — {timeseries_preset} is the correct value
    for this call, already translated from {date_preset}.
-5. `get_brain_learnings(brand_name="{brand_name}", date_preset="{date_preset}", kinds="conclusion,watch", limit=8)` —
+6. `get_brain_learnings(brand_name="{brand_name}", date_preset="{date_preset}", kinds="conclusion,watch", limit=8)` —
    recent test conclusions (winner/fatigued/loser) and fatigue watch stories for the
    this-week narrative.
 
 Write the report as: (a) one verdict line — beat/missed target or "no target set", fresh or
-stale; (b) tag-level winners and losers actually above {_fmt_num(spend_threshold)} spend, each
-labeled measured/not_reported/not_applicable; (c) the fatigue watchlist from step 4, ranked
-worst-trajectory first; (d) a decision queue of 3-5 concrete next actions in the persona's own
+stale; (b) up or down vs the prior window with the dominant_factor from step 3 as the reason;
+(c) tag-level winners and losers actually above {_fmt_num(spend_threshold)} spend, each labeled
+measured/not_reported/not_applicable; (d) the fatigue watchlist from step 5, ranked
+worst-trajectory first; (e) a decision queue of 3-5 concrete next actions in the persona's own
 vocabulary (refresh X, brief a test on Y, hold Z). Client-ready markdown; every verdict carries
 its evidence and measurement-state inline, not in a footnote.
 
@@ -5140,7 +5803,6 @@ def _prompt_scale_kill_hold(args: dict[str, str]) -> GetPromptResult:
     date_preset = _prompt_enum(
         args, "date_preset", _SUMMARY_DATE_PRESETS, default="last_30_days"
     )
-    timeseries_preset = _as_timeseries_preset(date_preset)
     better_direction = "higher is better" if objective_metric == "roas" else "lower is better"
 
     text = f"""\
@@ -5152,30 +5814,29 @@ Call these tools in order:
 
 1. `get_meta_status(brand_name="{brand_name}")` — freshness check. A stale sync means today's
    triage is provisional; say so first if stale is true.
-2. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="ad_name", metric="{objective_metric}", limit=10, minimum_spend={_fmt_num(minimum_spend)})` —
-   the per-ad triage list. Each series entry's totals.{objective_metric} is that ad's real
-   aggregate {objective_metric} for the window — compare it directly to target_value. Its
-   fatigue signal, trajectory, and coverage class are your trust labels; note
-   get_performance_timeseries uses {timeseries_preset} (last_Nd), already translated from
-   {date_preset}.
+2. `get_creative_leaderboard(brand_name="{brand_name}", window="{date_preset}", rank_by="{objective_metric}", min_spend={_fmt_num(minimum_spend)}, limit=50)` —
+   the ranked per-creative triage list in one call. Each row's rank_value is that creative's real
+   aggregate {objective_metric} for the window — compare it directly to target_value — and each
+   row carries a first/second-half trend and a below_min_spend flag. Rows flagged below_min_spend
+   are unranked: they go straight to the insufficient-evidence bucket, never scaled or killed on
+   thin spend. If rankings_withheld is true, the account's evidence is not decision-safe — say so
+   and treat every call below as provisional.
 3. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", report_template="next-tests", minimum_spend={_fmt_num(minimum_spend)}, {objective_metric}_target={_fmt_num(target_value)})` —
    the taxonomy-cell view of the same account: does a whole hook/angle/format cell justify the
-   same call the individual ad triage made? This tool has no per-ad row — use it to corroborate,
-   never as a substitute for the per-ad list above.
+   same call the individual creative triage made? Use it to corroborate, never as a substitute
+   for the per-creative list above.
 4. `get_taxonomy_performance(brand_name="{brand_name}", date_preset="{date_preset}", spend_threshold={_fmt_num(minimum_spend)})` —
-   coverage_gaps and unproven tags, so an ad riding a broadly-unproven taxonomy cell is flagged
-   as thinner evidence even if its own number looks decisive.
+   coverage_gaps and unproven tags, so a creative riding a broadly-unproven taxonomy cell is
+   flagged as thinner evidence even if its own number looks decisive.
 
-Bucket every ad with spend >= {_fmt_num(minimum_spend)} into exactly one of:
-- scale: {objective_metric} clears target_value with a call_ready or stable/improving read.
-- kill: {objective_metric} misses target_value with a call_ready read, or the fatigue signal is
-  fatigued and trajectory is worsening.
-- hold: {objective_metric} is close to target_value with no clear signal either way, or the
-  coverage class is short_window/gappy — real spend, ambiguous read.
-Anything under {_fmt_num(minimum_spend)} spend, or flagged insufficient_data/insufficient_points/
-unproven by a tool, goes in a separate insufficient-evidence bucket — never forced into
-scale/kill/hold. Lead your report with the counts in each bucket, then the one or two numbers
-justifying each individual call.
+Bucket every creative with spend >= {_fmt_num(minimum_spend)} into exactly one of:
+- scale: {objective_metric} clears target_value with an improving or flat trend.
+- kill: {objective_metric} misses target_value decisively, or misses it with a declining trend.
+- hold: {objective_metric} is close to target_value with no clear trend either way — real spend,
+  ambiguous read.
+Anything flagged below_min_spend, insufficient_data, or rankings_withheld by a tool goes in a
+separate insufficient-evidence bucket — never forced into scale/kill/hold. Lead your report with
+the counts in each bucket, then the one or two numbers justifying each individual call.
 
 {_PROMPT_REPORT_CONTRACT}
 """
@@ -5316,35 +5977,35 @@ def _prompt_batch_readout(args: dict[str, str]) -> GetPromptResult:
 
     text = f"""\
 Grade the creative batch launched {batch_start_date} to {batch_end_date} for "{brand_name}",
-against the {baseline_preset} account baseline.
+against the rest of the account over the {baseline_preset} window.
 
 Call these tools in order:
 
-1. `create_custom_report(brand_name="{brand_name}", dimensions=["hook_type", "messaging_angle"], metric="roas", start_date="{batch_start_date}", end_date="{batch_end_date}")` —
+1. `get_batch_readout(brand_name="{brand_name}", launched_after="{batch_start_date}", launched_before="{batch_end_date}", window="{baseline_preset}", rank_by="roas")` —
+   the whole launch-cohort verdict in one call: every creative first synced in the batch window
+   gets a three-way verdict (promising / underperforming / insufficient_evidence) against a
+   same-window baseline built from every OTHER creative, so "won" means beat the account's own
+   bar, not an arbitrary number. verdict_counts totals the three buckets. Read verdict_reason on
+   each insufficient_evidence row: below_min_spend is the honest "too early to judge" case
+   (expected for roughly half of most batches), and metric_not_applicable means roas is not a
+   real signal for that creative's objective (e.g. a leads creative). If rankings_withheld is
+   true the account's evidence is not decision-safe — say so before ranking anything.
+2. `create_custom_report(brand_name="{brand_name}", dimensions=["hook_type", "messaging_angle"], metric="roas", start_date="{batch_start_date}", end_date="{batch_end_date}")` —
    which taxonomy attribute combinations actually occurring in the batch window correlate with
-   wins. Rows include parts/values so you can name the winning combination precisely.
-2. `list_library(brand_name="{brand_name}", sort="recent", limit=50)` — candidate creatives to
-   cross-reference against the batch window. list_library has no launch-date filter — treat
-   this as a recency-sorted candidate set to filter by eye against
-   {batch_start_date}/{batch_end_date}, not a guaranteed exact cohort.
-3. `get_performance_timeseries(brand_name="{brand_name}", group_by="ad_name", date_preset="custom", start_date="{batch_start_date}", end_date="{batch_end_date}", limit=10)` —
-   per-ad verdicts inside the batch window: which specific ads in the batch won, lost, or never
-   cleared the tool's own spend floor (default $500) to be judged at all.
-4. `get_taxonomy_performance(brand_name="{brand_name}", date_preset="{baseline_preset}")` —
-   the account's own historical baseline, so "won" means beat the account's own bar, not an
-   arbitrary number.
+   wins, so you can name what the promising creatives share. Rows include parts/values to name
+   the winning combination precisely.
 
-Report three groups: (a) ads/attributes that beat the {baseline_preset} baseline on real spend —
-name the taxonomy attributes step 1 shows they share; (b) ads/attributes that missed it on real
-spend; (c) an explicit too-early-to-judge bucket for every ad in the batch that never cleared
-the spend floor in step 3 — list these by name, do not fold them into either winners or losers.
-Lead with the three counts, then the shared attributes behind the winners.
+Report three groups straight from step 1's verdicts: (a) promising creatives — name the taxonomy
+attributes step 2 shows they share; (b) underperforming creatives; (c) an explicit
+too-early-to-judge bucket for every insufficient_evidence creative (list these by name with their
+verdict_reason — do not fold them into winners or losers). Lead with the three counts from
+verdict_counts, then the shared attributes behind the promising group.
 
 {_PROMPT_REPORT_CONTRACT}
 """
     return _prompt_result(
         "Grade a creative batch: what won, what lost, what taxonomy attributes the winners "
-        "share, and — honestly — which ads never got enough spend to call either way.",
+        "share, and — honestly — which creatives never got enough spend to call either way.",
         text,
     )
 
@@ -5357,8 +6018,8 @@ _MONDAY_MONEY_CHECK_DATE_PRESETS = ("last_7_days", "last_30_days")
 def _prior_window(start_date: str, end_date: str) -> tuple[str, str]:
     """The immediately-preceding window of the same length as [start, end].
 
-    Used to approximate a period-over-period comparison with two separate
-    calls, since none of these tools expose a single-call PoP primitive.
+    Supplies the period_a (baseline) bounds for a compare_periods call so the
+    Monday check reads this window against its own prior comparable window.
     """
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     end = datetime.strptime(end_date, "%Y-%m-%d").date()
@@ -5395,21 +6056,23 @@ Call these tools in order:
 
 1. `get_meta_status(brand_name="{brand_name}")` — connection + freshness first. If stale is
    true, that IS the verdict: say the numbers below are stale before anything else.
-2. `get_meta_performance_summary(brand_name="{brand_name}", date_preset="{date_preset}")` —
-   this window's spend, revenue, and ROAS. Compare directly against {target_line}.
-3. `get_meta_performance_summary(brand_name="{brand_name}", start_date="{prior_start}", end_date="{prior_end}")` —
-   the prior comparable window. This is a second, separate call (no single-call
-   period-over-period primitive exists) — label the comparison "two calls, approximate", not
-   an atomic delta.
-4. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="ad_name", metric="{objective_metric}", limit=5)` —
+2. `compare_periods(brand_name="{brand_name}", period_b_start="{this_start}", period_b_end="{this_end}", period_a_start="{prior_start}", period_a_end="{prior_end}", metric="{objective_metric}")` —
+   this window (period_b) vs the prior comparable window (period_a) in one call; every delta is
+   period_b minus period_a. Read period_b's own {objective_metric} against {target_line}, then the
+   delta for better/worse-than-prior. account.decomposition.dominant_factor names WHY
+   {objective_metric} moved — auction (cpm), creative_engagement (ctr), landing_conversion (cvr),
+   or order_value (aov) — so "down this week" comes with a cause, not a shrug. If revenue_caution
+   is present, trust it over the delivery reading: a measured $0 revenue is the more likely story.
+   If outcome_verdicts_withheld is true, the evidence is not decision-safe — say so.
+3. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="ad_name", metric="{objective_metric}", limit=5)` —
    the biggest per-ad mover this window, to point at one concrete thing worth digging into
    rather than a vague "performance is down."
 
 Report ONLY Meta-attributed figures — this system has no Shopify/blended-revenue connector, so
 blended MER is not_applicable this window, not "unavailable" or a guess. Your first three lines:
-(1) above or below {target_line} this window; (2) better or worse than the prior window, framed
-as approximate; (3) the one ad/driver from step 4 worth a look, or "nothing stands out" if
-nothing does. Everything else is receipts.
+(1) above or below {target_line} this window; (2) better or worse than the prior window, with the
+dominant_factor as the reason; (3) the one ad/driver from step 3 worth a look, or "nothing stands
+out" if nothing does. Everything else is receipts.
 
 {_PROMPT_REPORT_CONTRACT}
 """

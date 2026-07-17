@@ -1156,6 +1156,28 @@ AUTH_SWEEP_CASES = [
     ),
     ("list_custom_reports", {"brand_name": "Acme"}, "GET", "/reports/custom/saved"),
     (
+        "get_creative_leaderboard",
+        {"brand_name": "Acme"},
+        "GET",
+        "/reports/creatives/leaderboard",
+    ),
+    (
+        "get_batch_readout",
+        {"brand_name": "Acme", "launched_after": "2026-01-01"},
+        "GET",
+        "/reports/creatives/batch",
+    ),
+    (
+        "compare_periods",
+        {
+            "brand_name": "Acme",
+            "period_a_preset": "last_week",
+            "period_b_preset": "this_week",
+        },
+        "GET",
+        "/reports/compare",
+    ),
+    (
         "run_saved_custom_report",
         {"report_id": 7},
         "GET",
