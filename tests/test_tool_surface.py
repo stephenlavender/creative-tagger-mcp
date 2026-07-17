@@ -184,6 +184,42 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertNotIn("opportunity", brain_docs.lower())
         self.assertNotIn("waste", brain_docs.lower())
 
+    def test_readme_never_advertises_the_impossible_tag_demographic_cross(self) -> None:
+        """The server catalog/prompt fix for the tag x demographic_segment
+        cross (demographics are account-level only, no per-ad key;
+        get_creative_strategy_report returns cross_contract: not_applicable
+        for that pairing) left three matching surfaces stale in README.md:
+        the get_creative_strategy_report prose plus its "mixed creative x
+        audience" example query, export_demographics_context's prose, and
+        the audience_read prompt summary's "crossed with hooks and angles"
+        claim. None of these may advertise the impossible pairing as a real,
+        supported read.
+        """
+        readme = README.read_text()
+
+        self.assertNotIn("mixed creative", readme.lower())
+        self.assertNotIn("mixed audience", readme.lower())
+        self.assertNotIn("crossed with hooks and angles", readme)
+        self.assertNotIn('"rows": "messaging_angle",\n  "columns": "demographic_segment"', readme)
+
+        strategy_docs = readme.split("### `get_creative_strategy_report`", 1)[1].split(
+            "### `get_brain_learnings`", 1
+        )[0]
+        self.assertIn("not_applicable", strategy_docs)
+        self.assertIn("cross_contract", strategy_docs)
+        self.assertIn("need BOTH axes to be", strategy_docs)
+
+        demographics_export_docs = readme.split(
+            "### `export_demographics_context`", 1
+        )[1].split("### `generate_brand_taxonomy`", 1)[0]
+        self.assertIn("account-level only", demographics_export_docs)
+        self.assertIn("never a joined tag x demographic", demographics_export_docs)
+
+        audience_read_docs = readme.split("### `audience_read`", 1)[1].split(
+            "### `client_review_pack`", 1
+        )[0]
+        self.assertIn("reported alongside (never crossed with)", audience_read_docs)
+
     def test_tool_copy_uses_current_taxonomy_dimension_count(self) -> None:
         source = SERVER.read_text()
         readme = README.read_text()
@@ -541,6 +577,7 @@ class ToolSurfaceTest(unittest.TestCase):
                 "_format_demographic_evidence",
                 "_build_demographics_decision_queue",
                 "_build_demographics_strategy_query",
+                "_build_taxonomy_performance_query",
                 "_build_demographics_strategy_views",
                 "_build_demographic_timeseries_query",
                 "_build_demographic_timeseries_views",
@@ -611,13 +648,32 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(views[1]["rows"], "demographic_segment")
         self.assertEqual(views[1]["columns"], "demographic_signal")
         self.assertEqual(views[1]["report_template"], "audience-signals")
-        self.assertEqual(views[2]["rows"], "messaging_angle")
-        self.assertEqual(views[2]["columns"], "demographic_segment")
-        self.assertEqual(views[2]["report_template"], "angle-audience-fit")
-        self.assertEqual(views[3]["rows"], "hook")
-        self.assertEqual(views[3]["report_template"], "hook-audience-fit")
-        self.assertEqual(views[3]["fill_metric"], "hook_rate")
-        self.assertIn("hook_rate", views[3]["strategy_query"]["metrics"])
+
+        # views[2:] used to be an "Angle x audience"/"Hook x audience" mixed
+        # creative x demographic cross (rows=<tag>, columns="demographic_segment")
+        # -- structurally not_applicable on the API (demographics are
+        # account-level only, no per-ad key). They must now be separate,
+        # answerable, account-wide get_taxonomy_performance reads, never a
+        # tag x demographic_segment pairing.
+        self.assertEqual(len(views), 4)
+        for view in views[2:]:
+            self.assertNotIn("rows", view)
+            self.assertNotIn("columns", view)
+            self.assertNotIn("report_template", view)
+            query = view["strategy_query"]
+            self.assertEqual(query["tool"], "get_taxonomy_performance")
+            self.assertNotIn("rows", query)
+            self.assertNotIn("columns", query)
+            self.assertEqual(query["brand_name"], "Acme")
+            self.assertEqual(query["date_preset"], "custom")
+            self.assertEqual(query["start_date"], "2026-05-01")
+            self.assertEqual(query["end_date"], "2026-05-31")
+            self.assertNotIn("demographic_segment", json.dumps(query))
+
+        self.assertEqual(views[2]["dimension"], "messaging_angle")
+        self.assertEqual(views[2]["strategy_query"]["dimension"], "messaging_angle")
+        self.assertEqual(views[3]["dimension"], "hook_type")
+        self.assertEqual(views[3]["strategy_query"]["dimension"], "hook_type")
 
         timeseries_views = namespace["_build_demographic_timeseries_views"](
             brand_name="Acme",
@@ -638,6 +694,7 @@ class ToolSurfaceTest(unittest.TestCase):
             {
                 "_normalize_strategy_axis",
                 "_build_demographics_strategy_query",
+                "_build_taxonomy_performance_query",
                 "_brain_learning_status_action",
                 "_brain_learning_strategy_query",
                 "_brain_learning_timeseries_query",
@@ -704,8 +761,19 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(queue[0]["strategy_query"]["report_template"], "hook-performance")
         self.assertEqual(queue[0]["strategy_query"]["rows"], "hook")
         self.assertEqual(queue[1]["action"], "investigate")
-        self.assertEqual(queue[1]["strategy_query"]["report_template"], "angle-audience-fit")
-        self.assertEqual(queue[1]["strategy_query"]["columns"], "demographic_segment")
+        # This learning's dimension is demographic ("demographic_segment"); it
+        # used to route to the impossible get_creative_strategy_report(
+        # rows="messaging_angle", columns="demographic_segment") cross
+        # (report_template="angle-audience-fit") -- structurally
+        # not_applicable since demographics are account-level only. It must
+        # now be a separate, answerable, account-wide get_taxonomy_performance
+        # read, never a tag x demographic_segment pairing.
+        self.assertEqual(queue[1]["strategy_query"]["tool"], "get_taxonomy_performance")
+        self.assertEqual(queue[1]["strategy_query"]["dimension"], "messaging_angle")
+        self.assertNotIn("report_template", queue[1]["strategy_query"])
+        self.assertNotIn("columns", queue[1]["strategy_query"])
+        self.assertNotIn("demographic_segment", json.dumps(queue[1]["strategy_query"]))
+        self.assertEqual(queue[1]["strategy_query"]["focus_value"], "25-34 / female")
         self.assertEqual(queue[1]["timeseries_query"]["tool"], "get_performance_timeseries")
         self.assertEqual(queue[1]["timeseries_query"]["group_by"], "demographic_segment")
         self.assertEqual(queue[1]["timeseries_query"]["signal_focus"], "fatigued")
@@ -731,7 +799,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(len(views), 2)
         self.assertEqual(views[0]["learning_id"], "working:hook_type:question")
         self.assertEqual(views[0]["strategy_query"]["focus_value"], "Question")
-        self.assertEqual(views[1]["strategy_query"]["report_template"], "angle-audience-fit")
+        self.assertEqual(views[1]["learning_id"], "watch:demographic_segment:25-34-female")
+        self.assertEqual(views[1]["strategy_query"]["tool"], "get_taxonomy_performance")
+        self.assertEqual(views[1]["strategy_query"]["dimension"], "messaging_angle")
+        self.assertNotIn("report_template", views[1]["strategy_query"])
 
         timeseries_views = namespace["_build_brain_learning_timeseries_views"](
             learnings=learnings,
@@ -754,6 +825,347 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(timeseries_views[0]["timeseries_query"]["group_by"], "demographic_segment")
         self.assertEqual(timeseries_views[0]["timeseries_query"]["maximum_gap_days"], 4)
         self.assertEqual(timeseries_views[0]["timeseries_query"]["fatigue_decay_threshold"], 0.24)
+
+    def test_brain_learning_audience_kind_never_crosses_tag_with_demographic_segment(
+        self,
+    ) -> None:
+        """kind == "audience" learnings used to hard-route to the impossible
+        get_creative_strategy_report(rows="messaging_angle",
+        columns="demographic_segment") cross (report_template=
+        "angle-audience-fit") -- structurally not_applicable since
+        demographics are account-level only, with no per-ad key. This must
+        now be a separate, answerable, account-wide get_taxonomy_performance
+        read, never a joined tag x demographic matrix.
+        """
+        namespace = _load_pure_helpers(
+            {
+                "_normalize_strategy_axis",
+                "_build_demographics_strategy_query",
+                "_build_taxonomy_performance_query",
+                "_brain_learning_strategy_query",
+            }
+        )
+        learning = {
+            "id": "audience:demographic_segment:25-34-female",
+            "kind": "audience",
+            "title": "25-34 / female is a higher observed-efficiency segment",
+            "summary": "This segment clears the account ROAS benchmark.",
+            "action": "Validate with a controlled holdout before shifting budget.",
+            "evidence": {
+                "dimension": "demographic_segment",
+                "value": "25-34 / female",
+            },
+        }
+
+        query = namespace["_brain_learning_strategy_query"](
+            learning=learning,
+            brand_name="Acme",
+            date_preset="last_30_days",
+            start_date="",
+            end_date="",
+        )
+
+        self.assertEqual(query["tool"], "get_taxonomy_performance")
+        self.assertEqual(query["dimension"], "messaging_angle")
+        self.assertEqual(query["brand_name"], "Acme")
+        self.assertEqual(query["date_preset"], "last_30_days")
+        self.assertEqual(query["focus_value"], "25-34 / female")
+        self.assertNotIn("rows", query)
+        self.assertNotIn("columns", query)
+        self.assertNotIn("report_template", query)
+        self.assertNotIn("demographic_segment", json.dumps(query))
+
+        # An "audience" learning with no evidence.dimension at all must reach
+        # the identical, safe fallback -- never raise, never fall through to
+        # the impossible cross.
+        bare_learning = {
+            "id": "audience:unscoped",
+            "kind": "audience",
+            "title": "An audience segment stands out",
+            "summary": "",
+            "action": "",
+            "evidence": {"value": "45-54 / male"},
+        }
+        bare_query = namespace["_brain_learning_strategy_query"](
+            learning=bare_learning,
+            brand_name="Acme",
+            date_preset="all_time",
+            start_date="",
+            end_date="",
+        )
+        self.assertEqual(bare_query["tool"], "get_taxonomy_performance")
+        self.assertEqual(bare_query["dimension"], "messaging_angle")
+
+    def test_no_builder_output_ever_crosses_a_creative_tag_with_a_demographic_axis(
+        self,
+    ) -> None:
+        """Regression sweep for the whole impossible-cross defect class.
+
+        No strategy_view/decision-queue JSON emitted by any of the
+        demographics or brain-learning export builders may ever pair a
+        creative tag axis with a demographic axis via sibling rows/columns
+        keys. Demographics are account-level only (no per-ad key);
+        get_creative_strategy_report returns cross_contract: not_applicable
+        for that pairing, never a populated grid -- the only real "mixed"
+        reads are demographic x demographic (both axes demographic) or a
+        separate, single-axis get_taxonomy_performance /
+        get_demographics_performance call. This walks the full output tree
+        of every builder (not just the two shapes named in the historical
+        defect) across a fixture that exercises every kind/dimension branch,
+        so the whole class -- including future builders -- can't regress.
+        """
+        namespace = _load_pure_helpers(
+            {
+                "_demographic_segment_label",
+                "_compact_demographic_segment",
+                "_format_demographic_evidence",
+                "_build_demographics_decision_queue",
+                "_build_demographics_strategy_query",
+                "_build_taxonomy_performance_query",
+                "_build_demographics_strategy_views",
+                "_build_demographic_focus_views",
+                "_build_demographic_timeseries_query",
+                "_build_demographic_timeseries_views",
+                "_build_demographic_segment_timeseries_views",
+                "_normalize_strategy_axis",
+                "_brain_learning_status_action",
+                "_brain_learning_strategy_query",
+                "_brain_learning_timeseries_query",
+                "_build_brain_learning_decision_queue",
+                "_build_brain_learning_strategy_views",
+                "_build_brain_learning_timeseries_views",
+            }
+        )
+
+        demographic_axes = {
+            "demographic_age",
+            "demographic_gender",
+            "demographic_segment",
+            "demographic_signal",
+        }
+
+        def assert_no_impossible_cross(node, path="root"):
+            if isinstance(node, dict):
+                rows = node.get("rows")
+                columns = node.get("columns")
+                if isinstance(rows, str) and isinstance(columns, str):
+                    rows_is_demo = rows in demographic_axes
+                    columns_is_demo = columns in demographic_axes
+                    self.assertEqual(
+                        rows_is_demo,
+                        columns_is_demo,
+                        f"impossible tag x demographic cross at {path}: "
+                        f"rows={rows!r} columns={columns!r}",
+                    )
+                for key, value in node.items():
+                    assert_no_impossible_cross(value, f"{path}.{key}")
+            elif isinstance(node, list):
+                for index, value in enumerate(node):
+                    assert_no_impossible_cross(value, f"{path}[{index}]")
+
+        segments = [
+            {
+                "age": "25-34",
+                "gender": "female",
+                "observed_efficiency_band": "higher_observed_return_per_spend",
+                "return_per_spend_percentile": 100,
+                "spend": 420,
+                "revenue": 1680,
+                "roas": 4.0,
+                "ctr": 2.6,
+                "cpa": 35,
+                "conversions": 12,
+            },
+            {
+                "age": "45-54",
+                "gender": "male",
+                "observed_efficiency_band": "lower_observed_return_per_spend",
+                "return_per_spend_percentile": 0,
+                "spend": 980,
+                "roas": 0.9,
+                "ctr": 0.8,
+                "cpa": 140,
+                "conversions": 7,
+            },
+        ]
+
+        demographics_views = namespace["_build_demographics_strategy_views"](
+            brand_name="Acme", date_preset="last_30_days"
+        )
+        assert_no_impossible_cross(demographics_views, "_build_demographics_strategy_views")
+
+        focus_views = namespace["_build_demographic_focus_views"](
+            segments, brand_name="Acme", date_preset="last_30_days", limit=2
+        )
+        assert_no_impossible_cross(focus_views, "_build_demographic_focus_views")
+
+        timeseries_views = namespace["_build_demographic_timeseries_views"](
+            brand_name="Acme", date_preset="last_30_days"
+        )
+        assert_no_impossible_cross(timeseries_views, "_build_demographic_timeseries_views")
+
+        segment_timeseries_views = namespace["_build_demographic_segment_timeseries_views"](
+            segments, brand_name="Acme", date_preset="last_30_days", limit=2
+        )
+        assert_no_impossible_cross(
+            segment_timeseries_views, "_build_demographic_segment_timeseries_views"
+        )
+
+        # Every (kind, dimension) combination the API can plausibly send, so
+        # the whole branch space of _brain_learning_strategy_query is
+        # exercised -- not just the two shapes named in the historical defect.
+        learnings: list[dict] = []
+        for status in ("winner", "fatigued", "loser", "learning", ""):
+            learnings.append(
+                {
+                    "id": f"conclusion:{status or 'none'}",
+                    "kind": "conclusion",
+                    "title": "conclusion",
+                    "summary": "s",
+                    "action": "a",
+                    "evidence": {
+                        "dimension": "creative_conclusion",
+                        "value": "Founder proof",
+                        "current_status": status,
+                    },
+                }
+            )
+        for dimension in (
+            "hook",
+            "persona",
+            "messaging_angle",
+            "ad_type",
+            "offer_type",
+            "unlisted_dim",
+            "",
+        ):
+            learnings.append(
+                {
+                    "id": f"working:{dimension or 'none'}",
+                    "kind": "working",
+                    "title": "working",
+                    "summary": "s",
+                    "action": "a",
+                    "evidence": {"dimension": dimension, "value": "X"},
+                }
+            )
+        for dimension in (
+            "demographic_age",
+            "demographic_gender",
+            "demographic_segment",
+            "demographic_signal",
+            "hook",
+            "messaging_angle",
+            "ad_type",
+            "unlisted_dim",
+            "",
+        ):
+            learnings.append(
+                {
+                    "id": f"watch:{dimension or 'none'}",
+                    "kind": "watch",
+                    "title": "watch",
+                    "summary": "s",
+                    "action": "a",
+                    "evidence": {"dimension": dimension, "value": "X"},
+                    "source": "timeseries",
+                }
+            )
+        for dimension in ("demographic_segment", "demographic_age", "messaging_angle", ""):
+            learnings.append(
+                {
+                    "id": f"audience:{dimension or 'none'}",
+                    "kind": "audience",
+                    "title": "audience",
+                    "summary": "s",
+                    "action": "a",
+                    "evidence": {"dimension": dimension, "value": "X"},
+                }
+            )
+        for dimension in (
+            "hook",
+            "persona",
+            "offer_type",
+            "messaging_angle",
+            "ad_type",
+            "unlisted_dim",
+            "",
+        ):
+            learnings.append(
+                {
+                    "id": f"gap:{dimension or 'none'}",
+                    "kind": "gap",
+                    "title": "gap",
+                    "summary": "s",
+                    "action": "a",
+                    "evidence": {"dimension": dimension, "value": "X"},
+                }
+            )
+        learnings.append(
+            {
+                "id": "unknown_kind",
+                "kind": "something_else",
+                "title": "unknown",
+                "summary": "s",
+                "action": "a",
+                "evidence": {"dimension": "messaging_angle", "value": "X"},
+            }
+        )
+
+        self.assertGreaterEqual(len(learnings), 30)
+
+        for learning in learnings:
+            query = namespace["_brain_learning_strategy_query"](
+                learning=learning,
+                brand_name="Acme",
+                date_preset="last_30_days",
+                start_date="",
+                end_date="",
+            )
+            assert_no_impossible_cross(
+                query, f"_brain_learning_strategy_query[{learning['id']}]"
+            )
+
+        decision_queue = namespace["_build_brain_learning_decision_queue"](
+            learnings=learnings,
+            brand_name="Acme",
+            date_preset="last_30_days",
+            start_date="",
+            end_date="",
+            limit=len(learnings),
+        )
+        assert_no_impossible_cross(decision_queue, "_build_brain_learning_decision_queue")
+        self.assertNotIn("Open the mixed matrix", json.dumps(decision_queue))
+
+        strategy_views = namespace["_build_brain_learning_strategy_views"](
+            learnings=learnings,
+            brand_name="Acme",
+            date_preset="last_30_days",
+            start_date="",
+            end_date="",
+            limit=len(learnings),
+        )
+        assert_no_impossible_cross(strategy_views, "_build_brain_learning_strategy_views")
+
+        brain_timeseries_views = namespace["_build_brain_learning_timeseries_views"](
+            learnings=learnings,
+            brand_name="Acme",
+            date_preset="last_30_days",
+            start_date="",
+            end_date="",
+            watch_metric="roas",
+            watch_signal_focus="all",
+            watch_trajectory_focus="all",
+            watch_coverage_focus="all",
+            watch_minimum_points=2,
+            watch_minimum_calendar_days=0,
+            watch_maximum_gap_days=0,
+            fatigue_decay_threshold=0.18,
+            limit=len(learnings),
+        )
+        assert_no_impossible_cross(
+            brain_timeseries_views, "_build_brain_learning_timeseries_views"
+        )
 
     def test_analyze_creative_declares_carousel_and_version_inputs(self) -> None:
         tools = _declared_tools()
@@ -1378,7 +1790,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"decision_queue": decision_queue', source)
         self.assertIn('"segment_strategy_views": {', source)
         self.assertIn('"segment_timeseries_views": {', source)
-        self.assertIn('query["focus_segment"] = compact["segment"]', source)
+        self.assertIn('"focus_segment": compact["segment"]', source)
         self.assertIn('"suggested_strategy_views": _build_demographics_strategy_views(', source)
         self.assertIn('"suggested_timeseries_views": _build_demographic_timeseries_views(', source)
         self.assertIn('"strategy_query"] = _build_demographics_strategy_query(', source)
@@ -1418,13 +1830,22 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('"sort": args.get("sort", "desc")', source)
         self.assertIn('"saved_metric_preset": args.get("saved_metric_preset", "")', source)
 
-    def test_demographic_focus_views_include_segment_specific_mixed_queries(self) -> None:
+    def test_demographic_focus_views_route_tag_context_to_separate_taxonomy_reads(self) -> None:
+        """_build_demographic_focus_views used to attach a per-segment "mixed"
+        query (get_creative_strategy_report(rows=<tag>, columns=
+        "demographic_segment")) to every segment -- a pairing the API refuses
+        (demographics are account-level only, no per-ad key; the API states
+        this via cross_contract: not_applicable). Each segment's strategy
+        views must now route to a real, answerable, account-wide
+        get_taxonomy_performance read, reported alongside the segment, never
+        joined to it.
+        """
         namespace = _load_pure_helpers(
             {
                 "_demographic_segment_label",
                 "_compact_demographic_segment",
                 "_format_demographic_evidence",
-                "_build_demographics_strategy_query",
+                "_build_taxonomy_performance_query",
                 "_build_demographic_focus_views",
                 "_build_demographic_timeseries_query",
                 "_build_demographic_segment_timeseries_views",
@@ -1461,14 +1882,23 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("$420 spend", first["evidence_summary"])
         self.assertEqual(len(first["strategy_views"]), 2)
         labels = {view["label"] for view in first["strategy_views"]}
-        self.assertEqual(labels, {"Angles for 25-34 / female", "Hooks for 25-34 / female"})
+        self.assertEqual(
+            labels,
+            {"Messaging angles (account-wide)", "Hook types (account-wide)"},
+        )
+        dimensions = set()
         for view in first["strategy_views"]:
+            self.assertEqual(view["focus_segment"], "25-34 / female")
             query = view["strategy_query"]
-            self.assertEqual(query["tool"], "get_creative_strategy_report")
+            self.assertEqual(query["tool"], "get_taxonomy_performance")
             self.assertEqual(query["brand_name"], "Acme")
             self.assertEqual(query["date_preset"], "last_30_days")
-            self.assertEqual(query["focus_segment"], "25-34 / female")
-            self.assertEqual(query["columns"], "demographic_segment")
+            self.assertNotIn("rows", query)
+            self.assertNotIn("columns", query)
+            self.assertNotIn("focus_segment", query)
+            self.assertNotIn("demographic_segment", json.dumps(query))
+            dimensions.add(query["dimension"])
+        self.assertEqual(dimensions, {"messaging_angle", "hook_type"})
 
         timeseries_views = namespace["_build_demographic_segment_timeseries_views"](
             [

@@ -18,6 +18,17 @@
   `scale_kill_hold` now ranks via `get_creative_leaderboard`, `batch_readout`
   grades via `get_batch_readout`, and `monday_money_check` /
   `weekly_creative_report` compare via `compare_periods`.
+- Fixed the remaining surfaces of the tag x demographic_segment cross
+  (structurally `not_applicable` on the API -- demographics are account-level
+  only, with no per-ad key): `export_demographics_context`'s and
+  `export_brain_learnings_context`'s suggested strategy views/decision queue
+  used to emit follow-up queries pairing a creative tag with a demographic
+  axis, which always came back empty. These now route to a real,
+  answerable read instead -- either a demographic x demographic pairing or a
+  separate, account-wide `get_taxonomy_performance` call, never a joined
+  cross. Also corrected a factual error in `hook_report`'s own step 4:
+  `report_template="hook-performance"` crosses hook x format, not
+  hook x messaging_angle.
 
 ## 0.2.4 - 2026-07-16
 
