@@ -19,14 +19,25 @@ Usage:
 import json
 import math
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, BinaryIO
 
 import httpx
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.shared.exceptions import McpError
+from mcp.types import (
+    INVALID_PARAMS,
+    CallToolResult,
+    ErrorData,
+    GetPromptResult,
+    Prompt,
+    PromptArgument,
+    PromptMessage,
+    TextContent,
+    Tool,
+)
 
 from creative_tagger_mcp import __version__
 
@@ -4749,6 +4760,1189 @@ def _ratio(value: object) -> str:
 
 def _join(*parts: object) -> str:
     return "_".join(str(part) for part in parts if str(part or "").strip())
+
+
+# ---------- Prompts ----------
+#
+# MCP prompts are report *recipes*: each one tells the calling LLM exactly
+# which of this server's tools to call, in what order, with what arguments,
+# and how to write up the result. Argument values arrive as strings (the MCP
+# prompts wire format is dict[str, str] | None) — the _prompt_* helpers below
+# parse and validate them the same way tool arguments are validated elsewhere
+# in this file, then every template embeds already-resolved values (dates,
+# translated date_preset vocabulary, spend floors) so the calling LLM is
+# handed exact tool calls to make, never left to compute or guess one itself.
+
+_PROMPT_REPORT_CONTRACT = """\
+MEASUREMENT STATES. Every figure in your report is exactly one of three states — say which:
+- measured: a real number from synced data at or above the tool's own spend/sample floor.
+- not_applicable: the metric does not exist for this system or this read (e.g. blended
+  Shopify/MER when only Meta-attributed revenue is wired here — say "not_applicable", never
+  "$0" or a guess).
+- not_reported: the metric could exist but is not available right now (not connected, not
+  synced, below the spend/sample floor, too new to judge, or the tool returned
+  insufficient_data / an "unproven" label). Never invent a number for a not_reported value.
+  "Unknowable" and "not_reported" are the same state — always say "not_reported".
+
+UNATTRIBUTED BUCKET. If a report groups by product (or any dimension) and an "Unattributed"
+bucket appears, it is coverage evidence only — the share of spend/creatives that could not be
+resolved to a specific value. Report its share as a gap. Never rank it, and never call it a
+winner, loser, or top performer.
+
+SPEND MATERIALITY. Never call a taxonomy value, hook, ad, or matrix cell a winner or loser below
+the tool's own spend/sample floor (spend_threshold, minimum_spend, or equivalent — these tools
+default to $500 unless the prompt sets one explicitly). A row the tool already labeled unproven,
+insufficient_data, or insufficient_points stays labeled that way in your report; do not upgrade
+it to a confident verdict of your own.
+
+INSUFFICIENT EVIDENCE. When a tool response carries insufficient_data / insufficient_detail, or
+everything in scope is unproven, your first line IS that verdict: state plainly there is not
+enough evidence to call it, and name what would need to sync (more spend, more days, a
+reconnected account) before it could be judged.
+
+FRESHNESS. When a tool response includes a freshness envelope (last_synced_at, data_age_hours,
+stale) or its own top-level last_synced_at/stale fields, open with it if stale is true — a stale
+sync can invalidate every verdict built on the same call, so say so before anything else.
+
+OUTPUT FORMAT. Verdict first, receipts after. The first three lines must give a busy operator
+the answer with no scrolling: the state, the direction/magnitude, and the one thing to do next.
+Then back it with the specific numbers, each labeled measured/not_applicable/not_reported, and
+any freshness or coverage caveats. Tight markdown. No preamble, no hedging beyond the three
+measurement states above, no hype.\
+"""
+
+
+def _prompt_str(args: dict[str, str], name: str) -> str:
+    value = args.get(name)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _prompt_required_str(args: dict[str, str], name: str) -> str:
+    value = _prompt_str(args, name)
+    if not value:
+        raise ValueError(f"{name} is required")
+    return value
+
+
+def _prompt_enum(
+    args: dict[str, str], name: str, allowed: tuple[str, ...], *, default: str
+) -> str:
+    value = _prompt_str(args, name) or default
+    if value not in allowed:
+        raise ValueError(f"{name} must be one of {', '.join(allowed)}; got {value!r}")
+    return value
+
+
+def _prompt_float(
+    args: dict[str, str], name: str, *, default: float | None = None
+) -> float | None:
+    raw = _prompt_str(args, name)
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a number; got {raw!r}") from None
+
+
+def _prompt_required_float(args: dict[str, str], name: str) -> float:
+    raw = _prompt_str(args, name)
+    if not raw:
+        raise ValueError(f"{name} is required")
+    try:
+        return float(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a number; got {raw!r}") from None
+
+
+def _prompt_int(
+    args: dict[str, str], name: str, *, default: int, minimum: int, maximum: int
+) -> int:
+    raw = _prompt_str(args, name)
+    if not raw:
+        parsed = default
+    else:
+        try:
+            parsed = int(float(raw))
+        except ValueError:
+            raise ValueError(f"{name} must be an integer; got {raw!r}") from None
+    return max(minimum, min(parsed, maximum))
+
+
+def _prompt_bool(args: dict[str, str], name: str, *, default: bool) -> bool:
+    return _coerce_bool(args.get(name), default=default)
+
+
+def _prompt_date(args: dict[str, str], name: str, *, default: str = "") -> str:
+    raw = _prompt_str(args, name) or default
+    if not raw:
+        return raw
+    try:
+        datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"{name} must be YYYY-MM-DD; got {raw!r}") from None
+    return raw
+
+
+def _prompt_required_date(args: dict[str, str], name: str) -> str:
+    raw = _prompt_str(args, name)
+    if not raw:
+        raise ValueError(f"{name} is required (YYYY-MM-DD)")
+    try:
+        datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"{name} must be YYYY-MM-DD; got {raw!r}") from None
+    return raw
+
+
+def _fmt_num(value: float | int | None) -> str:
+    if value is None:
+        return ""
+    return f"{value:g}"
+
+
+_WINDOW_DAYS_BY_PRESET = {
+    "last_7_days": 7,
+    "last_7d": 7,
+    "last_30_days": 30,
+    "last_30d": 30,
+    "last_90_days": 90,
+    "last_90d": 90,
+}
+
+
+def _approx_window_for_preset(preset: str) -> tuple[str, str]:
+    """Translate a last_N_days-style preset into concrete YYYY-MM-DD bounds.
+
+    Used only for tools with no native date_preset parameter (get_prebuilt_reports
+    takes start_date/end_date but not date_preset). An approximate inclusive
+    N-calendar-day window ending today in UTC — not a guarantee of another
+    tool's own preset windowing semantics, so every template that uses this
+    labels the result an approximate window for the operator.
+    """
+    days = _WINDOW_DAYS_BY_PRESET.get(preset)
+    if days is None:
+        return "", ""
+    today = datetime.now(timezone.utc).date()
+    start = today - timedelta(days=days - 1)
+    return start.isoformat(), today.isoformat()
+
+
+_TIMESERIES_PRESET_BY_SUMMARY_PRESET = {
+    "last_7_days": "last_7d",
+    "last_30_days": "last_30d",
+    "last_90_days": "last_90d",
+    "all_time": "all_time",
+    "custom": "custom",
+}
+
+
+def _as_timeseries_preset(preset: str) -> str:
+    """get_performance_timeseries/export_performance_timeseries_context use
+    last_7d/last_30d/last_90d/maximum, not the last_7_days/last_30_days/
+    last_90_days vocabulary get_meta_performance_summary, get_taxonomy_performance,
+    get_creative_strategy_report, get_brain_learnings, and get_demographics_performance
+    all share. Translate once, here, so every template hands the calling LLM an
+    already-correct value per tool rather than asking it to convert one itself.
+    """
+    return _TIMESERIES_PRESET_BY_SUMMARY_PRESET.get(preset, preset)
+
+
+_SUMMARY_PRESET_BY_TIMESERIES_PRESET = {
+    "last_7d": "last_7_days",
+    "last_30d": "last_30_days",
+    "last_90d": "last_90_days",
+    "all_time": "all_time",
+    "custom": "custom",
+    "maximum": "all_time",
+}
+
+
+def _as_summary_preset(preset: str) -> str:
+    """Inverse of _as_timeseries_preset, for prompts whose own date_preset
+    argument is expressed in get_performance_timeseries's vocabulary."""
+    return _SUMMARY_PRESET_BY_TIMESERIES_PRESET.get(preset, preset)
+
+
+def _prompt_result(description: str, text: str) -> GetPromptResult:
+    return GetPromptResult(
+        description=description,
+        messages=[
+            PromptMessage(role="user", content=TextContent(type="text", text=text))
+        ],
+    )
+
+
+# ---------- weekly_creative_report ----------
+
+_WEEKLY_REPORT_DATE_PRESETS = ("last_7_days", "last_30_days")
+
+
+def _prompt_weekly_creative_report(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    date_preset = _prompt_enum(
+        args, "date_preset", _WEEKLY_REPORT_DATE_PRESETS, default="last_7_days"
+    )
+    target_roas = _prompt_float(args, "target_roas")
+    target_cpa = _prompt_float(args, "target_cpa")
+    spend_threshold = _prompt_float(args, "spend_threshold", default=500.0)
+    timeseries_preset = _as_timeseries_preset(date_preset)
+    approx_start, approx_end = _approx_window_for_preset(date_preset)
+
+    if target_roas is not None:
+        target_line = f"Target: ROAS >= {_fmt_num(target_roas)}."
+    elif target_cpa is not None:
+        target_line = f"Target: CPA <= {_fmt_num(target_cpa)}."
+    else:
+        target_line = (
+            "No target supplied — report relative winners/losers only (no "
+            "above/below-target framing); target_roas or target_cpa unlocks it."
+        )
+
+    text = f"""\
+Build the Monday creative report for "{brand_name}", window {date_preset}. {target_line}
+
+Call these tools in order and use their real outputs — never fill in a number you did not get
+back from one of them:
+
+1. `get_meta_status(brand_name="{brand_name}")` — check connected/stale first. If stale is
+   true, that is the first line of your report: every number below is only as fresh as this
+   sync, name the freshness.data_age_hours.
+2. `get_meta_performance_summary(brand_name="{brand_name}", date_preset="{date_preset}")` —
+   account totals (spend, revenue, ROAS) and winners/losers by standard and brand taxonomy.
+   Creative Tagger has no single-call period-over-period primitive today — if you need last
+   week's comparable figure, make a second call with explicit start_date/end_date for the
+   prior window and label that comparison "two separate calls, approximate", not an atomic
+   delta.
+3. `get_prebuilt_reports(brand_name="{brand_name}", spend_threshold={_fmt_num(spend_threshold)}, start_date="{approx_start}", end_date="{approx_end}")` —
+   best hooks/angles/formats/landing pages/offers/CTAs. This tool has no date_preset
+   parameter, so the start_date/end_date above are an approximate {date_preset} window, not
+   an exact match to the other calls' windowing — say so if the two disagree materially.
+4. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="ad_name", metric="roas", limit=5, minimum_spend={_fmt_num(spend_threshold)})` —
+   fatigue/trajectory/coverage for the top 5 spenders. Note: get_performance_timeseries uses
+   last_7d/last_30d, not last_7_days/last_30_days — {timeseries_preset} is the correct value
+   for this call, already translated from {date_preset}.
+5. `get_brain_learnings(brand_name="{brand_name}", date_preset="{date_preset}", kinds="conclusion,watch", limit=8)` —
+   recent test conclusions (winner/fatigued/loser) and fatigue watch stories for the
+   this-week narrative.
+
+Write the report as: (a) one verdict line — beat/missed target or "no target set", fresh or
+stale; (b) tag-level winners and losers actually above {_fmt_num(spend_threshold)} spend, each
+labeled measured/not_reported/not_applicable; (c) the fatigue watchlist from step 4, ranked
+worst-trajectory first; (d) a decision queue of 3-5 concrete next actions in the persona's own
+vocabulary (refresh X, brief a test on Y, hold Z). Client-ready markdown; every verdict carries
+its evidence and measurement-state inline, not in a footnote.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Build this week's creative report for a brand: totals with data freshness, which "
+        "hooks/angles/formats won and lost on real spend, which top spenders are fatiguing, "
+        "and what to do next — with sparse or stale evidence called out explicitly.",
+        text,
+    )
+
+
+# ---------- fatigue_check ----------
+
+_FATIGUE_CHECK_METRICS = ("roas", "cpa", "ctr", "thumbstop_rate")
+_FATIGUE_CHECK_DATE_PRESETS = ("last_30d", "last_90d")
+
+
+def _prompt_fatigue_check(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    top_n = _prompt_int(args, "top_n", default=5, minimum=1, maximum=10)
+    metric = _prompt_enum(args, "metric", _FATIGUE_CHECK_METRICS, default="roas")
+    date_preset = _prompt_enum(
+        args, "date_preset", _FATIGUE_CHECK_DATE_PRESETS, default="last_30d"
+    )
+    summary_preset = _as_summary_preset(date_preset)
+
+    text = f"""\
+Check the top {top_n} spenders on "{brand_name}" for creative fatigue before it shows up in
+{metric}, window {date_preset}.
+
+Call these tools in order:
+
+1. `get_meta_status(brand_name="{brand_name}")` — connection + freshness check. If stale is
+   true, lead with it: a stale sync makes every trajectory read below unreliable.
+2. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{date_preset}", group_by="ad_name", metric="{metric}", limit={top_n}, signal_focus="all", trajectory_focus="all")` —
+   per-ad series for the top {top_n} spenders: fatigue signal, trajectory (worsening/improving/
+   flat/insufficient_data), and coverage class (call_ready/gappy/short_window/
+   insufficient_points/windowed_history). Coverage class is your trust label for each read —
+   report it next to every ad, not just the signal.
+3. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{summary_preset}", report_template="fatigue-watch", watch_metric="{metric}")` —
+   cross-check: does the same fatigue signal show up at the taxonomy-cell level (e.g. this
+   hook/angle broadly wearing out), or is it isolated to individual ads? Note:
+   get_creative_strategy_report uses {summary_preset} (last_N_days), not
+   get_performance_timeseries's {date_preset} (last_Nd) — already translated above.
+4. `export_performance_timeseries_context(brand_name="{brand_name}", date_preset="{date_preset}", group_by="ad_name", metric="{metric}", limit={top_n})` —
+   pull the agent_context decision queue (refresh/watch/validate/hold) built from the same
+   fatigue logic, so your action list matches the dashboard's own read.
+
+Rank the {top_n} ads worst-trajectory-first. For each: fatigue signal, trajectory, coverage
+class (state plainly when a read is insufficient_data or short_window — that ad is
+not_reported for fatigue, not "stable"), and the one action (refresh brief, taper spend, hold).
+Ads with a call_ready coverage class and a fatigued+worsening read need a refresh briefed now —
+say so explicitly in your first three lines if any exist.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Check the account's top-spending ads for creative fatigue before it shows up in "
+        "ROAS: decay signals, trajectory, and how trustworthy each read is, plus which "
+        "winners need a refresh briefed now.",
+        text,
+    )
+
+
+# ---------- scale_kill_hold ----------
+
+_SCALE_KILL_HOLD_OBJECTIVE_METRICS = ("roas", "cpa")
+_SCALE_KILL_HOLD_DATE_PRESETS = ("all_time", "last_7_days", "last_30_days", "last_90_days", "custom")
+
+
+def _prompt_scale_kill_hold(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    objective_metric = _prompt_enum(
+        args, "objective_metric", _SCALE_KILL_HOLD_OBJECTIVE_METRICS, default="roas"
+    )
+    if not _prompt_str(args, "objective_metric"):
+        raise ValueError("objective_metric is required (roas or cpa)")
+    target_value = _prompt_required_float(args, "target_value")
+    minimum_spend = _prompt_float(args, "minimum_spend", default=500.0)
+    date_preset = _prompt_enum(
+        args, "date_preset", _SCALE_KILL_HOLD_DATE_PRESETS, default="last_30_days"
+    )
+    timeseries_preset = _as_timeseries_preset(date_preset)
+    better_direction = "higher is better" if objective_metric == "roas" else "lower is better"
+
+    text = f"""\
+Produce today's scale/kill/hold triage for "{brand_name}" against objective_metric="{objective_metric}"
+(target_value={_fmt_num(target_value)}, {better_direction}), window {date_preset},
+minimum_spend={_fmt_num(minimum_spend)}.
+
+Call these tools in order:
+
+1. `get_meta_status(brand_name="{brand_name}")` — freshness check. A stale sync means today's
+   triage is provisional; say so first if stale is true.
+2. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="ad_name", metric="{objective_metric}", limit=10, minimum_spend={_fmt_num(minimum_spend)})` —
+   the per-ad triage list. Each series entry's totals.{objective_metric} is that ad's real
+   aggregate {objective_metric} for the window — compare it directly to target_value. Its
+   fatigue signal, trajectory, and coverage class are your trust labels; note
+   get_performance_timeseries uses {timeseries_preset} (last_Nd), already translated from
+   {date_preset}.
+3. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", report_template="next-tests", minimum_spend={_fmt_num(minimum_spend)}, {objective_metric}_target={_fmt_num(target_value)})` —
+   the taxonomy-cell view of the same account: does a whole hook/angle/format cell justify the
+   same call the individual ad triage made? This tool has no per-ad row — use it to corroborate,
+   never as a substitute for the per-ad list above.
+4. `get_taxonomy_performance(brand_name="{brand_name}", date_preset="{date_preset}", spend_threshold={_fmt_num(minimum_spend)})` —
+   coverage_gaps and unproven tags, so an ad riding a broadly-unproven taxonomy cell is flagged
+   as thinner evidence even if its own number looks decisive.
+
+Bucket every ad with spend >= {_fmt_num(minimum_spend)} into exactly one of:
+- scale: {objective_metric} clears target_value with a call_ready or stable/improving read.
+- kill: {objective_metric} misses target_value with a call_ready read, or the fatigue signal is
+  fatigued and trajectory is worsening.
+- hold: {objective_metric} is close to target_value with no clear signal either way, or the
+  coverage class is short_window/gappy — real spend, ambiguous read.
+Anything under {_fmt_num(minimum_spend)} spend, or flagged insufficient_data/insufficient_points/
+unproven by a tool, goes in a separate insufficient-evidence bucket — never forced into
+scale/kill/hold. Lead your report with the counts in each bucket, then the one or two numbers
+justifying each individual call.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Produce today's scale/kill/hold verdict list against your declared target, with "
+        "evidence attached to every call and an explicit 'not enough data to judge' bucket "
+        "instead of false confidence.",
+        text,
+    )
+
+
+# ---------- what_to_make_next_brief ----------
+
+
+def _prompt_what_to_make_next_brief(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    production_slots = _prompt_int(
+        args, "production_slots", default=5, minimum=1, maximum=50
+    )
+    formats_available = _prompt_str(args, "formats_available")
+    date_preset = _prompt_str(args, "date_preset") or "last_30_days"
+    formats_clause = (
+        f" Available formats this sprint: {formats_available}."
+        if formats_available
+        else " No format constraint given — brief across whatever formats the evidence supports."
+    )
+
+    text = f"""\
+Build the next-sprint creative brief for "{brand_name}": {production_slots} production
+slot(s), window {date_preset}.{formats_clause}
+
+Call these tools in order:
+
+1. `get_taxonomy_performance(brand_name="{brand_name}", date_preset="{date_preset}")` —
+   tag-level winners (proven, spend-gated) and coverage_gaps (standard taxonomy values never
+   tried at all).
+2. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", report_template="coverage-gaps")` —
+   the matrix view of untested hook x angle (or configured rows/columns) cells, so whitespace
+   bets are adjacent to proven cells, not random.
+3. `get_library_patterns(brand_name="{brand_name}")` — concentration risk: which hooks, angles,
+   creative types the library over- or under-indexes on across its whole history (this tool has
+   no date_preset — it reads the full library).
+4. `analyze_gaps(brand_name="{brand_name}")` — ready-to-produce briefs the API already drafted
+   from the same gap analysis; use these as a starting set, not a replacement for your own
+   evidence-grounded prioritization.
+5. `recommend(brand_name="{brand_name}", question="Given {production_slots} production slots{(' for ' + formats_available) if formats_available else ''}, what should we iterate on proven winners vs bet on as net-new whitespace this sprint?")` —
+   open-ended strategist synthesis grounded in this brand's library + saved brand context.
+
+Produce exactly {production_slots} per-slot briefs, each in taxonomy vocabulary (hook_type,
+messaging_angle, visual_format, etc. — not freeform description), ranked proven-iteration
+first, whitespace-bet second. Label every brief one of:
+- iterate: measured — grounded in a specific spend-gated winner from step 1 or 2 (name the
+  metric and the spend it cleared).
+- whitespace bet: not_reported — an untested-but-adjacent cell from steps 1/2/4; say why it is
+  adjacent to a proven cell, not just untested.
+If get_library_patterns shows a concentration risk (e.g. one hook/angle far over-indexed), open
+with it — that risk should shape which slots go to diversification vs doubling down.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Turn performance and coverage gaps into next sprint's brief: what to iterate, what "
+        "net-new cells to test, and what to stop making — each recommendation grounded in "
+        "spend-weighted evidence or flagged as a whitespace bet.",
+        text,
+    )
+
+
+# ---------- hook_report ----------
+
+
+def _prompt_hook_report(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    date_preset = _prompt_str(args, "date_preset") or "last_30_days"
+    spend_threshold = _prompt_float(args, "spend_threshold", default=500.0)
+    timeseries_preset = _as_timeseries_preset(date_preset)
+    approx_start, approx_end = _approx_window_for_preset(date_preset)
+
+    text = f"""\
+Diagnose hook performance for "{brand_name}", window {date_preset}, spend_threshold={_fmt_num(spend_threshold)}.
+
+Call these tools in order:
+
+1. `get_prebuilt_reports(brand_name="{brand_name}", report_id="best_hooks", spend_threshold={_fmt_num(spend_threshold)}, start_date="{approx_start}", end_date="{approx_end}")` —
+   thumbstop AND downstream CPA/ROAS per hook type in one ranked view. This tool has no
+   date_preset parameter, so the start_date/end_date above approximate {date_preset}.
+2. `get_taxonomy_performance(brand_name="{brand_name}", dimension="hook_type", spend_threshold={_fmt_num(spend_threshold)}, date_preset="{date_preset}")` —
+   the same hook_type dimension with its coverage_gaps: hook types never tried at all, and
+   which tried ones are still "unproven" below the spend floor.
+3. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="hook_type", metric="thumbstop_rate", minimum_spend={_fmt_num(spend_threshold)})` —
+   is thumbstop for each hook type decaying over time (the hook itself wearing out across the
+   account), independent of any one creative? Note the translated {timeseries_preset} value.
+4. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", report_template="hook-performance", minimum_spend={_fmt_num(spend_threshold)})` —
+   the named hook x messaging_angle matrix with hook/hold/thumbstop/CPA metrics, so a hook's
+   read can be qualified by which angle it was paired with.
+5. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", rows="hook", columns="demographic_segment", minimum_spend={_fmt_num(spend_threshold)})` —
+   hook-by-audience fit. get_creative_strategy_report's rows/columns dimension is named
+   "hook" (not "hook_type" — that spelling is for get_taxonomy_performance/
+   get_performance_timeseries only). There is no named report_template for this cut — set
+   rows/columns explicitly, exactly as shown, rather than guessing a template name.
+
+For every hook type with spend >= {_fmt_num(spend_threshold)}: report thumbstop_rate
+AND the downstream metric (CPA or ROAS) side by side — flag any hook with high thumbstop but
+poor downstream as a "stops the scroll, doesn't convert" trap, not a winner. Flag any hook with
+a worsening thumbstop trend from step 3 as wearing out, even if its all-time average still looks
+fine. Close with which hooks are proven enough to cut onto a different (winning) body next, and
+which hook types in coverage_gaps are untested whitespace.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Which hooks are earning the view AND the purchase, which are getting skipped, and "
+        "which are wearing out — with minimum-spend gating so a $50 fluke never reads as a "
+        "trend.",
+        text,
+    )
+
+
+# ---------- batch_readout ----------
+
+
+def _prompt_batch_readout(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    batch_start_date = _prompt_required_date(args, "batch_start_date")
+    today = datetime.now(timezone.utc).date().isoformat()
+    batch_end_date = _prompt_date(args, "batch_end_date", default=today)
+    baseline_preset = _prompt_str(args, "baseline_preset") or "last_90_days"
+
+    text = f"""\
+Grade the creative batch launched {batch_start_date} to {batch_end_date} for "{brand_name}",
+against the {baseline_preset} account baseline.
+
+Call these tools in order:
+
+1. `create_custom_report(brand_name="{brand_name}", dimensions=["hook_type", "messaging_angle"], metric="roas", start_date="{batch_start_date}", end_date="{batch_end_date}")` —
+   which taxonomy attribute combinations actually occurring in the batch window correlate with
+   wins. Rows include parts/values so you can name the winning combination precisely.
+2. `list_library(brand_name="{brand_name}", sort="recent", limit=50)` — candidate creatives to
+   cross-reference against the batch window. list_library has no launch-date filter — treat
+   this as a recency-sorted candidate set to filter by eye against
+   {batch_start_date}/{batch_end_date}, not a guaranteed exact cohort.
+3. `get_performance_timeseries(brand_name="{brand_name}", group_by="ad_name", date_preset="custom", start_date="{batch_start_date}", end_date="{batch_end_date}", limit=10)` —
+   per-ad verdicts inside the batch window: which specific ads in the batch won, lost, or never
+   cleared the tool's own spend floor (default $500) to be judged at all.
+4. `get_taxonomy_performance(brand_name="{brand_name}", date_preset="{baseline_preset}")` —
+   the account's own historical baseline, so "won" means beat the account's own bar, not an
+   arbitrary number.
+
+Report three groups: (a) ads/attributes that beat the {baseline_preset} baseline on real spend —
+name the taxonomy attributes step 1 shows they share; (b) ads/attributes that missed it on real
+spend; (c) an explicit too-early-to-judge bucket for every ad in the batch that never cleared
+the spend floor in step 3 — list these by name, do not fold them into either winners or losers.
+Lead with the three counts, then the shared attributes behind the winners.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Grade a creative batch: what won, what lost, what taxonomy attributes the winners "
+        "share, and — honestly — which ads never got enough spend to call either way.",
+        text,
+    )
+
+
+# ---------- monday_money_check ----------
+
+_MONDAY_MONEY_CHECK_DATE_PRESETS = ("last_7_days", "last_30_days")
+
+
+def _prior_window(start_date: str, end_date: str) -> tuple[str, str]:
+    """The immediately-preceding window of the same length as [start, end].
+
+    Used to approximate a period-over-period comparison with two separate
+    calls, since none of these tools expose a single-call PoP primitive.
+    """
+    start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    length = (end - start).days + 1
+    prior_end = start - timedelta(days=1)
+    prior_start = prior_end - timedelta(days=length - 1)
+    return prior_start.isoformat(), prior_end.isoformat()
+
+
+def _prompt_monday_money_check(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    breakeven_roas = _prompt_float(args, "breakeven_roas")
+    target_cpa = _prompt_float(args, "target_cpa")
+    if breakeven_roas is None and target_cpa is None:
+        raise ValueError("breakeven_roas is required unless target_cpa is given")
+    date_preset = _prompt_enum(
+        args, "date_preset", _MONDAY_MONEY_CHECK_DATE_PRESETS, default="last_7_days"
+    )
+    timeseries_preset = _as_timeseries_preset(date_preset)
+    this_start, this_end = _approx_window_for_preset(date_preset)
+    prior_start, prior_end = _prior_window(this_start, this_end)
+    objective_metric = "cpa" if breakeven_roas is None else "roas"
+    target_line = (
+        f"breakeven_roas={_fmt_num(breakeven_roas)}"
+        if breakeven_roas is not None
+        else f"target_cpa={_fmt_num(target_cpa)}"
+    )
+
+    text = f"""\
+Monday money check for "{brand_name}": {target_line}, window {date_preset}
+({this_start} to {this_end}) vs the prior comparable window ({prior_start} to {prior_end}).
+
+Call these tools in order:
+
+1. `get_meta_status(brand_name="{brand_name}")` — connection + freshness first. If stale is
+   true, that IS the verdict: say the numbers below are stale before anything else.
+2. `get_meta_performance_summary(brand_name="{brand_name}", date_preset="{date_preset}")` —
+   this window's spend, revenue, and ROAS. Compare directly against {target_line}.
+3. `get_meta_performance_summary(brand_name="{brand_name}", start_date="{prior_start}", end_date="{prior_end}")` —
+   the prior comparable window. This is a second, separate call (no single-call
+   period-over-period primitive exists) — label the comparison "two calls, approximate", not
+   an atomic delta.
+4. `get_performance_timeseries(brand_name="{brand_name}", date_preset="{timeseries_preset}", group_by="ad_name", metric="{objective_metric}", limit=5)` —
+   the biggest per-ad mover this window, to point at one concrete thing worth digging into
+   rather than a vague "performance is down."
+
+Report ONLY Meta-attributed figures — this system has no Shopify/blended-revenue connector, so
+blended MER is not_applicable this window, not "unavailable" or a guess. Your first three lines:
+(1) above or below {target_line} this window; (2) better or worse than the prior window, framed
+as approximate; (3) the one ad/driver from step 4 worth a look, or "nothing stands out" if
+nothing does. Everything else is receipts.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Bottom line for the week: above or below your breakeven, better or worse than last "
+        "week, and whether anything needs your attention — one verdict, evidence attached, no "
+        "dashboard to interpret. (Meta-attributed only; blended MER noted as unavailable.)",
+        text,
+    )
+
+
+# ---------- competitive_whitespace ----------
+
+
+def _prompt_competitive_whitespace(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    competitor = _prompt_str(args, "competitor")
+    country = _prompt_str(args, "country") or "US"
+    run_fresh_scan = _prompt_bool(args, "run_fresh_scan", default=False)
+    date_preset = _prompt_str(args, "date_preset") or "last_90_days"
+    competitor_clause = f' for "{competitor}"' if competitor else " (no specific competitor named — use the most recent saved scan)"
+    scan_call = (
+        f'`scan_competitor(brand_name="{brand_name}", page_name="{competitor}", country="{country}")`'
+        if competitor
+        else f'`scan_competitor(brand_name="{brand_name}", country="{country}")`'
+    )
+
+    text = f"""\
+Diff competitor creative strategy against "{brand_name}"'s own library{competitor_clause},
+country={country}, run_fresh_scan={run_fresh_scan}.
+
+Call these tools in order:
+
+1. `get_competitor_scan_history(brand_name="{brand_name}", limit=10)` — saved scans/imports
+   already on file. Look for one matching {competitor or "the target competitor"}.
+2. Branch here: if run_fresh_scan is {run_fresh_scan} and a matching saved scan exists in step
+   1's results, call `get_competitor_scan_detail(scan_id=<that id>)` to reuse it. Otherwise —
+   run_fresh_scan is true, or nothing matching was saved — call {scan_call} (a live Meta Ad
+   Library scan; can take up to 5 minutes). Either path gives you the competitor's ads,
+   per-ad Creative Tagger analyses, and an aggregate strategy breakdown (dominant hook types,
+   visual styles, CTAs, emotions, estimated spend).
+3. `get_library_patterns(brand_name="{brand_name}")` — our own hook/angle/format concentration
+   across the whole library (no date filter on this tool).
+4. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", report_template="coverage-gaps")` —
+   our own untested taxonomy cells, window {date_preset}.
+
+Diff the competitor's dominant hooks/angles/formats/CTAs (step 2's strategy breakdown) against
+our coverage_gaps (step 4) and concentration (step 3). This tool has no first-seen/last-seen
+longevity signal — you cannot say how long a competitor angle has run, only that it appears in
+this scan; do not claim "60+ days" or any duration not_reported. Native Meta Ad Library access
+depth may also be gated — if step 2 returns thin results, say so rather than treating a small
+sample as the competitor's full strategy. Close with 1-2 test briefs: competitor cells with
+real presence in their scan that are also empty in our coverage_gaps, in taxonomy vocabulary.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Diff a competitor's live ad strategy against your own library on the same taxonomy: "
+        "their dominant hooks/angles/formats, the cells you have zero coverage on, and which "
+        "of their proven angles deserve a test brief.",
+        text,
+    )
+
+
+# ---------- audience_read ----------
+
+_AUDIENCE_READ_OBJECTIVE_METRICS = ("roas", "cpa", "ctr")
+_AUDIENCE_READ_GOAL_DIRECTIONS = ("maximize", "minimize")
+_AUDIENCE_READ_EXPECTED_DIRECTION = {"roas": "maximize", "cpa": "minimize", "ctr": "maximize"}
+
+
+def _prompt_audience_read(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    objective_metric = _prompt_enum(
+        args, "objective_metric", _AUDIENCE_READ_OBJECTIVE_METRICS, default="roas"
+    )
+    if not _prompt_str(args, "objective_metric"):
+        raise ValueError("objective_metric is required (roas, cpa, or ctr)")
+    goal_direction = _prompt_enum(
+        args, "goal_direction", _AUDIENCE_READ_GOAL_DIRECTIONS, default="maximize"
+    )
+    if not _prompt_str(args, "goal_direction"):
+        raise ValueError("goal_direction is required (maximize or minimize)")
+    expected_direction = _AUDIENCE_READ_EXPECTED_DIRECTION[objective_metric]
+    if goal_direction != expected_direction:
+        raise ValueError(
+            f"goal_direction must be {expected_direction!r} for objective_metric={objective_metric!r}, "
+            f"got {goal_direction!r}"
+        )
+    date_preset = _prompt_str(args, "date_preset") or "last_30_days"
+    custom_ranking_note = (
+        ""
+        if objective_metric == "roas"
+        else (
+            f' get_demographics_performance\'s own opportunity/waste signal is computed on '
+            f"ROAS internally — since objective_metric is {objective_metric}, do not reuse that "
+            f"signal; independently rank segments by their own segment.{objective_metric} field "
+            f"({goal_direction}) and say plainly you built a custom ranking because the tool's "
+            f"built-in signal is ROAS-specific."
+        )
+    )
+
+    text = f"""\
+Read audience efficiency for "{brand_name}" on objective_metric="{objective_metric}"
+({goal_direction}), window {date_preset}.
+
+Call these tools in order:
+
+1. `get_demographics_performance(brand_name="{brand_name}", date_preset="{date_preset}")` —
+   age x gender segments with spend, roas, cpa, ctr, and account-relative
+   higher_observed_efficiency / lower_observed_efficiency bands per segment.{custom_ranking_note}
+2. `export_demographics_context(brand_name="{brand_name}", date_preset="{date_preset}", limit=5)` —
+   the bounded, prompt-ready review queue plus follow-up strategy/time-series queries the API
+   already drafted for these segments.
+3. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", rows="messaging_angle", columns="demographic_segment")` —
+   which messaging angles fit which audience segments. No named report_template covers this
+   mixed cut — rows/columns are set explicitly.
+4. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", rows="hook", columns="demographic_segment")` —
+   the same cut for hooks (dimension name "hook", not "hook_type", for this tool specifically).
+
+This tool covers age x gender only — no geo or placement axis exists on this MCP surface; do
+not claim a placement or geo read. Report segments in higher_observed_efficiency vs
+lower_observed_efficiency bands (never "best"/"worst audience" — these are observed
+associations, not causal outcomes), then which hooks/angles from steps 3-4 pair with which
+segments. Close every efficiency claim with the controlled test that would confirm it (e.g. a
+holdout or geo split), and explicitly do NOT issue a budget/spend-shift instruction from this
+observational read alone — that requires the validation test, not this report.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Who your spend is reaching vs who is efficiently converting, broken by age and "
+        "gender and crossed with hooks and angles — reported as observed associations with "
+        "the controlled tests that would confirm them.",
+        text,
+    )
+
+
+# ---------- client_review_pack ----------
+
+
+def _prompt_client_review_pack(args: dict[str, str]) -> GetPromptResult:
+    brand_name = _prompt_required_str(args, "brand_name")
+    period_start = _prompt_required_date(args, "period_start")
+    period_end = _prompt_required_date(args, "period_end")
+    client_cpa_target = _prompt_float(args, "client_cpa_target")
+    include_competitors = _prompt_bool(args, "include_competitors", default=True)
+    target_clause = (
+        f" against a client CPA target of {_fmt_num(client_cpa_target)}"
+        if client_cpa_target is not None
+        else " (no client_cpa_target supplied — report totals without an against-target verdict)"
+    )
+    competitor_step = (
+        f'6. `get_competitor_scan_history(brand_name="{brand_name}", limit=5)` — competitor '
+        "context from saved scans only (no fresh scan triggered — this report stays bounded "
+        "and fast). If nothing is saved, say competitor context is not_reported, not empty.\n"
+        if include_competitors
+        else ""
+    )
+    competitor_section = (
+        "competitor context, "
+        if include_competitors
+        else "no competitor section requested this run, "
+    )
+
+    text = f"""\
+Assemble the monthly client review for "{brand_name}", period {period_start} to {period_end}{target_clause}.
+
+Call these tools in order:
+
+1. `get_meta_status(brand_name="{brand_name}")` — connection + freshness. This report must
+   reconcile with what the client sees in Ads Manager, so lead with sync state and
+   last_synced_at before any figure below.
+2. `get_meta_performance_summary(brand_name="{brand_name}", start_date="{period_start}", end_date="{period_end}")` —
+   period totals (spend, revenue, ROAS) plus the same freshness envelope.
+3. `get_prebuilt_reports(brand_name="{brand_name}", start_date="{period_start}", end_date="{period_end}")` —
+   omit report_id to get every prebuilt report (hooks, angles, formats, landing pages,
+   offers, CTAs) for the winner-pattern headline.
+4. `get_brain_learnings(brand_name="{brand_name}", start_date="{period_start}", end_date="{period_end}", kinds="conclusion", limit=8)` —
+   the testing slide: recent winner/fatigued/loser conclusions with their evidence.
+5. `get_demographics_performance(brand_name="{brand_name}", start_date="{period_start}", end_date="{period_end}")` —
+   the audience-read section, age x gender only.
+{competitor_step}
+Structure the review as: (a) period totals with freshness/attribution notes so the client can
+reconcile against Ads Manager, framed against the client CPA target when one was given; (b) the
+winner-pattern headline — what the winners share, in taxonomy vocabulary; (c) the testing slide
+— what was tested and what was concluded, each conclusion with its evidence and
+measurement-state; (d) the audience read, framed as observed associations, never causal; (e)
+{competitor_section}and (f) 1-2 approved-test proposals for next month grounded in this
+period's evidence. Every figure in every section carries its freshness/measurement-state — this
+is a client-facing document, not an internal note.
+
+{_PROMPT_REPORT_CONTRACT}
+"""
+    return _prompt_result(
+        "Assemble the monthly client review: what drove results, what the winners have in "
+        "common, what we tested and learned, and what to test next — every figure stamped "
+        "with sync freshness so it reconciles with what the client sees in Ads Manager.",
+        text,
+    )
+
+
+# ---------- Prompt registry ----------
+
+_PROMPTS: list[Prompt] = [
+    Prompt(
+        name="weekly_creative_report",
+        title="Weekly Creative Report",
+        description=(
+            "Build this week's creative report for a brand: totals with data freshness, "
+            "which hooks/angles/formats won and lost on real spend, which top spenders are "
+            "fatiguing, and what to do next — with sparse or stale evidence called out "
+            "explicitly."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="date_preset",
+                description="last_7_days or last_30_days (default last_7_days)",
+                required=False,
+            ),
+            PromptArgument(
+                name="target_roas",
+                description="Target ROAS to frame winners/losers against (optional)",
+                required=False,
+            ),
+            PromptArgument(
+                name="target_cpa",
+                description="Target CPA, an alternative to target_roas (optional)",
+                required=False,
+            ),
+            PromptArgument(
+                name="spend_threshold",
+                description="Spend floor before a tag counts as a winner/loser (default 500)",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="fatigue_check",
+        title="Fatigue Check",
+        description=(
+            "Check the account's top-spending ads for creative fatigue before it shows up "
+            "in ROAS: decay signals, trajectory, and how trustworthy each read is, plus "
+            "which winners need a refresh briefed now."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="top_n",
+                description="Top N spenders to check, 1-10 (default 5)",
+                required=False,
+            ),
+            PromptArgument(
+                name="metric",
+                description="roas, cpa, ctr, or thumbstop_rate (default roas)",
+                required=False,
+            ),
+            PromptArgument(
+                name="date_preset",
+                description="last_30d or last_90d (default last_30d)",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="scale_kill_hold",
+        title="Scale / Kill / Hold",
+        description=(
+            "Produce today's scale/kill/hold verdict list against your declared target, "
+            "with evidence attached to every call and an explicit 'not enough data to "
+            "judge' bucket instead of false confidence."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="objective_metric",
+                description="roas or cpa — predeclared per the measurement contract",
+                required=True,
+            ),
+            PromptArgument(
+                name="target_value",
+                description="Target value for objective_metric",
+                required=True,
+            ),
+            PromptArgument(
+                name="minimum_spend",
+                description="Spend floor before a call counts as evidence (default 500)",
+                required=False,
+            ),
+            PromptArgument(
+                name="date_preset",
+                description=(
+                    "all_time, last_7_days, last_30_days, last_90_days, or custom "
+                    "(default last_30_days)"
+                ),
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="what_to_make_next_brief",
+        title="What To Make Next",
+        description=(
+            "Turn performance and coverage gaps into next sprint's brief: what to iterate, "
+            "what net-new cells to test, and what to stop making — each recommendation "
+            "grounded in spend-weighted evidence or flagged as a whitespace bet."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="production_slots",
+                description="Number of creative briefs to produce (default 5)",
+                required=False,
+            ),
+            PromptArgument(
+                name="formats_available",
+                description="Constrain briefs to these formats, e.g. 'UGC video, static' (optional)",
+                required=False,
+            ),
+            PromptArgument(
+                name="date_preset",
+                description="Date window preset (default last_30_days)",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="hook_report",
+        title="Hook Report",
+        description=(
+            "Which hooks are earning the view AND the purchase, which are getting "
+            "skipped, and which are wearing out — with minimum-spend gating so a $50 "
+            "fluke never reads as a trend."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="date_preset",
+                description="Date window preset (default last_30_days)",
+                required=False,
+            ),
+            PromptArgument(
+                name="spend_threshold",
+                description="Spend floor before a hook counts as proven (default 500)",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="batch_readout",
+        title="Batch Readout",
+        description=(
+            "Grade a creative batch: what won, what lost, what taxonomy attributes the "
+            "winners share, and — honestly — which ads never got enough spend to call "
+            "either way."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="batch_start_date",
+                description="Batch launch window start, YYYY-MM-DD",
+                required=True,
+            ),
+            PromptArgument(
+                name="batch_end_date",
+                description="Batch launch window end, YYYY-MM-DD (default today)",
+                required=False,
+            ),
+            PromptArgument(
+                name="baseline_preset",
+                description="Account baseline window to grade against (default last_90_days)",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="monday_money_check",
+        title="Monday Money Check",
+        description=(
+            "Bottom line for the week: above or below your breakeven, better or worse "
+            "than last week, and whether anything needs your attention — one verdict, "
+            "evidence attached, no dashboard to interpret. (Meta-attributed only; "
+            "blended MER noted as unavailable.)"
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="breakeven_roas",
+                description="Breakeven ROAS target; required unless target_cpa is given",
+                required=False,
+            ),
+            PromptArgument(
+                name="target_cpa",
+                description="Target CPA, an alternative to breakeven_roas",
+                required=False,
+            ),
+            PromptArgument(
+                name="date_preset",
+                description="last_7_days or last_30_days — the 'week' window (default last_7_days)",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="competitive_whitespace",
+        title="Competitive Whitespace",
+        description=(
+            "Diff a competitor's live ad strategy against your own library on the same "
+            "taxonomy: their dominant hooks/angles/formats, the cells you have zero "
+            "coverage on, and which of their proven angles deserve a test brief."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="competitor",
+                description="Competitor page name or page_id (optional — omit to reuse the latest saved scan)",
+                required=False,
+            ),
+            PromptArgument(
+                name="country",
+                description="ISO-2 country code for the scan (default US)",
+                required=False,
+            ),
+            PromptArgument(
+                name="run_fresh_scan",
+                description="Force a fresh Meta Ad Library scan instead of reusing a saved one (default false; can take up to 5 minutes)",
+                required=False,
+            ),
+            PromptArgument(
+                name="date_preset",
+                description="Window for our own coverage-gaps read (default last_90_days)",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="audience_read",
+        title="Audience Read",
+        description=(
+            "Who your spend is reaching vs who is efficiently converting, broken by age "
+            "and gender and crossed with hooks and angles — reported as observed "
+            "associations with the controlled tests that would confirm them."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="objective_metric",
+                description="roas, cpa, or ctr — required to unlock outcome direction",
+                required=True,
+            ),
+            PromptArgument(
+                name="goal_direction",
+                description="maximize or minimize; must agree with objective_metric",
+                required=True,
+            ),
+            PromptArgument(
+                name="date_preset",
+                description="Date window preset (default last_30_days)",
+                required=False,
+            ),
+        ],
+    ),
+    Prompt(
+        name="client_review_pack",
+        title="Client Review Pack",
+        description=(
+            "Assemble the monthly client review: what drove results, what the winners "
+            "have in common, what we tested and learned, and what to test next — every "
+            "figure stamped with sync freshness so it reconciles with what the client "
+            "sees in Ads Manager."
+        ),
+        arguments=[
+            PromptArgument(
+                name="brand_name",
+                description="Exact workspace brand_name from list_workspaces",
+                required=True,
+            ),
+            PromptArgument(
+                name="period_start",
+                description="Review period start, YYYY-MM-DD",
+                required=True,
+            ),
+            PromptArgument(
+                name="period_end",
+                description="Review period end, YYYY-MM-DD",
+                required=True,
+            ),
+            PromptArgument(
+                name="client_cpa_target",
+                description="Client's CPA target, for an against-target verdict (optional)",
+                required=False,
+            ),
+            PromptArgument(
+                name="include_competitors",
+                description="Include a competitor-context section from saved scans (default true)",
+                required=False,
+            ),
+        ],
+    ),
+]
+
+_PROMPT_BUILDERS: dict[str, Any] = {
+    "weekly_creative_report": _prompt_weekly_creative_report,
+    "fatigue_check": _prompt_fatigue_check,
+    "scale_kill_hold": _prompt_scale_kill_hold,
+    "what_to_make_next_brief": _prompt_what_to_make_next_brief,
+    "hook_report": _prompt_hook_report,
+    "batch_readout": _prompt_batch_readout,
+    "monday_money_check": _prompt_monday_money_check,
+    "competitive_whitespace": _prompt_competitive_whitespace,
+    "audience_read": _prompt_audience_read,
+    "client_review_pack": _prompt_client_review_pack,
+}
+
+
+@server.list_prompts()
+async def list_prompts() -> list[Prompt]:
+    return _PROMPTS
+
+
+@server.get_prompt()
+async def get_prompt(name: str, arguments: dict[str, str] | None) -> GetPromptResult:
+    """Render one prompt's messages. Unknown names and invalid/missing argument
+    values (from the per-prompt _prompt_* validators) surface as a protocol-level
+    INVALID_PARAMS error, not a silently-wrong rendered report."""
+    builder = _PROMPT_BUILDERS.get(name)
+    if builder is None:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message=f"Unknown prompt: {name}"))
+    try:
+        return builder(arguments or {})
+    except ValueError as e:
+        raise McpError(ErrorData(code=INVALID_PARAMS, message=str(e))) from e
 
 
 # ---------- Main ----------
