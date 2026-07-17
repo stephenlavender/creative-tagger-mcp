@@ -405,6 +405,26 @@ def test_hook_report_and_audience_read_never_cross_a_tag_with_a_demographic_axis
     assert "account-level" in audience_text.lower()
 
 
+def test_hook_report_step_4_correctly_names_the_hook_performance_axes():
+    """report_template="hook-performance" crosses hook x format on the API
+    (rows="hook", columns="format"; get_creative_strategy_report's own
+    dimension name for that axis is "ad_type", the deprecated alias for
+    visual_format -- see app.pipeline.creative_strategy on the API repo).
+    hook_report step 4's comment used to misdescribe this as "the named hook
+    x messaging_angle matrix" and say a hook's read could be "qualified by
+    which angle it was paired with" -- a factual error about a real, valid
+    template, unrelated to (but discovered alongside) the tag x
+    demographic_segment defect class.
+    """
+    text = run(server.get_prompt("hook_report", {"brand_name": "Acme"})).messages[0].content.text
+
+    assert "hook x messaging_angle" not in text
+    assert "qualified by which angle" not in text
+    assert "hook x format" in text
+    assert "columns=ad_type" in text
+    assert "qualified by which format" in text
+
+
 def test_batch_readout_defaults_end_date_to_today():
     today = datetime.now(timezone.utc).date().isoformat()
 
