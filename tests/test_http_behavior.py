@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -1570,3 +1571,173 @@ def test_export_brain_learnings_context_requires_agent_context(mock_api):
     assert as_text(result) == (
         "Error: Brain learnings response did not include agent_context"
     )
+
+
+# ---------------------------------------------------------------------------
+# Freshness stamp: last_synced_at / data_age_hours / stale envelope
+# ---------------------------------------------------------------------------
+
+
+def test_freshness_envelope_computes_age_hours_from_last_synced_at():
+    twenty_hours_ago = (
+        (datetime.now(timezone.utc) - timedelta(hours=20))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    payload = {
+        "connected": True,
+        "last_synced_at": twenty_hours_ago,
+        "stale": True,
+        "account_id": "act_1",
+    }
+
+    envelope = server._freshness_envelope(payload)
+
+    assert envelope["last_synced_at"] == twenty_hours_ago
+    assert envelope["stale"] is True
+    assert 19.9 < envelope["data_age_hours"] < 20.1
+
+
+def test_freshness_envelope_handles_disconnected_null_timestamp():
+    payload = {"connected": False, "last_synced_at": None, "stale": True}
+
+    envelope = server._freshness_envelope(payload)
+
+    assert envelope == {"last_synced_at": None, "data_age_hours": None, "stale": True}
+
+
+def test_freshness_envelope_handles_unparseable_timestamp_without_crashing():
+    payload = {"last_synced_at": "not-a-timestamp", "stale": False}
+
+    envelope = server._freshness_envelope(payload)
+
+    assert envelope == {
+        "last_synced_at": "not-a-timestamp",
+        "data_age_hours": None,
+        "stale": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"brand_name": "Acme", "totals": {}},  # no "stale" key at all
+        "a plain string response",
+        [1, 2, 3],
+        None,
+    ],
+)
+def test_freshness_envelope_returns_none_when_signal_is_absent(payload):
+    assert server._freshness_envelope(payload) is None
+
+
+def test_with_freshness_stamp_merges_without_clobbering_other_keys():
+    payload = {"brand_name": "Acme", "stale": False, "last_synced_at": "2026-01-01T00:00:00Z"}
+
+    stamped = server._with_freshness_stamp(payload)
+
+    assert stamped["brand_name"] == "Acme"
+    assert stamped["stale"] is False
+    assert stamped["freshness"]["stale"] is False
+    assert stamped["freshness"]["last_synced_at"] == "2026-01-01T00:00:00Z"
+    assert isinstance(stamped["freshness"]["data_age_hours"], float)
+
+
+def test_with_freshness_stamp_is_a_no_op_when_ineligible():
+    payload = {"brand_name": "Acme", "totals": {"spend": 100}}
+
+    assert server._with_freshness_stamp(payload) == payload
+    assert "freshness" not in server._with_freshness_stamp(payload)
+    assert server._with_freshness_stamp("plain text") == "plain text"
+    assert server._with_freshness_stamp([1, 2, 3]) == [1, 2, 3]
+
+
+def test_get_meta_status_response_carries_freshness_envelope(mock_api):
+    # Real /auth/meta/status shape: last_synced_at + stale sit at the top
+    # level alongside connection metadata.
+    stale_at = (
+        (datetime.now(timezone.utc) - timedelta(hours=50))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "connected": True,
+                "status": "connected",
+                "account_id": "act_123",
+                "last_synced_at": stale_at,
+                "last_sync_status": "success",
+                "stale": True,
+                "has_performance_rows": True,
+            },
+        )
+    )
+
+    result = run(server.call_tool("get_meta_status", {"brand_name": "Acme"}))
+    payload = as_json(result)
+
+    assert payload["freshness"]["last_synced_at"] == stale_at
+    assert payload["freshness"]["stale"] is True
+    assert 49.9 < payload["freshness"]["data_age_hours"] < 50.1
+    # Original top-level fields are untouched, not renamed or removed.
+    assert payload["last_synced_at"] == stale_at
+    assert payload["account_id"] == "act_123"
+
+
+def test_get_meta_performance_summary_response_carries_freshness_envelope(mock_api):
+    # Real /meta/performance/summary shape: last_synced_at + stale at the top
+    # level, plus a nested "sync" block merging the same freshness fields.
+    fresh_at = (
+        (datetime.now(timezone.utc) - timedelta(hours=1))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "brand_name": "Acme",
+                "total_rows": 500,
+                "totals": {"spend": 10000, "roas": 2.5},
+                "last_synced_at": fresh_at,
+                "stale": False,
+                "sync": {"imported_at": fresh_at, "last_synced_at": fresh_at, "stale": False},
+            },
+        )
+    )
+
+    result = run(
+        server.call_tool("get_meta_performance_summary", {"brand_name": "Acme"})
+    )
+    payload = as_json(result)
+
+    assert payload["freshness"]["stale"] is False
+    assert payload["freshness"]["last_synced_at"] == fresh_at
+    assert 0.9 < payload["freshness"]["data_age_hours"] < 1.1
+    assert payload["totals"]["spend"] == 10000
+
+
+def test_freshness_stamp_never_applied_to_tools_the_api_has_not_stamped(mock_api):
+    # get_taxonomy_performance's underlying API response has no last_synced_at
+    # / stale contract today (verified against app/pipeline/tag_performance.py
+    # upstream). Even a payload that happens to carry a "stale"-looking key
+    # under a DIFFERENT name must not get a freshness envelope invented for
+    # it, because that handler never calls the shared helper.
+    mock_api.queue(
+        httpx.Response(
+            200,
+            json={
+                "brand_name": "Acme",
+                "standard_taxonomy": {},
+                "coverage_gaps": {},
+                "is_stale_looking_but_not_the_real_field": True,
+            },
+        )
+    )
+
+    result = run(server.call_tool("get_taxonomy_performance", {"brand_name": "Acme"}))
+    payload = as_json(result)
+
+    assert "freshness" not in payload
