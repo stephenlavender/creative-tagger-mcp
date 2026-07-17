@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Added three reporting tools wrapping the merged API surfaces:
+  `get_creative_leaderboard` (ranked scale/kill list with a `below_min_spend`
+  materiality floor and `rankings_withheld` observation mode),
+  `get_batch_readout` (launch-cohort three-way verdicts against a batch-
+  excluding baseline, including `insufficient_evidence`), and `compare_periods`
+  (period-over-period deltas with a funnel decomposition that names the
+  `dominant_factor` and passes through `revenue_caution`).
+- Restructured the public tool catalog for description-budget headroom without
+  changing any tool name or schema: shared workspace/date/fatigue-watch
+  boilerplate now lives once in the server `instructions`, and the runtime
+  catalog compaction layer trims duplicated per-tool prose while the source
+  descriptions stay verbose for humans and the surface tests.
+- Updated the report-recipe prompts to reach the new single-call primitives:
+  `scale_kill_hold` now ranks via `get_creative_leaderboard`, `batch_readout`
+  grades via `get_batch_readout`, and `monday_money_check` /
+  `weekly_creative_report` compare via `compare_periods`.
+
 ## 0.2.4 - 2026-07-16
 
 - Make `set_brand_context` a sparse PATCH so notes-only or voice-only updates

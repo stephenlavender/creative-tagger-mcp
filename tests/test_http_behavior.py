@@ -123,6 +123,192 @@ def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts
     }
 
 
+# ---------------------------------------------------------------------------
+# Closed-vocabulary params without a schema enum: a param whose valid values
+# are a fixed set but that carries no JSON-schema `enum` has exactly one
+# schema-level source of truth -- its own description. Compaction (see
+# _SCHEMA_DESCRIPTION_FIELDS) or a future PLAYBOOK_INSTRUCTIONS edit must
+# never silently drop that value list without leaving it discoverable
+# somewhere the calling LLM can still see it before making a request.
+#
+# This is the general form of a review-caught bug: compare_periods'
+# period_a_preset/period_b_preset lost their only kept description to
+# compaction, AND the shared instructions independently misstated the
+# vocabulary for that tool (blessed all_time/custom, which the API rejects
+# for compare_periods) -- so an agent following only the instructions could
+# call period_a_preset="all_time" and get a 400. Both are pinned below.
+# ---------------------------------------------------------------------------
+
+# (tool, field) -> the exact value tokens that must appear in that field's
+# OWN runtime (post-compaction) description. None of these fields carries a
+# JSON-schema enum, so their kept description is the only place an agent can
+# read valid values without falling back to the shared instructions.
+KEPT_VOCABULARY_FIELDS = {
+    ("analyze_creative", "format"): (
+        "image",
+        "video",
+        "long_video",
+        "carousel",
+        "landing_page",
+        "email",
+    ),
+    ("get_creative_leaderboard", "window"): (
+        "last_7_days",
+        "last_14_days",
+        "last_30_days",
+        "last_90_days",
+        "this_month",
+        "last_month",
+        "all_time",
+        "custom",
+    ),
+    ("get_batch_readout", "window"): (
+        "last_7_days",
+        "last_14_days",
+        "last_30_days",
+        "last_90_days",
+        "this_month",
+        "last_month",
+        "all_time",
+        "custom",
+    ),
+    ("compare_periods", "period_a_preset"): (
+        "this_week",
+        "last_week",
+        "last_7_days",
+        "last_14_days",
+        "last_30_days",
+        "last_90_days",
+        "this_month",
+        "last_month",
+    ),
+    ("get_performance_timeseries", "date_preset"): (
+        "all_time",
+        "last_7d",
+        "last_30d",
+        "last_90d",
+        "maximum",
+        "custom",
+    ),
+    ("get_creative_strategy_report", "report_template"): (
+        "next-tests",
+        "creative-winners",
+        "fatigue-watch",
+        "coverage-gaps",
+        "hook-performance",
+        "persona-read",
+        "demographic-read",
+        "audience-signals",
+    ),
+}
+
+
+def test_kept_closed_vocabulary_fields_carry_their_value_list_at_runtime():
+    """A closed-vocabulary param with no schema enum must keep its value
+    list somewhere the calling LLM can see it at the point of the call --
+    a real JSON-schema `enum`, or (for these fields) its own runtime
+    description. Guards against a future _SCHEMA_DESCRIPTION_FIELDS edit
+    silently dropping the ONLY place a param's valid values were documented.
+    """
+    tools = run(server.list_tools())
+    by_name = {tool.name: tool for tool in tools}
+
+    for (tool_name, field_name), expected_values in KEPT_VOCABULARY_FIELDS.items():
+        field = by_name[tool_name].inputSchema["properties"][field_name]
+        assert "enum" not in field, (
+            f"{tool_name}.{field_name} gained a real schema enum -- this "
+            "field no longer needs a hand-pinned description check."
+        )
+        description = field.get("description") or ""
+        assert description, (
+            f"{tool_name}.{field_name} lost its description at runtime -- "
+            "its closed vocabulary is no longer documented anywhere in the "
+            "schema. Add it back to _SCHEMA_DESCRIPTION_FIELDS."
+        )
+        for value in expected_values:
+            assert value in description, (
+                f"{tool_name}.{field_name}'s runtime description dropped "
+                f"the value {value!r}: {description!r}"
+            )
+
+    # period_b_preset intentionally does not repeat period_a_preset's value
+    # list (it defers to it: "same vocabulary as period_a_preset") -- pin
+    # that the cross-reference itself survives compaction instead.
+    period_b = by_name["compare_periods"].inputSchema["properties"]["period_b_preset"]
+    assert "enum" not in period_b
+    assert "period_a_preset" in (period_b.get("description") or "")
+
+
+# (tool, field) pairs sharing the STANDARD date_preset vocabulary
+# (all_time/last_7_days/last_30_days/last_90_days/custom) that are
+# intentionally NOT kept in their own runtime description -- they rely
+# entirely on PLAYBOOK_INSTRUCTIONS' shared "Most single-window reporting
+# tools..." sentence as their only remaining documented source.
+DROPPED_STANDARD_DATE_PRESET_FIELDS = {
+    ("get_taxonomy_performance", "date_preset"),
+    ("get_meta_performance_summary", "date_preset"),
+    ("get_brain_learnings", "date_preset"),
+}
+STANDARD_DATE_PRESET_VALUES = (
+    "all_time",
+    "last_7_days",
+    "last_30_days",
+    "last_90_days",
+    "custom",
+)
+
+
+def test_dropped_date_preset_fields_stay_covered_by_shared_instructions():
+    """Fields that share the standard date_preset vocabulary and are
+    intentionally dropped from their own schema description (see
+    _SCHEMA_DESCRIPTION_FIELDS) must still have that exact vocabulary
+    correctly and completely stated in the shared server instructions --
+    the only remaining place an agent can learn valid values for them.
+    """
+    tools = run(server.list_tools())
+    by_name = {tool.name: tool for tool in tools}
+    options = server.server.create_initialization_options()
+
+    for tool_name, field_name in DROPPED_STANDARD_DATE_PRESET_FIELDS:
+        field = by_name[tool_name].inputSchema["properties"][field_name]
+        assert "enum" not in field
+        assert not field.get("description"), (
+            f"{tool_name}.{field_name} now keeps its own description -- "
+            "move it to KEPT_VOCABULARY_FIELDS instead of this registry."
+        )
+    for value in STANDARD_DATE_PRESET_VALUES:
+        assert value in options.instructions, (
+            f"shared instructions no longer mention {value!r}, the only "
+            "documented source left for date_preset on tools that don't "
+            "keep their own description"
+        )
+
+
+def test_shared_instructions_do_not_misstate_compare_periods_presets():
+    """Regression pin for the review-caught bug: PLAYBOOK_INSTRUCTIONS used
+    to bless all_time/custom for every date-window tool without exception,
+    which was WRONG for compare_periods (the API rejects both for that
+    endpoint) and omitted its actual presets (this_week, last_week,
+    last_14_days, this_month, last_month). An agent trusting only the
+    instructions could call period_a_preset="all_time" and get a 400.
+    """
+    options = server.server.create_initialization_options()
+
+    assert "Most single-window reporting tools take a date_preset" in (
+        options.instructions
+    )
+    assert "compare_periods has its own" in options.instructions
+    assert "no all_time" in options.instructions
+    for value in (
+        "this_week",
+        "last_week",
+        "last_14_days",
+        "this_month",
+        "last_month",
+    ):
+        assert value in options.instructions
+
+
 def test_initialize_reports_package_version_and_workspace_first_playbook():
     options = server.server.create_initialization_options()
 
@@ -1155,6 +1341,28 @@ AUTH_SWEEP_CASES = [
         "/competitors/history/42",
     ),
     ("list_custom_reports", {"brand_name": "Acme"}, "GET", "/reports/custom/saved"),
+    (
+        "get_creative_leaderboard",
+        {"brand_name": "Acme"},
+        "GET",
+        "/reports/creatives/leaderboard",
+    ),
+    (
+        "get_batch_readout",
+        {"brand_name": "Acme", "launched_after": "2026-01-01"},
+        "GET",
+        "/reports/creatives/batch",
+    ),
+    (
+        "compare_periods",
+        {
+            "brand_name": "Acme",
+            "period_a_preset": "last_week",
+            "period_b_preset": "this_week",
+        },
+        "GET",
+        "/reports/compare",
+    ),
     (
         "run_saved_custom_report",
         {"report_id": 7},

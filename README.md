@@ -602,6 +602,60 @@ Current chart view types are `table`, `bar`, `line`, and `pie`.
 Tools: `save_custom_report`, `list_custom_reports`, `run_saved_custom_report`,
 `delete_custom_report`.
 
+### `get_creative_leaderboard`
+One ranked list answering "which creatives should I scale or kill." One row per creative for the
+`window` (default `last_14_days`), ranked by `rank_by` (`roas` | `cpa` | `spend` | `ctr` |
+`thumbstop`, default `roas`), each with thumbnail/media, spend, `spend_share`, measurement
+states, `days_running`, and a first/second-half `trend_direction`. A creative below `min_spend`
+(default `500`, the shared materiality floor) is flagged `below_min_spend`, excluded from the
+ranks, and never crowned a winner on thin spend — but still returned and counted. `direction`
+(`winners` | `losers` | `all`) slices the ranked half. When the workspace's performance evidence
+is not decision-safe (stale sync, no Meta connection), `rankings_withheld` is `true` and every
+row drops to observation-only with no rank. `launched_after` / `launched_before` (`YYYY-MM-DD`)
+scope the ranked population to creatives first synced in that window; `limit` is clamped to 1–50.
+```
+{ "brand_name": "Acme", "window": "last_14_days", "rank_by": "roas", "direction": "winners", "min_spend": 500, "limit": 20 }
+```
+
+### `get_batch_readout`
+Grades a launch cohort against the rest of the account. Given a launch window (`launched_after` /
+`launched_before`, `YYYY-MM-DD` — at least one required), every creative first synced in that
+window gets a three-way verdict — `promising`, `underperforming`, or `insufficient_evidence` —
+against a same-`window` baseline built from every *other* creative (the baseline excludes the
+batch, so a new cohort is judged like-for-like, never against its own numbers). `verdict_counts`
+totals the three buckets. `insufficient_evidence` always carries a `verdict_reason`: most often
+`below_min_spend` (expected for roughly half of most batches — that honesty is the point), or
+`metric_not_applicable` when the creative's objective/format does not track `rank_by` (e.g.
+`roas` on a leads creative), in which case it is also excluded from the baseline. `rank_by` is
+`roas` | `cpa` | `ctr` | `thumbstop`. Verdicts are withheld when evidence is not decision-safe;
+`limit` is clamped to 1–50.
+```
+{ "brand_name": "Acme", "launched_after": "2026-06-01", "launched_before": "2026-06-14", "window": "last_30_days", "rank_by": "roas" }
+```
+
+### `compare_periods`
+Period-over-period: "is it the ads, the auction, or the site?" Compares `period_a` (baseline) to
+`period_b` (the "after" window); each period is either a preset (`this_week`, `last_week`,
+`last_7_days`, `last_14_days`, `last_30_days`, `last_90_days`, `this_month`, `last_month`) or an
+explicit `period_X_start` / `period_X_end` (`YYYY-MM-DD`) pair — never both, and the two windows
+must not overlap. Returns account-level deltas (spend, revenue, ROAS, CPA, CPM, CTR, thumbstop,
+click-to-purchase rate, AOV) with measurement states honored, plus a multiplicative funnel
+decomposition whose `dominant_factor` names *why* a ROAS/CPA change happened — `auction` (CPM),
+`creative_engagement` (CTR), `landing_conversion` (CVR), `order_value` (AOV), or `mixed`. When
+revenue reported a measured `$0` in a period, the decomposition falls back to CPA and returns a
+non-null `revenue_caution` — trust it when present: the revenue collapse itself is the likely
+explanation, not the delivery reading. Optional `group_by` (`creative` or a taxonomy dimension)
+adds per-value deltas and `biggest_movers`; `limit` is clamped to 1–25.
+```
+{
+  "brand_name": "Acme",
+  "period_a_preset": "last_week",
+  "period_b_preset": "this_week",
+  "metric": "roas",
+  "group_by": "hook_type"
+}
+```
+
 ### `predict_creative`
 Despite the legacy tool name, this is not a forecast. It compares a saved
 analysis or draft attributes with the brand's historical tag-level performance

@@ -168,6 +168,7 @@ EXPECTED_TOOLS_USED = {
     "weekly_creative_report": {
         "get_meta_status",
         "get_meta_performance_summary",
+        "compare_periods",
         "get_prebuilt_reports",
         "get_performance_timeseries",
         "get_brain_learnings",
@@ -180,8 +181,8 @@ EXPECTED_TOOLS_USED = {
     },
     "scale_kill_hold": {
         "get_meta_status",
+        "get_creative_leaderboard",
         "get_creative_strategy_report",
-        "get_performance_timeseries",
         "get_taxonomy_performance",
     },
     "what_to_make_next_brief": {
@@ -198,14 +199,12 @@ EXPECTED_TOOLS_USED = {
         "get_creative_strategy_report",
     },
     "batch_readout": {
+        "get_batch_readout",
         "create_custom_report",
-        "list_library",
-        "get_performance_timeseries",
-        "get_taxonomy_performance",
     },
     "monday_money_check": {
         "get_meta_status",
-        "get_meta_performance_summary",
+        "compare_periods",
         "get_performance_timeseries",
     },
     "competitive_whitespace": {
@@ -395,8 +394,9 @@ def test_monday_money_check_computes_prior_window_from_date_preset():
     prior_end = this_start - timedelta(days=1)
     prior_start = prior_end - timedelta(days=6)
 
-    assert f'start_date="{prior_start.isoformat()}"' in text
-    assert f'end_date="{prior_end.isoformat()}"' in text
+    assert f'period_a_start="{prior_start.isoformat()}"' in text
+    assert f'period_a_end="{prior_end.isoformat()}"' in text
+    assert f'period_b_start="{this_start.isoformat()}"' in text
     assert "no Shopify/blended-revenue connector" in text
 
 
