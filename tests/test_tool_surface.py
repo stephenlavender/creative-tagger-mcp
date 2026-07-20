@@ -163,14 +163,17 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertEqual(params["response_format"], "concise")
         self.assertEqual(params["max_cells"], 24)
 
-    def test_readme_matches_published_surface_and_current_models(self) -> None:
+    def test_readme_separates_published_surface_from_current_main(self) -> None:
         readme = README.read_text()
 
-        self.assertIn("packaged metadata are\nversion `0.2.4`", readme)
+        self.assertIn("`v0.2.4` are the immutable published", readme)
+        self.assertIn("47 public tools and 10 prompts", readme)
+        self.assertIn("published 0.2.4 wheel has\n43 tools", readme)
         self.assertIn("pip install creative-tagger-mcp==0.2.4", readme)
         self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
         self.assertNotIn("unreleased `0.2.4` candidate", readme)
-        self.assertIn("companion API must be deployed", readme)
+        self.assertIn("verify the companion API is live", readme)
+        self.assertIn("Do not rebuild,\nretag, or overwrite this version", readme)
         self.assertIn("Current chart view types are `table`, `bar`, `line`, and `pie`", readme)
         self.assertNotIn('"view_type": "matrix"', readme)
         self.assertIn("Gemini 3.5 Flash", readme)
@@ -233,7 +236,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("15 controlled dimensions", readme)
         self.assertIn("one derived/open `aspect_ratio` dimension", readme)
         self.assertIn("`allow_other_values: true`", readme)
-        self.assertIn("packaged metadata are\nversion `0.2.4`", readme)
+        self.assertIn("`v0.2.4` are the immutable published", readme)
         self.assertNotIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
 
@@ -274,15 +277,14 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("id-token: write", source)
         self.assertIn("PYPI_API_TOKEN", source)
 
-    def test_local_release_upload_is_scoped_to_exact_version_artifacts(self) -> None:
+    def test_future_release_guidance_requires_a_new_exact_version(self) -> None:
         readme = README.read_text()
 
         self.assertNotIn("python -m twine upload dist/*", readme)
-        self.assertIn(
-            "dist/creative_tagger_mcp-0.2.4-py3-none-any.whl", readme
-        )
-        self.assertIn("dist/creative_tagger_mcp-0.2.4.tar.gz", readme)
-        self.assertIn("never publish with\n`twine upload dist/*`", readme)
+        self.assertIn("Set a new version greater than 0.2.4", readme)
+        self.assertIn('"dist/creative_tagger_mcp-${VERSION}-py3-none-any.whl"', readme)
+        self.assertIn('"dist/creative_tagger_mcp-${VERSION}.tar.gz"', readme)
+        self.assertIn("Version tags are immutable release identities", readme)
 
     def test_release_smoke_does_not_require_tomli_on_old_python(self) -> None:
         smoke = ROOT / "scripts" / "smoke_release.py"
