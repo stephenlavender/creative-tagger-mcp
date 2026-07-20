@@ -242,6 +242,7 @@ class ToolSurfaceTest(unittest.TestCase):
         taxonomy_description = tools["get_taxonomy"]["description"]
         self.assertIn("media type, asset type, visual format", analyze_description)
         self.assertIn("voiceover tone", analyze_description)
+        self.assertIn("remote URL fetching is temporarily", analyze_description)
         self.assertNotIn("brand presence", analyze_description)
         self.assertNotIn("social proof", analyze_description.lower())
         self.assertIn("15 controlled dimensions", taxonomy_description)
@@ -1379,6 +1380,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("YYYY-MM-DD", strategy_schema["start_date"]["description"])
         self.assertIn("roas_target", strategy_schema)
         self.assertIn("Meta Ad Library", competitor_desc)
+        self.assertIn("provider-gated", competitor_desc)
+        self.assertIn("saved history first", competitor_desc)
         competitor_schema = tools["scan_competitor"]["inputSchema"]["properties"]
         self.assertIn("brand_name", competitor_schema)
         self.assertIn("saved competitor Market scans", competitor_history_desc)

@@ -729,6 +729,18 @@ def test_competitive_whitespace_competitor_arg_does_not_promise_page_id_routing(
     assert "page_id=" not in text
 
 
+def test_competitive_whitespace_never_triggers_fresh_scan_without_opt_in():
+    text = run(
+        server.get_prompt(
+            "competitive_whitespace",
+            {"brand_name": "Acme", "competitor": "Rival Co"},
+        )
+    ).messages[0].content.text
+    assert "Do not trigger a scan implicitly" in text
+    assert "explicit fresh-scan opt-in" in text
+    assert "provider-gated" in text
+
+
 def _drive_handle_request(request):
     """Push one request through the real low-level dispatch path
     (server.server._handle_request), the same machinery a live stdio/HTTP

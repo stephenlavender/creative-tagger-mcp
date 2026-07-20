@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Aligned MCP positioning with the live launch surface: distinguish the
+  47-tool unreleased stdio tree, 43-tool published `0.2.4` package, and 22-tool
+  hosted catalog; document bearer-auth versus OAuth-only client compatibility;
+  and stop advertising customer URL fetching, fresh competitor scans, or Meta
+  imports as generally available while their production gates remain closed.
+- Made the `competitive_whitespace` prompt reuse saved scans by default and
+  require an explicit `run_fresh_scan=true` opt-in before attempting the
+  provider-gated Meta Ad Library operation.
+
 - Added three reporting tools wrapping the merged API surfaces:
   `get_creative_leaderboard` (ranked scale/kill list with a `below_min_spend`
   materiality floor and `rankings_withheld` observation mode),

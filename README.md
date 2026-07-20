@@ -1,11 +1,16 @@
 # Creative Tagger MCP Server
 
-The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
+The local stdio MCP layer for [Creative Tagger](https://creativetagger.ai) —
+plug structured creative intelligence into MCP clients that can launch a local
+command, including Claude Desktop, Cursor, and Windsurf.
 
-Release note (2026-07-15): this source tree and its packaged metadata are
-version `0.2.4`. The hosted and stdio surfaces are separate clients of the same
-API and may expose different tool counts. The companion API must be deployed
-and live before this stdio release is tagged and published.
+Surface status (2026-07-20): PyPI release `0.2.4` exposes 43 stdio tools. This
+unreleased `main` tree's packaged metadata are
+version `0.2.4`, but the tree now exposes 47 public tools after adding three reporting primitives and
+saved competitor-scan detail. The hosted Streamable HTTP endpoint is a separate
+22-tool surface; use tool discovery instead of assuming transport parity. The
+companion API must be deployed and live before the next stdio version is tagged
+and published.
 
 Your AI of choice gets:
 
@@ -15,16 +20,23 @@ Your AI of choice gets:
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Competitive intelligence** — read saved Market scans now; fresh native Meta
+  Ad Library scans are provider-gated and are not enabled in production yet
 
 ## Quick Start
 
-For clients that support remote MCP, connect the current hosted server:
+For Codex CLI, the Codex IDE extension, and other remote clients that support
+Streamable HTTP with bearer-token authentication, connect the hosted server:
 
 ```text
 URL: https://api.creativetagger.ai/mcp/
 Authorization: Bearer ct_your_key
 ```
+
+ChatGPT web apps and Claude hosted connectors require standards-based OAuth;
+Creative Tagger has not enabled that flow yet. Do not paste an API key into
+those connector screens. The hosted endpoint and this stdio package expose
+different catalogs.
 
 The repository package is the stdio path for clients that require a local
 command:
@@ -61,17 +73,20 @@ The smoke test installs the wheel into a temporary virtualenv, verifies the
 `creative-tagger-mcp` console entry point, checks the package version, and
 confirms the V1 tool surface is present from the installed artifact.
 
-## Publishing to PyPI
+## Publishing the next version to PyPI
 
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-After the `0.2.4` review and API-dependency gates pass, tag the exact current
-`main` commit:
+Release `0.2.4` is already published. After the next version is chosen, update
+the package version, changelog, README references, and release-smoke
+expectations together. Once review and API-dependency gates pass, tag the exact
+current `main` commit:
 
 ```bash
-git tag -a v0.2.4 -m "Creative Tagger MCP v0.2.4"
-git push origin refs/tags/v0.2.4
+VERSION=0.2.5
+git tag -a "v${VERSION}" -m "Creative Tagger MCP v${VERSION}"
+git push origin "refs/tags/v${VERSION}"
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
@@ -138,9 +153,13 @@ Restart Claude Desktop. The tools appear in the MCP picker.
 Analyze any ad creative and get structured classification across 21 dimensions.
 ```
 { "file_path": "./ad.mp4", "brand_name": "Brand" }
-{ "url": "https://example.com/landing-page", "brand_name": "Brand" }
 { "html_content": "<html>...</html>", "brand_name": "Brand" }
 ```
+The production API currently rejects customer-supplied remote URLs with
+`customer_url_fetch_disabled` while outbound fetching is security-hardened.
+Use `file_path` / `file_paths` for local image, video, or carousel uploads, or
+pass trusted HTML directly. The `url` field remains in the compatibility schema
+but should not be used against production yet.
 Results auto-save to the user's library.
 
 ### `get_taxonomy`
@@ -278,7 +297,10 @@ Use `preview_naming_template` to test a template before saving, and
 ### `get_meta_status` / `sync_meta_performance`
 Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
 Creative Tagger must have an approved native Meta OAuth connection before
-customer accounts can sync Meta performance.
+customer accounts can sync Meta performance. As of 2026-07-20, production is
+configured for read-only OAuth but customer import remains connection-only
+pending Meta App Review; status reads remain safe, while sync may report the
+provider gate.
 Pass `attribution_windows` when the buyer uses a non-default Meta lookback
 window and Creative Tagger should match Ads Manager exactly.
 ```
@@ -718,8 +740,11 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 ```
 
 ### `scan_competitor`
-Classify a competitor's Meta Ad Library ads and get strategy breakdown.
-`limit` is clamped to 1–50 ads before the API request.
+Attempt a fresh competitor Meta Ad Library scan and return a classified strategy
+breakdown. `limit` is clamped to 1–50 ads before the API request. This operation
+is provider-gated, and production currently reports
+`features.competitor_analysis=false`; prefer saved scan history until that flag
+is enabled.
 ```
 { "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
 ```
@@ -804,7 +829,8 @@ attributed only — blended MER is reported `not_applicable`). `brand_name` (req
 `date_preset` (`last_7_days` | `last_30_days`, default `last_7_days`).
 
 ### `competitive_whitespace`
-Diffs a competitor's live ad strategy against your own library on the same taxonomy.
+Diffs a saved competitor scan against your own library on the same taxonomy,
+with an explicit opt-in attempt for a fresh provider-gated scan.
 `brand_name` (required), `competitor` (optional page name — omit to reuse the latest saved
 scan), `country` (default `US`), `run_fresh_scan` (default `false`), `date_preset` (`all_time` |
 `last_7_days` | `last_30_days` | `last_90_days`, default `last_90_days`).

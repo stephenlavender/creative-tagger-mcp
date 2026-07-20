@@ -1,13 +1,14 @@
 """Creative Tagger MCP Server.
 
-Exposes the Creative Tagger API as MCP tools so any AI agent (Claude Desktop,
-Cursor, Windsurf, ChatGPT with MCP, etc.) can:
+Exposes the Creative Tagger API as local stdio MCP tools for clients such as
+Claude Desktop, Cursor, and Windsurf. The separate hosted MCP endpoint has its
+own smaller catalog and bearer-auth compatibility requirements. Clients can:
 
 - Analyze ad creatives across the 21-dimension classification surface
 - Browse and search the user's creative library (memory)
 - Get strategist recommendations grounded in library + brand context
 - Set brand voice / audience / top performers / anti-patterns
-- Scan competitor ads from the Meta Ad Library
+- Read saved competitor scans and attempt provider-gated fresh scans
 - Generate V1-compatible standard naming conventions locally
 
 Usage:
@@ -90,6 +91,14 @@ controlled test: state the hypothesis, change one variable, choose a primary
 metric and guardrails, define a minimum data/duration rule, and set ship/stop
 criteria before launch. Preserve read-only behavior and say when evidence is
 sparse, confounded, stale, or missing.
+
+Production boundaries: customer-supplied remote URL analysis is temporarily
+disabled while outbound fetching is security-hardened, so use local file_path /
+file_paths uploads or trusted html_content. Fresh competitor scans are
+provider-gated and may be unavailable; read saved scan history first and never
+describe a failed or unavailable scan as fresh evidence. Native Meta sync also
+requires an approved, connected read-only account. Preserve free_floor, 402,
+provider-unavailable, and not_reported responses instead of inventing results.
 
 Conventions shared across scoped tools (stated once here instead of on every
 tool): every scoped tool takes brand_name (pass the exact list_workspaces
@@ -538,8 +547,10 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "Analyze any ad creative (image, video, carousel, landing page, or email) "
         "into structured classification across 21 taxonomy dimensions "
         "(media/asset/visual type, hook, angle, audience, CTA, emotion, audio, "
-        "offer, aspect ratio, duration, and more) plus standardized naming. Provide "
-        "one of file_path, url, or html_content."
+        "offer, aspect ratio, duration, and more) plus standardized naming. Use "
+        "file_path/file_paths or trusted html_content in production; remote URL "
+        "fetching is temporarily disabled even though url remains in the compatibility "
+        "schema."
     ),
     "get_taxonomy": (
         "Get Creative Tagger taxonomy v2's controlled classification vocabulary and "
@@ -713,9 +724,11 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "Taxonomy Studio for future analyses, predictions, and naming."
     ),
     "scan_competitor": (
-        "Scan a competitor's Meta Ad Library ads and return classified results plus "
-        "an aggregate strategy breakdown (top hooks, visual styles, CTAs, emotions, "
-        "estimated spend). Provide page_id, page_name, or keyword."
+        "Attempt a provider-gated scan of a competitor's Meta Ad Library ads and "
+        "return classified results plus an aggregate strategy breakdown (top hooks, "
+        "visual styles, CTAs, emotions, estimated spend). Production may report the "
+        "feature unavailable; check saved scan history first and never represent an "
+        "unavailable attempt as fresh evidence."
     ),
     "get_competitor_scan_history": (
         "Return saved competitor Market scans/imports for the workspace without "
@@ -836,7 +849,9 @@ async def list_tools() -> list[Tool]:
                 "demographics, hook type, messaging angle, audience, CTA, emotion, "
                 "audio type, voiceover tone, seasonality, offer type, aspect ratio, "
                 "duration, and more. Also generates standardized "
-                "naming conventions. Provide one of: file_path, url, or html_content."
+                "naming conventions. In production, use file_path/file_paths or trusted "
+                "html_content: customer-supplied remote URL fetching is temporarily "
+                "disabled even though url remains in the compatibility schema."
             ),
             inputSchema={
                 "type": "object",
@@ -856,7 +871,8 @@ async def list_tools() -> list[Tool]:
                     "url": {
                         "type": "string",
                         "description": (
-                            "URL to analyze. Direct file URL (image/video) or landing page URL."
+                            "Compatibility-only remote file or landing-page URL. The "
+                            "production API currently returns customer_url_fetch_disabled."
                         ),
                     },
                     "html_content": {
@@ -2989,11 +3005,14 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="scan_competitor",
             description=(
-                "Scan a competitor's ads from the Meta Ad Library and return classified "
+                "Attempt a provider-gated scan of a competitor's ads from the Meta Ad "
+                "Library and return classified "
                 "results plus an aggregate strategy breakdown (top hook types, visual "
                 "styles, CTAs, emotions, estimated spend). Provide page_id, page_name, "
                 "or keyword. Returns ad metadata, full Creative Tagger analysis per ad, "
-                "and strategy insights."
+                "and strategy insights when the provider is enabled. Production may "
+                "return a feature-unavailable response; read saved history first and "
+                "never present an unavailable attempt as fresh evidence."
             ),
             inputSchema={
                 "type": "object",
@@ -6199,12 +6218,13 @@ Call these tools in order:
 
 1. `get_competitor_scan_history(brand_name="{brand_name}", limit=10)` — saved scans/imports
    already on file. Look for one matching {competitor or "the target competitor"}.
-2. Branch here: if run_fresh_scan is {run_fresh_scan} and a matching saved scan exists in step
-   1's results, call `get_competitor_scan_detail(scan_id=<that id>)` to reuse it. Otherwise —
-   run_fresh_scan is true, or nothing matching was saved — call {scan_call} (a live Meta Ad
-   Library scan; can take up to 5 minutes). Either path gives you the competitor's ads,
-   per-ad Creative Tagger analyses, and an aggregate strategy breakdown (dominant hook types,
-   visual styles, CTAs, emotions, estimated spend).
+2. Branch here: if run_fresh_scan is false and a matching saved scan exists in step 1, call
+   `get_competitor_scan_detail(scan_id=<that id>)` to reuse it. If run_fresh_scan is true,
+   call {scan_call}; fresh Meta Ad Library access is provider-gated and can take up to five
+   minutes. If the provider is unavailable, say that no fresh evidence was returned and fall
+   back to a matching saved scan when one exists. If run_fresh_scan is false and no matching
+   scan exists, stop the competitor-specific comparison; explicit fresh-scan opt-in is
+   required. Do not trigger a scan implicitly.
 3. `get_library_patterns(brand_name="{brand_name}")` — our own hook/angle/format concentration
    across the whole library (no date filter on this tool).
 4. `get_creative_strategy_report(brand_name="{brand_name}", date_preset="{date_preset}", report_template="coverage-gaps")` —
@@ -6214,15 +6234,17 @@ Diff the competitor's dominant hooks/angles/formats/CTAs (step 2's strategy brea
 our coverage_gaps (step 4) and concentration (step 3). This tool has no first-seen/last-seen
 longevity signal — you cannot say how long a competitor angle has run, only that it appears in
 this scan; do not claim "60+ days" or any duration not_reported. Native Meta Ad Library access
-depth may also be gated — if step 2 returns thin results, say so rather than treating a small
-sample as the competitor's full strategy. Close with 1-2 test briefs: competitor cells with
-real presence in their scan that are also empty in our coverage_gaps, in taxonomy vocabulary.
+may be unavailable or return a thin sample — disclose either state rather than treating it as
+the competitor's full strategy. Close with 1-2 test briefs only when grounded in real saved or
+fresh scan rows: competitor cells with real presence in their scan that are also empty in our
+coverage_gaps, in taxonomy vocabulary.
 
 {_PROMPT_REPORT_CONTRACT}
 """
     return _prompt_result(
-        "Diff a competitor's live ad strategy against your own library on the same taxonomy: "
-        "their dominant hooks/angles/formats, the cells you have zero coverage on, and which "
+        "Diff saved competitor evidence against your own library, with an explicit opt-in "
+        "attempt for a provider-gated fresh scan: their dominant hooks/angles/formats, "
+        "the cells you have zero coverage on, and which "
         "of their proven angles deserve a test brief.",
         text,
     )
@@ -6616,9 +6638,9 @@ _PROMPTS: list[Prompt] = [
         name="competitive_whitespace",
         title="Competitive Whitespace",
         description=(
-            "Diff a competitor's live ad strategy against your own library on the same "
-            "taxonomy: their dominant hooks/angles/formats, the cells you have zero "
-            "coverage on, and which of their proven angles deserve a test brief."
+            "Diff saved competitor evidence against your own library, with an explicit "
+            "opt-in attempt for a provider-gated fresh scan: their dominant hooks, "
+            "angles, and formats; your empty cells; and grounded test candidates."
         ),
         arguments=[
             PromptArgument(
@@ -6638,7 +6660,7 @@ _PROMPTS: list[Prompt] = [
             ),
             PromptArgument(
                 name="run_fresh_scan",
-                description="Force a fresh Meta Ad Library scan instead of reusing a saved one (default false; can take up to 5 minutes)",
+                description="Explicitly attempt a provider-gated fresh Meta Ad Library scan instead of reusing saved evidence (default false; can take up to 5 minutes)",
                 required=False,
             ),
             PromptArgument(
