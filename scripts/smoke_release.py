@@ -231,10 +231,11 @@ assert any(requirement.startswith("mcp<2,>=1.28.1") for requirement in requireme
 assert initialization.server_version == {expected_version!r}
 assert "call list_workspaces first" in initialization.instructions
 assert "historical associations" in initialization.instructions
-assert "packaged metadata are" in readme
-assert "version `0.2.4`" in readme
+assert "metadata version `0.2.4`" in readme
+assert "immutable `v0.2.4` tag" in readme
+assert "Always use MCP discovery" in readme
 assert "pip install creative-tagger-mcp==0.2.4" in readme
-assert "unreleased `0.2.4` candidate" not in readme
+assert "recreate, move, force-push" in readme
 assert "pip install creative-tagger-mcp==0.2.1" not in readme
 assert "PyPI still serves `creative-tagger-mcp==0.1.0`" not in readme
 assert "`higher_observed_efficiency`" in readme

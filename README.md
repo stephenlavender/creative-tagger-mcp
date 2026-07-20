@@ -2,10 +2,13 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release note (2026-07-15): this source tree and its packaged metadata are
-version `0.2.4`. The hosted and stdio surfaces are separate clients of the same
-API and may expose different tool counts. The companion API must be deployed
-and live before this stdio release is tagged and published.
+Release status (2026-07-20): PyPI and the immutable `v0.2.4` tag contain the
+reviewed 43-tool stdio release. Current unreleased `main` still carries package
+metadata version `0.2.4` but has moved ahead to 47 public tools and 10 prompts; it must
+receive a new version before publication. The hosted and stdio surfaces are
+separate clients of the same API, intentionally expose different catalogs, and
+can deploy on different schedules. Always use MCP discovery for the transport
+you connected.
 
 Your AI of choice gets:
 
@@ -15,7 +18,13 @@ Your AI of choice gets:
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Evidence-backed strategy** — use performance, coverage, Brain learnings, demographics, and saved competitor research without turning observational associations into causal claims
+- **Competitive intelligence** — read saved competitor scans; fresh native Meta Ad Library scans work only when the API's provider-gated `competitor_analysis` feature is enabled
+
+Hosted API `main` also includes provenance-separated research banking,
+Suggested Angles, and an `angles_to_test` prompt. Those are not part of the
+published `v0.2.4` stdio package or this unreleased stdio catalog yet; do not
+assume transport parity.
 
 ## Quick Start
 
@@ -30,7 +39,7 @@ The repository package is the stdio path for clients that require a local
 command:
 
 ```bash
-# Install this release after it appears on PyPI
+# Install the reviewed published release
 pip install creative-tagger-mcp==0.2.4
 
 # Run against production (default)
@@ -66,13 +75,11 @@ confirms the V1 tool surface is present from the installed artifact.
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-After the `0.2.4` review and API-dependency gates pass, tag the exact current
-`main` commit:
-
-```bash
-git tag -a v0.2.4 -m "Creative Tagger MCP v0.2.4"
-git push origin refs/tags/v0.2.4
-```
+`v0.2.4` is already published and immutable. Do not recreate, move, force-push,
+or reuse that tag. Before publishing current `main`, increment the project
+version, update the changelog and artifact names in this README, run the full
+test/release-smoke sequence, and create a new version tag on the reviewed
+commit.
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
 PyPI publisher for repository `stephenlavender/creative-tagger-mcp`, workflow
@@ -87,9 +94,9 @@ Exact PyPI trusted publisher values:
 - Workflow filename: `publish.yml`
 - Environment name: `pypi`
 
-If the workflow fails with `invalid-publisher`, PyPI does not have a trusted
-publisher matching those claims yet. Add the publisher above, then rerun the
-failed workflow or push the version tag again.
+If a future workflow fails with `invalid-publisher`, PyPI does not have a
+trusted publisher matching those claims. Add or correct the publisher, then
+rerun the failed workflow; never push an existing release tag again to recover.
 
 Fallback path: add a GitHub Actions repository secret named `PYPI_API_TOKEN`
 containing a PyPI project token. The same workflow will use that token when it
@@ -718,7 +725,10 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 ```
 
 ### `scan_competitor`
-Classify a competitor's Meta Ad Library ads and get strategy breakdown.
+Classify a competitor's Meta Ad Library ads and get a strategy breakdown only
+when the API reports `features.competitor_analysis: true` from
+`GET /health/launch`. Production currently reports this provider-gated feature
+disabled, so use the saved-history tools below and do not promise a fresh scan.
 `limit` is clamped to 1–50 ads before the API request.
 ```
 { "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
