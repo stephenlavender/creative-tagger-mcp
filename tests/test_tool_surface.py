@@ -167,6 +167,8 @@ class ToolSurfaceTest(unittest.TestCase):
         readme = README.read_text()
 
         self.assertIn("`v0.2.4` are the immutable published", readme)
+        self.assertIn("verified 2026-07-27", readme)
+        self.assertIn("Current `main` is `df079d8`", readme)
         self.assertIn("47 public tools and 10 prompts", readme)
         self.assertIn("published 0.2.4 wheel has\n43 tools", readme)
         self.assertIn("pip install creative-tagger-mcp==0.2.4", readme)
