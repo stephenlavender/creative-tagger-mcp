@@ -170,6 +170,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("verified 2026-07-27", readme)
         self.assertIn("Current `main` is `df079d8`", readme)
         self.assertIn("47 public tools and 10 prompts", readme)
+        self.assertIn("31 tools and 12\nprompts", readme)
+        self.assertIn("33 tools and 13\nprompts", readme)
         self.assertIn("published 0.2.4 wheel has\n43 tools", readme)
         self.assertIn("pip install creative-tagger-mcp==0.2.4", readme)
         self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
@@ -247,10 +249,15 @@ class ToolSurfaceTest(unittest.TestCase):
         taxonomy_description = tools["get_taxonomy"]["description"]
         self.assertIn("media type, asset type, visual format", analyze_description)
         self.assertIn("voiceover tone", analyze_description)
+        self.assertIn("customer_url_fetch_disabled", analyze_description)
         self.assertNotIn("brand presence", analyze_description)
         self.assertNotIn("social proof", analyze_description.lower())
         self.assertIn("15 controlled dimensions", taxonomy_description)
         self.assertIn("derived/open aspect-ratio dimension", taxonomy_description)
+        self.assertIn(
+            "customer_url_fetch_disabled",
+            tools["analyze_creative"]["inputSchema"]["properties"]["url"]["description"],
+        )
 
     def test_publish_workflow_verifies_release_before_upload(self) -> None:
         workflow = ROOT / ".github" / "workflows" / "publish.yml"
@@ -313,8 +320,10 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn('requirement.startswith("mcp<2,>=1.28.1")', source)
         self.assertIn("package_metadata.get_payload()", source)
         self.assertIn("call list_workspaces first", source)
-        self.assertIn('"packaged metadata are"', source)
-        self.assertIn('"version `0.2.4`"', source)
+        self.assertIn('"`v0.2.4` are the immutable published"', source)
+        self.assertIn('"Current `main` is `df079d8`, an unreleased"', source)
+        self.assertIn('"47 public tools and 10 prompts"', source)
+        self.assertIn('"published 0.2.4 wheel has\\\\n43 tools"', source)
         self.assertIn('"pip install creative-tagger-mcp==0.2.4"', source)
         self.assertIn('"pip install creative-tagger-mcp==0.2.1" not in readme', source)
         self.assertIn("len(tool_catalog) < 40_000", source)

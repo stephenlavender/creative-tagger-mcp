@@ -9,6 +9,9 @@ below is source documentation, not proof that those post-tag additions are
 installed by `pip install creative-tagger-mcp==0.2.4`. Before publishing
 `main`, verify the companion API is live and bump every package-version marker
 to a new version.
+The separate hosted production surface currently exposes 31 tools and 12
+prompts; reviewed, not-yet-deployed API `main` would expose 33 tools and 13
+prompts. Discover the connected runtime instead of assuming transport parity.
 
 Your AI of choice gets:
 
@@ -135,9 +138,13 @@ Restart Claude Desktop. The tools appear in the MCP picker.
 
 ### `analyze_creative`
 Analyze any ad creative and get structured classification across 21 dimensions.
+Local file uploads, multi-image carousels, and raw HTML are the live input
+paths. `url` remains in the compatibility schema, but production currently
+returns `customer_url_fetch_disabled` while outbound request security is
+hardened; upload the creative instead.
 ```
 { "file_path": "./ad.mp4", "brand_name": "Brand" }
-{ "url": "https://example.com/landing-page", "brand_name": "Brand" }
+{ "file_paths": ["./card-1.png", "./card-2.png"], "brand_name": "Brand" }
 { "html_content": "<html>...</html>", "brand_name": "Brand" }
 ```
 Results auto-save to the user's library.
