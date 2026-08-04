@@ -170,7 +170,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("verified 2026-08-03", readme)
         self.assertIn("Current `main` is `df079d8`", readme)
         self.assertIn("47 public tools and 10 prompts", readme)
-        self.assertIn("hosted production surface currently\nexposes 33 tools and 13 prompts", readme)
+        self.assertIn("API commit `2a3dd5e` exposes 33 tools and 13 prompts", readme)
         self.assertNotIn("31 tools", readme)
         self.assertIn("published 0.2.4 wheel has\n43 tools", readme)
         self.assertIn("pip install creative-tagger-mcp==0.2.4", readme)

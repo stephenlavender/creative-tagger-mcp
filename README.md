@@ -9,9 +9,9 @@ below is source documentation, not proof that those post-tag additions are
 installed by `pip install creative-tagger-mcp==0.2.4`. Before publishing
 `main`, verify the companion API is live and bump every package-version marker
 to a new version.
-Authenticated discovery on the separate hosted production surface currently
-exposes 33 tools and 13 prompts. Discover the connected runtime instead of
-assuming transport parity.
+Authenticated discovery on the separate hosted production surface at verified
+API commit `2a3dd5e` exposes 33 tools and 13 prompts. Discover the connected
+runtime instead of assuming transport parity.
 
 Your AI of choice gets:
 
