@@ -2,10 +2,16 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release note (2026-07-15): this source tree and its packaged metadata are
-version `0.2.4`. The hosted and stdio surfaces are separate clients of the same
-API and may expose different tool counts. The companion API must be deployed
-and live before this stdio release is tagged and published.
+Release status (verified 2026-08-03): PyPI and tag `v0.2.4` are the immutable published
+stdio release with 43 tools. Current `main` is `df079d8`, an unreleased
+next-version candidate with 47 public tools and 10 prompts; its detailed catalog
+below is source documentation, not proof that those post-tag additions are
+installed by `pip install creative-tagger-mcp==0.2.4`. Before publishing
+`main`, verify the companion API is live and bump every package-version marker
+to a new version.
+Authenticated discovery on the separate hosted production surface at verified
+API commit `2a3dd5e` exposes 33 tools and 13 prompts. Discover the connected
+runtime instead of assuming transport parity.
 
 Your AI of choice gets:
 
@@ -15,7 +21,7 @@ Your AI of choice gets:
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Competitive intelligence** — read saved Market scans; run a live Meta Ad Library scan only when the provider feature is enabled
 
 ## Quick Start
 
@@ -30,7 +36,7 @@ The repository package is the stdio path for clients that require a local
 command:
 
 ```bash
-# Install this release after it appears on PyPI
+# Install the current published release
 pip install creative-tagger-mcp==0.2.4
 
 # Run against production (default)
@@ -44,34 +50,52 @@ CREATIVE_TAGGER_API_KEY=ct_your_key \
 
 Get an API key at [app.creativetagger.ai](https://app.creativetagger.ai).
 
-## Release Verification
+The Tools and Prompts sections below describe current source `main`. Discover
+the runtime surface your client actually exposes; the published 0.2.4 wheel has
+43 tools and no post-tag prompt capability.
 
-Before publishing a new MCP version, build the artifacts and smoke-test the
-wheel that will be uploaded to PyPI:
+## Published Release Verification
+
+Verify the immutable 0.2.4 artifact from a clean environment. Do not rebuild,
+retag, or overwrite this version from current `main`:
 
 ```bash
-python -m build
-python scripts/smoke_release.py
-python -m twine check \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
+VERIFY_DIR="$(mktemp -d)"
+python3.11 -m venv "$VERIFY_DIR/venv"
+"$VERIFY_DIR/venv/bin/python" -m pip install creative-tagger-mcp==0.2.4
+"$VERIFY_DIR/venv/bin/python" - <<'PY'
+import asyncio
+import importlib.metadata as metadata
+from creative_tagger_mcp import server
+
+tools = asyncio.run(server.list_tools())
+assert metadata.version("creative-tagger-mcp") == "0.2.4"
+assert len(tools) == 43
+assert len({tool.name for tool in tools}) == 43
+print({"version": "0.2.4", "tool_count": len(tools)})
+PY
 ```
 
-The smoke test installs the wheel into a temporary virtualenv, verifies the
-`creative-tagger-mcp` console entry point, checks the package version, and
-confirms the V1 tool surface is present from the installed artifact.
-
-## Publishing to PyPI
+## Publishing A Future Version
 
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-After the `0.2.4` review and API-dependency gates pass, tag the exact current
-`main` commit:
+Current `main` still carries 0.2.4 metadata but contains post-tag features. Do
+not build or publish it until the intended next version (for example 0.2.5) is
+set consistently in `pyproject.toml`, `src/creative_tagger_mcp/__init__.py`,
+tests, release commands, and documentation. After review and API-dependency
+gates pass, build and tag only that new version:
 
 ```bash
-git tag -a v0.2.4 -m "Creative Tagger MCP v0.2.4"
-git push origin refs/tags/v0.2.4
+: "${VERSION:?Set a new version greater than 0.2.4}"
+python -m build
+python scripts/smoke_release.py
+python -m twine check \
+  "dist/creative_tagger_mcp-${VERSION}-py3-none-any.whl" \
+  "dist/creative_tagger_mcp-${VERSION}.tar.gz"
+git tag -a "v${VERSION}" -m "Creative Tagger MCP v${VERSION}"
+git push origin "refs/tags/v${VERSION}"
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
@@ -87,30 +111,8 @@ Exact PyPI trusted publisher values:
 - Workflow filename: `publish.yml`
 - Environment name: `pypi`
 
-If the workflow fails with `invalid-publisher`, PyPI does not have a trusted
-publisher matching those claims yet. Add the publisher above, then rerun the
-failed workflow or push the version tag again.
-
-Fallback path: add a GitHub Actions repository secret named `PYPI_API_TOKEN`
-containing a PyPI project token. The same workflow will use that token when it
-is present.
-
-Local fallback:
-
-```bash
-python -m build
-python scripts/smoke_release.py
-python -m twine check \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
-python -m twine upload \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
-```
-
-Always select the exact release artifacts for a local upload. A reused checkout
-may contain older valid distributions in `dist/`; never publish with
-`twine upload dist/*`.
+If a version tag already exists locally or remotely, stop and recover its
+existing workflow run. Version tags are immutable release identities.
 
 ## Add to Claude Desktop
 
@@ -136,9 +138,13 @@ Restart Claude Desktop. The tools appear in the MCP picker.
 
 ### `analyze_creative`
 Analyze any ad creative and get structured classification across 21 dimensions.
+Local file uploads, multi-image carousels, and raw HTML are the live input
+paths. `url` remains in the compatibility schema, but production currently
+returns `customer_url_fetch_disabled` while outbound request security is
+hardened; upload the creative instead.
 ```
 { "file_path": "./ad.mp4", "brand_name": "Brand" }
-{ "url": "https://example.com/landing-page", "brand_name": "Brand" }
+{ "file_paths": ["./card-1.png", "./card-2.png"], "brand_name": "Brand" }
 { "html_content": "<html>...</html>", "brand_name": "Brand" }
 ```
 Results auto-save to the user's library.
@@ -718,8 +724,10 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 ```
 
 ### `scan_competitor`
-Classify a competitor's Meta Ad Library ads and get strategy breakdown.
-`limit` is clamped to 1–50 ads before the API request.
+Provider-gated live scan of a competitor's Meta Ad Library ads with a strategy
+breakdown. Production currently reports `competitor_analysis=false`, so use
+`get_competitor_scan_history` for saved scans until the provider feature is
+enabled. `limit` is clamped to 1–50 ads before the API request.
 ```
 { "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
 ```

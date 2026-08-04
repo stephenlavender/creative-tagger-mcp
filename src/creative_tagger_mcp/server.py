@@ -538,8 +538,9 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "Analyze any ad creative (image, video, carousel, landing page, or email) "
         "into structured classification across 21 taxonomy dimensions "
         "(media/asset/visual type, hook, angle, audience, CTA, emotion, audio, "
-        "offer, aspect ratio, duration, and more) plus standardized naming. Provide "
-        "one of file_path, url, or html_content."
+        "offer, aspect ratio, duration, and more) plus standardized naming. Use "
+        "file_path/file_paths or html_content; url is compatibility-only while "
+        "production returns customer_url_fetch_disabled."
     ),
     "get_taxonomy": (
         "Get Creative Tagger taxonomy v2's controlled classification vocabulary and "
@@ -713,7 +714,10 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "Taxonomy Studio for future analyses, predictions, and naming."
     ),
     "scan_competitor": (
-        "Scan a competitor's Meta Ad Library ads and return classified results plus "
+        "Provider-gated live scan of a competitor's Meta Ad Library ads. Production "
+        "currently reports competitor_analysis=false; read saved scans with "
+        "get_competitor_scan_history until the provider feature is enabled. When "
+        "enabled, return classified results plus "
         "an aggregate strategy breakdown (top hooks, visual styles, CTAs, emotions, "
         "estimated spend). Provide page_id, page_name, or keyword."
     ),
@@ -836,7 +840,10 @@ async def list_tools() -> list[Tool]:
                 "demographics, hook type, messaging angle, audience, CTA, emotion, "
                 "audio type, voiceover tone, seasonality, offer type, aspect ratio, "
                 "duration, and more. Also generates standardized "
-                "naming conventions. Provide one of: file_path, url, or html_content."
+                "naming conventions. Use file_path, file_paths, or html_content. "
+                "The url field remains for compatibility, but production currently "
+                "returns customer_url_fetch_disabled while outbound request security "
+                "is hardened; upload the creative instead."
             ),
             inputSchema={
                 "type": "object",
@@ -856,7 +863,8 @@ async def list_tools() -> list[Tool]:
                     "url": {
                         "type": "string",
                         "description": (
-                            "URL to analyze. Direct file URL (image/video) or landing page URL."
+                            "Compatibility-only URL input. Production currently returns "
+                            "customer_url_fetch_disabled; upload a local file instead."
                         ),
                     },
                     "html_content": {
@@ -2989,7 +2997,10 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="scan_competitor",
             description=(
-                "Scan a competitor's ads from the Meta Ad Library and return classified "
+                "Provider-gated live scan of a competitor's Meta Ad Library ads. "
+                "Production currently reports competitor_analysis=false; use "
+                "get_competitor_scan_history for saved scans until the provider feature "
+                "is enabled. When enabled, return classified "
                 "results plus an aggregate strategy breakdown (top hook types, visual "
                 "styles, CTAs, emotions, estimated spend). Provide page_id, page_name, "
                 "or keyword. Returns ad metadata, full Creative Tagger analysis per ad, "
