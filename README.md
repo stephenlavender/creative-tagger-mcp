@@ -2,16 +2,16 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release status (verified 2026-07-27): PyPI and tag `v0.2.4` are the immutable published
+Release status (verified 2026-08-03): PyPI and tag `v0.2.4` are the immutable published
 stdio release with 43 tools. Current `main` is `df079d8`, an unreleased
 next-version candidate with 47 public tools and 10 prompts; its detailed catalog
 below is source documentation, not proof that those post-tag additions are
 installed by `pip install creative-tagger-mcp==0.2.4`. Before publishing
 `main`, verify the companion API is live and bump every package-version marker
 to a new version.
-The separate hosted production surface currently exposes 31 tools and 12
-prompts; reviewed, not-yet-deployed API `main` would expose 33 tools and 13
-prompts. Discover the connected runtime instead of assuming transport parity.
+The separate hosted production surface exposes 33 tools and 13 prompts on
+verified API commit `2a3dd5e`. Discover the connected runtime instead of
+assuming transport parity.
 
 Your AI of choice gets:
 
