@@ -170,6 +170,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("verified 2026-08-03", readme)
         self.assertIn("Current `main` is `df079d8`", readme)
         self.assertIn("47 public tools and 10 prompts", readme)
+        self.assertNotIn("31 tools and 12 prompts", readme)
         self.assertIn("33 tools and 13 prompts", readme)
         self.assertIn("verified API commit `2a3dd5e`", readme)
         self.assertIn("published 0.2.4 wheel has\n43 tools", readme)
