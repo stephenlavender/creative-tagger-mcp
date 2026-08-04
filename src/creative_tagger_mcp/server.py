@@ -714,7 +714,10 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "Taxonomy Studio for future analyses, predictions, and naming."
     ),
     "scan_competitor": (
-        "Scan a competitor's Meta Ad Library ads and return classified results plus "
+        "Provider-gated live scan of a competitor's Meta Ad Library ads. Production "
+        "currently reports competitor_analysis=false; read saved scans with "
+        "get_competitor_scan_history until the provider feature is enabled. When "
+        "enabled, return classified results plus "
         "an aggregate strategy breakdown (top hooks, visual styles, CTAs, emotions, "
         "estimated spend). Provide page_id, page_name, or keyword."
     ),
@@ -2994,7 +2997,10 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="scan_competitor",
             description=(
-                "Scan a competitor's ads from the Meta Ad Library and return classified "
+                "Provider-gated live scan of a competitor's Meta Ad Library ads. "
+                "Production currently reports competitor_analysis=false; use "
+                "get_competitor_scan_history for saved scans until the provider feature "
+                "is enabled. When enabled, return classified "
                 "results plus an aggregate strategy breakdown (top hook types, visual "
                 "styles, CTAs, emotions, estimated spend). Provide page_id, page_name, "
                 "or keyword. Returns ad metadata, full Creative Tagger analysis per ad, "

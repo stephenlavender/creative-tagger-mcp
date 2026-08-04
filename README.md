@@ -2,16 +2,16 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release status (verified 2026-07-27): PyPI and tag `v0.2.4` are the immutable published
+Release status (verified 2026-08-03): PyPI and tag `v0.2.4` are the immutable published
 stdio release with 43 tools. Current `main` is `df079d8`, an unreleased
 next-version candidate with 47 public tools and 10 prompts; its detailed catalog
 below is source documentation, not proof that those post-tag additions are
 installed by `pip install creative-tagger-mcp==0.2.4`. Before publishing
 `main`, verify the companion API is live and bump every package-version marker
 to a new version.
-The separate hosted production surface currently exposes 31 tools and 12
-prompts; reviewed, not-yet-deployed API `main` would expose 33 tools and 13
-prompts. Discover the connected runtime instead of assuming transport parity.
+Authenticated discovery on the separate hosted production surface currently
+exposes 33 tools and 13 prompts. Discover the connected runtime instead of
+assuming transport parity.
 
 Your AI of choice gets:
 
@@ -21,7 +21,7 @@ Your AI of choice gets:
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Competitive intelligence** — read saved Market scans; run a live Meta Ad Library scan only when the provider feature is enabled
 
 ## Quick Start
 
@@ -724,8 +724,10 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 ```
 
 ### `scan_competitor`
-Classify a competitor's Meta Ad Library ads and get strategy breakdown.
-`limit` is clamped to 1–50 ads before the API request.
+Provider-gated live scan of a competitor's Meta Ad Library ads with a strategy
+breakdown. Production currently reports `competitor_analysis=false`, so use
+`get_competitor_scan_history` for saved scans until the provider feature is
+enabled. `limit` is clamped to 1–50 ads before the API request.
 ```
 { "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
 ```
