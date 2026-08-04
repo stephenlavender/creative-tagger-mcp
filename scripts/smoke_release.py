@@ -235,6 +235,7 @@ assert "`v0.2.4` are the immutable published" in readme
 assert "Current `main` is `df079d8`, an unreleased" in readme
 assert "pip install creative-tagger-mcp==0.2.4" in readme
 assert "47 public tools and 10 prompts" in readme
+assert "33 tools and 13 prompts" in readme
 assert "published 0.2.4 wheel has\\n43 tools" in readme
 assert "unreleased `0.2.4` candidate" not in readme
 assert "pip install creative-tagger-mcp==0.2.1" not in readme

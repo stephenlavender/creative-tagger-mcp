@@ -1,17 +1,20 @@
 # Creative Tagger MCP Server
 
-The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
+The local stdio MCP layer for [Creative Tagger](https://creativetagger.ai), plus
+reference documentation for the current source tool catalog. Codex and other
+bearer-token Streamable HTTP clients can connect directly to the hosted server;
+clients that support subprocess MCP can use this package.
 
-Release status (verified 2026-07-27): PyPI and tag `v0.2.4` are the immutable published
+Release status (verified 2026-08-03): PyPI and tag `v0.2.4` are the immutable published
 stdio release with 43 tools. Current `main` is `df079d8`, an unreleased
 next-version candidate with 47 public tools and 10 prompts; its detailed catalog
 below is source documentation, not proof that those post-tag additions are
 installed by `pip install creative-tagger-mcp==0.2.4`. Before publishing
 `main`, verify the companion API is live and bump every package-version marker
 to a new version.
-The separate hosted production surface currently exposes 31 tools and 12
-prompts; reviewed, not-yet-deployed API `main` would expose 33 tools and 13
-prompts. Discover the connected runtime instead of assuming transport parity.
+The separate hosted production surface exposes 33 tools and 13 prompts on
+verified API commit `2a3dd5e`. Discover the connected runtime instead of
+assuming transport parity.
 
 Your AI of choice gets:
 
@@ -25,7 +28,8 @@ Your AI of choice gets:
 
 ## Quick Start
 
-For clients that support remote MCP, connect the current hosted server:
+For Codex and other clients that support bearer-token Streamable HTTP MCP,
+connect the current hosted server:
 
 ```text
 URL: https://api.creativetagger.ai/mcp/
@@ -114,7 +118,7 @@ Exact PyPI trusted publisher values:
 If a version tag already exists locally or remotely, stop and recover its
 existing workflow run. Version tags are immutable release identities.
 
-## Add to Claude Desktop
+## Add the local server to Claude Desktop
 
 `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -132,7 +136,8 @@ existing workflow run. Version tags are immutable release identities.
 }
 ```
 
-Restart Claude Desktop. The tools appear in the MCP picker.
+Restart Claude Desktop. This is a local subprocess integration; Claude's hosted
+connector requires standards-based OAuth and cannot use the hosted API-key URL.
 
 ## Tools
 
