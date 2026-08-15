@@ -729,7 +729,7 @@ breakdown. Production currently reports `competitor_analysis=false`, so use
 `get_competitor_scan_history` for saved scans until the provider feature is
 enabled. `limit` is clamped to 1–50 ads before the API request.
 ```
-{ "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
+{ "brand_name": "Acme", "page_name": "Everwell Labs (Demo)", "limit": 25 }
 ```
 
 Internal competitor-row backfill is also hidden from the default published MCP
