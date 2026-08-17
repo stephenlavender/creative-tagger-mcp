@@ -231,14 +231,17 @@ assert any(requirement.startswith("mcp<2,>=1.28.1") for requirement in requireme
 assert initialization.server_version == {expected_version!r}
 assert "call list_workspaces first" in initialization.instructions
 assert "historical associations" in initialization.instructions
-assert "packaged metadata are" in readme
-assert "version `0.2.4`" in readme
+assert "PyPI `0.2.4` is the current published stdio" in readme
+assert "unreleased 47-tool, 10-prompt candidate" in readme
+assert "Do not rebuild or republish it as `0.2.4`" in readme
 assert "pip install creative-tagger-mcp==0.2.4" in readme
 assert "unreleased `0.2.4` candidate" not in readme
 assert "pip install creative-tagger-mcp==0.2.1" not in readme
 assert "PyPI still serves `creative-tagger-mcp==0.1.0`" not in readme
 assert "`higher_observed_efficiency`" in readme
 assert "`lower_observed_efficiency`" in readme
+assert "customer_url_fetch_disabled" in readme
+assert "Everwell Labs (Demo)" in readme
 assert len(entry_points) == 1
 assert entry_points[0].value == "creative_tagger_mcp.server:main"
 assert tool_names == expected_tools
