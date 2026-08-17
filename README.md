@@ -1,25 +1,28 @@
 # Creative Tagger MCP Server
 
-The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
+The local-command MCP bridge for [Creative Tagger](https://creativetagger.ai), plus setup guidance for the separate hosted bearer-token server. Claude Desktop can run the published stdio package; Codex and compatible Streamable HTTP clients can use the hosted endpoint. ChatGPT web and Claude hosted connectors require OAuth, which Creative Tagger has not enabled.
 
-Release note (2026-07-15): this source tree and its packaged metadata are
-version `0.2.4`. The hosted and stdio surfaces are separate clients of the same
-API and may expose different tool counts. The companion API must be deployed
-and live before this stdio release is tagged and published.
+Release status (2026-08-17): PyPI `0.2.4` is the current published stdio
+release and exposes 43 tools. This `main` branch still carries `0.2.4` package
+metadata but contains an unreleased 47-tool, 10-prompt candidate, including the
+leaderboard, batch-readout, and period-comparison additions in the changelog.
+Do not rebuild or republish it as `0.2.4`; bump the package version and release
+notes before the next tag. Hosted, published stdio, and unreleased source are
+separate clients of the same API and can expose different discovery surfaces.
 
 Your AI of choice gets:
 
-- **Taxonomy** — 21 standardized dimensions for any ad creative (video, image, carousel, landing page, long video, email)
+- **Taxonomy** — 21 standardized dimensions for uploaded video, image, and carousel creative plus supplied email HTML; remote URL fields remain compatibility-only while outbound fetching is security-hardened
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Competitive intelligence** — read saved Market scans; live Meta Ad Library scanning remains provider-gated and must not be promised while launch health reports it disabled
 
 ## Quick Start
 
-For clients that support remote MCP, connect the current hosted server:
+For clients that support bearer-token Streamable HTTP MCP, connect the current hosted server:
 
 ```text
 URL: https://api.creativetagger.ai/mcp/
@@ -46,15 +49,18 @@ Get an API key at [app.creativetagger.ai](https://app.creativetagger.ai).
 
 ## Release Verification
 
-Before publishing a new MCP version, build the artifacts and smoke-test the
-wheel that will be uploaded to PyPI:
+Before publishing the next MCP version, first bump `project.version`, update
+the changelog heading, and replace `NEXT_VERSION` below. Never upload artifacts
+built from the current unreleased tree under the already-published `0.2.4`
+identity.
 
 ```bash
+rm -rf dist
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
+  dist/creative_tagger_mcp-NEXT_VERSION-py3-none-any.whl \
+  dist/creative_tagger_mcp-NEXT_VERSION.tar.gz
 ```
 
 The smoke test installs the wheel into a temporary virtualenv, verifies the
@@ -66,12 +72,13 @@ confirms the V1 tool surface is present from the installed artifact.
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-After the `0.2.4` review and API-dependency gates pass, tag the exact current
-`main` commit:
+Release `0.2.4` is immutable and already published. For the next reviewed
+release, tag the exact `main` commit only after the version bump, API-dependency
+gate, wheel smoke, and changelog review pass:
 
 ```bash
-git tag -a v0.2.4 -m "Creative Tagger MCP v0.2.4"
-git push origin refs/tags/v0.2.4
+git tag -a vNEXT_VERSION -m "Creative Tagger MCP vNEXT_VERSION"
+git push origin refs/tags/vNEXT_VERSION
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
@@ -101,11 +108,11 @@ Local fallback:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
+  dist/creative_tagger_mcp-NEXT_VERSION-py3-none-any.whl \
+  dist/creative_tagger_mcp-NEXT_VERSION.tar.gz
 python -m twine upload \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
+  dist/creative_tagger_mcp-NEXT_VERSION-py3-none-any.whl \
+  dist/creative_tagger_mcp-NEXT_VERSION.tar.gz
 ```
 
 Always select the exact release artifacts for a local upload. A reused checkout
@@ -138,10 +145,12 @@ Restart Claude Desktop. The tools appear in the MCP picker.
 Analyze any ad creative and get structured classification across 21 dimensions.
 ```
 { "file_path": "./ad.mp4", "brand_name": "Brand" }
-{ "url": "https://example.com/landing-page", "brand_name": "Brand" }
 { "html_content": "<html>...</html>", "brand_name": "Brand" }
 ```
 Results auto-save to the user's library.
+Customer-controlled URL ingestion is temporarily disabled by the API's
+outbound-fetch fence; `url` currently returns `customer_url_fetch_disabled`.
+Upload the asset or supply email HTML instead.
 
 ### `get_taxonomy`
 Read taxonomy v2's versioned vocabulary or one dimension. The package returns
@@ -278,7 +287,9 @@ Use `preview_naming_template` to test a template before saving, and
 ### `get_meta_status` / `sync_meta_performance`
 Check or trigger read-only Meta performance memory. No campaign creation, no budget edits.
 Creative Tagger must have an approved native Meta OAuth connection before
-customer accounts can sync Meta performance.
+customer accounts can sync Meta performance. Check the API's live
+`/health/launch` feature flags before promising that a new import can run; a
+configured connection surface is not proof that imports are operational.
 Pass `attribution_windows` when the buyer uses a non-default Meta lookback
 window and Creative Tagger should match Ads Manager exactly.
 ```
@@ -719,9 +730,11 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 
 ### `scan_competitor`
 Classify a competitor's Meta Ad Library ads and get strategy breakdown.
-`limit` is clamped to 1–50 ads before the API request.
+`limit` is clamped to 1–50 ads before the API request. The call remains
+provider-gated and can be unavailable even though saved scan history is
+readable; check live launch health first.
 ```
-{ "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
+{ "brand_name": "Acme", "page_name": "Everwell Labs (Demo)", "limit": 25 }
 ```
 
 Internal competitor-row backfill is also hidden from the default published MCP
