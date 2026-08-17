@@ -166,15 +166,24 @@ class ToolSurfaceTest(unittest.TestCase):
     def test_readme_matches_published_surface_and_current_models(self) -> None:
         readme = README.read_text()
 
-        self.assertIn("packaged metadata are\nversion `0.2.4`", readme)
+        self.assertIn("PyPI `0.2.4` is the current published stdio\nrelease", readme)
+        self.assertIn("unreleased 47-tool, 10-prompt candidate", readme)
+        self.assertIn("Do not rebuild or republish it as `0.2.4`", readme)
         self.assertIn("pip install creative-tagger-mcp==0.2.4", readme)
         self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
-        self.assertNotIn("unreleased `0.2.4` candidate", readme)
-        self.assertIn("companion API must be deployed", readme)
+        self.assertIn("API-dependency\ngate", readme)
         self.assertIn("Current chart view types are `table`, `bar`, `line`, and `pie`", readme)
         self.assertNotIn('"view_type": "matrix"', readme)
         self.assertIn("Gemini 3.5 Flash", readme)
         self.assertIn("Claude Sonnet 5", readme)
+
+    def test_public_competitor_examples_are_synthetic(self) -> None:
+        readme = README.read_text()
+        agent_instructions = (ROOT / "AGENTS.md").read_text()
+
+        self.assertIn("Everwell Labs (Demo)", readme)
+        self.assertNotIn("Hims & Hers", readme)
+        self.assertIn("must use obviously\nsynthetic brands", agent_instructions)
         self.assertNotIn("Gemini 2.5 Flash", readme)
         brain_docs = readme.split("### `get_brain_learnings`", 1)[1].split(
             "### `get_performance_timeseries`", 1
@@ -233,7 +242,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("15 controlled dimensions", readme)
         self.assertIn("one derived/open `aspect_ratio` dimension", readme)
         self.assertIn("`allow_other_values: true`", readme)
-        self.assertIn("packaged metadata are\nversion `0.2.4`", readme)
+        self.assertIn("main` branch still carries `0.2.4` package\nmetadata", readme)
         self.assertNotIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
 
@@ -274,14 +283,15 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("id-token: write", source)
         self.assertIn("PYPI_API_TOKEN", source)
 
-    def test_local_release_upload_is_scoped_to_exact_version_artifacts(self) -> None:
+    def test_local_release_upload_requires_a_new_exact_version(self) -> None:
         readme = README.read_text()
 
         self.assertNotIn("python -m twine upload dist/*", readme)
         self.assertIn(
-            "dist/creative_tagger_mcp-0.2.4-py3-none-any.whl", readme
+            "dist/creative_tagger_mcp-NEXT_VERSION-py3-none-any.whl", readme
         )
-        self.assertIn("dist/creative_tagger_mcp-0.2.4.tar.gz", readme)
+        self.assertIn("dist/creative_tagger_mcp-NEXT_VERSION.tar.gz", readme)
+        self.assertIn("already-published `0.2.4`\nidentity", readme)
         self.assertIn("never publish with\n`twine upload dist/*`", readme)
 
     def test_release_smoke_does_not_require_tomli_on_old_python(self) -> None:
