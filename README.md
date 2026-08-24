@@ -479,9 +479,10 @@ save tools.
 
 The API and dashboard now also expose audience-safe Brain report blocks and
 immutable report snapshots. Those routes are not tools in the published 0.2.4
-stdio wheel or this unreleased source catalog. Use REST or the dashboard for
-that workflow, and rely on MCP discovery before claiming an agent can freeze or
-reopen a Brain report snapshot.
+stdio wheel, the current hosted surface, or this unreleased source catalog. Use
+REST or the dashboard for that workflow, and rely on MCP discovery before
+claiming an agent can freeze or reopen a Brain report snapshot. Never invent a
+report-snapshot tool name.
 
 ### `get_performance_timeseries`
 Read saved performance curves for fatigue checks without opening the dashboard.
