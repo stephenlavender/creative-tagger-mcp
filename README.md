@@ -2,13 +2,21 @@
 
 The local-command MCP bridge for [Creative Tagger](https://creativetagger.ai), plus setup guidance for the separate hosted bearer-token server. Claude Desktop can run the published stdio package; Codex and compatible Streamable HTTP clients can use the hosted endpoint. ChatGPT web and Claude hosted connectors require OAuth, which Creative Tagger has not enabled.
 
-Release status (2026-08-17): PyPI `0.2.4` is the current published stdio
+Release status (2026-08-24): PyPI `0.2.4` is the current published stdio
 release and exposes 43 tools. This `main` branch still carries `0.2.4` package
 metadata but contains an unreleased 47-tool, 10-prompt candidate, including the
 leaderboard, batch-readout, and period-comparison additions in the changelog.
 Do not rebuild or republish it as `0.2.4`; bump the package version and release
 notes before the next tag. Hosted, published stdio, and unreleased source are
 separate clients of the same API and can expose different discovery surfaces.
+Authenticated hosted discovery currently exposes 33 tools and 13 prompts.
+
+The shipped dashboard/API also supports audience-safe Brain report blocks and
+immutable report snapshots through `/brain/report-blocks` and
+`/brain/report-snapshots`. Those REST routes are not MCP tools in the current
+hosted, published stdio, or unreleased source surfaces. Agents should use MCP
+discovery and must not invent report-snapshot tool names; call REST explicitly
+only when the user has authorized that API workflow.
 
 Your AI of choice gets:
 

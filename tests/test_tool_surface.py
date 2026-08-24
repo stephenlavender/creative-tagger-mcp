@@ -168,6 +168,8 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertIn("PyPI `0.2.4` is the current published stdio\nrelease", readme)
         self.assertIn("unreleased 47-tool, 10-prompt candidate", readme)
+        self.assertIn("33 tools and 13 prompts", readme)
+        self.assertIn("must not invent report-snapshot tool names", readme)
         self.assertIn("Do not rebuild or republish it as `0.2.4`", readme)
         self.assertIn("pip install creative-tagger-mcp==0.2.4", readme)
         self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
