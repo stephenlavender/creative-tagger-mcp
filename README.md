@@ -2,10 +2,14 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release note (2026-07-15): this source tree and its packaged metadata are
-version `0.2.4`. The hosted and stdio surfaces are separate clients of the same
-API and may expose different tool counts. The companion API must be deployed
-and live before this stdio release is tagged and published.
+Release status (2026-08-24): PyPI serves the immutable reviewed
+`creative-tagger-mcp==0.2.4` release with 43 public tools. Current `main` keeps
+the release number—its packaged metadata are
+version `0.2.4`—but is an unreleased 47-public-tool, 10-prompt successor; do
+not republish it under the existing tag or assume those additions are present
+in the PyPI wheel. The companion API must be deployed before a future stdio
+release that depends on it. Hosted and stdio are separate clients of the same
+API and expose different discovery surfaces.
 
 Your AI of choice gets:
 
@@ -15,7 +19,8 @@ Your AI of choice gets:
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Competitive intelligence** — read saved Market scans; native Meta Ad Library scanning remains provider-gated and must not be promised while launch health reports it disabled
+- **Brain reports** — the API and dashboard ship audience-safe report blocks and immutable snapshots, but neither the published stdio release nor current MCP `main` wraps them as tools yet
 
 ## Quick Start
 
@@ -30,7 +35,7 @@ The repository package is the stdio path for clients that require a local
 command:
 
 ```bash
-# Install this release after it appears on PyPI
+# Install the current reviewed PyPI release
 pip install creative-tagger-mcp==0.2.4
 
 # Run against production (default)
@@ -66,13 +71,10 @@ confirms the V1 tool surface is present from the installed artifact.
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-After the `0.2.4` review and API-dependency gates pass, tag the exact current
-`main` commit:
-
-```bash
-git tag -a v0.2.4 -m "Creative Tagger MCP v0.2.4"
-git push origin refs/tags/v0.2.4
-```
+Version `0.2.4` is already published and tag `v0.2.4` is immutable. Do not
+recreate, move, or reuse that tag for current `main`; choose a new version only
+after its expanded tool/prompt surface and companion API dependencies pass
+review.
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
 PyPI publisher for repository `stephenlavender/creative-tagger-mcp`, workflow
@@ -87,29 +89,11 @@ Exact PyPI trusted publisher values:
 - Workflow filename: `publish.yml`
 - Environment name: `pypi`
 
-If the workflow fails with `invalid-publisher`, PyPI does not have a trusted
-publisher matching those claims yet. Add the publisher above, then rerun the
-failed workflow or push the version tag again.
-
-Fallback path: add a GitHub Actions repository secret named `PYPI_API_TOKEN`
-containing a PyPI project token. The same workflow will use that token when it
-is present.
-
-Local fallback:
-
-```bash
-python -m build
-python scripts/smoke_release.py
-python -m twine check \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
-python -m twine upload \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
-```
-
-Always select the exact release artifacts for a local upload. A reused checkout
-may contain older valid distributions in `dist/`; never publish with
+For a future new version, update package metadata and release checks together,
+review the expanded surface, build exact-version artifacts, and tag only that
+reviewed commit. If trusted publishing fails, repair the publisher identity
+before rerunning the new version's workflow. Do not create a persistent token
+or reuse a dirty artifact directory; never publish with
 `twine upload dist/*`.
 
 ## Add to Claude Desktop
