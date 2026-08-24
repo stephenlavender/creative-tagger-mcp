@@ -176,6 +176,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertNotIn('"view_type": "matrix"', readme)
         self.assertIn("Gemini 3.5 Flash", readme)
         self.assertIn("Claude Sonnet 5", readme)
+        self.assertIn("Those routes are not tools in the published 0.2.4", readme)
+        self.assertIn("rely on MCP discovery", readme)
 
     def test_public_competitor_examples_are_synthetic(self) -> None:
         readme = README.read_text()
