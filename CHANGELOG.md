@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.2.5 - 2026-08-30
+
+- Exposed `blended`, `7d_click`, `1d_view`, and `incremental` attribution on
+  custom-report requests. Omitted and explicit `blended` preserve the legacy
+  response; `incremental` stays labelled as modelled evidence, and unmeasured
+  conversion values are never presented as zero.
+- Documented and preserved the API's saved-report boundary: the save endpoint
+  accepts an attribution field but does not persist it, so saved-report replays
+  always use blended attribution.
+- Made the repository's historical E/F Ruff selection explicit so fresh lint
+  runs remain stable across Ruff default-policy changes.
 
 - Added three reporting tools wrapping the merged API surfaces:
   `get_creative_leaderboard` (ranked scale/kill list with a `below_min_spend`

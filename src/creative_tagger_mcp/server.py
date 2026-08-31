@@ -642,13 +642,16 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "Build a custom performance report from chosen standard/brand taxonomy "
         "dimensions, ranking the actual matched combinations by roas, funnel_score, "
         "spend, ctr, or cpa (e.g. hook x landing_page x offer_type). Rows include "
-        "parts/values so the winning combination can be explained."
+        "parts/values so the winning combination can be explained. An optional "
+        "attribution basis changes only conversion-derived metrics; incremental is "
+        "labelled modelled and unmeasured values never become zero."
     ),
     "save_custom_report": (
         "Save or update a reusable custom report definition for a brand: the "
         "taxonomy-combination view plus optional dashboard preset state (view_type, "
         "date_range, grouping, metric set, filters, sort, metric preset) and a "
-        "persisted report window."
+        "persisted report window. Attribution is deliberately not exposed because "
+        "the API does not persist it; every saved-report replay uses blended."
     ),
     "get_creative_leaderboard": (
         "Per-creative ranked leaderboard: which creatives to scale or kill. One row "
@@ -782,7 +785,7 @@ _SCHEMA_DESCRIPTION_FIELDS = {
         "metric",
     },
     "export_performance_timeseries_context": set(),
-    "create_custom_report": {"dimensions", "layer", "metric"},
+    "create_custom_report": {"dimensions", "layer", "metric", "attribution"},
     "save_custom_report": {
         "dimensions",
         "layer",
@@ -2365,7 +2368,10 @@ async def list_tools() -> list[Tool]:
                 "or custom segments. Optional start_date and end_date let an agent "
                 "isolate a specific test window before explaining the winning "
                 "combination. Rows can include `parts` and `values` so the agent "
-                "can explain the winning combination."
+                "can explain the winning combination. An optional attribution basis "
+                "changes only conversion-derived metrics. Omitted and blended retain "
+                "the legacy response; incremental is labelled modelled, and an "
+                "unmeasured conversion value is never represented as zero."
             ),
             inputSchema={
                 "type": "object",
@@ -2406,6 +2412,27 @@ async def list_tools() -> list[Tool]:
                         "minimum": 1,
                         "maximum": 50,
                     },
+                    "attribution": {
+                        "type": "string",
+                        "enum": [
+                            "blended",
+                            "7d_click",
+                            "1d_view",
+                            "incremental",
+                        ],
+                        "description": (
+                            "Conversion attribution basis. Omit it for the legacy "
+                            "blended response; explicit blended is byte-identical to "
+                            "absence. 7d_click and 1d_view isolate those Meta windows. "
+                            "Incremental is labelled modelled. Only conversion-derived "
+                            "metrics (conversions, revenue, cpa, roas, and cvr) "
+                            "are recomputed; delivery, rate, and video metrics are "
+                            "unchanged. Unmeasured conversion values remain "
+                            "unmeasured and are never coerced to zero. Any other "
+                            "attribution value is rejected with 422 rather than "
+                            "falling back."
+                        ),
+                    },
                 },
             },
         ),
@@ -2427,7 +2454,9 @@ async def list_tools() -> list[Tool]:
                 "view available later, such as hook_type x landing_page x offer_type, "
                 "including custom report windows scoped to a specific test period "
                 "or a richer dashboard preset with a saved view type, grouping, "
-                "metric set, filters, sort, and metric preset."
+                "metric set, filters, sort, and metric preset. Attribution is "
+                "deliberately not exposed because the API does not persist it; "
+                "running a saved report always replays blended attribution."
             ),
             inputSchema={
                 "type": "object",
@@ -2514,7 +2543,11 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="run_saved_custom_report",
-            description="Run a saved custom report definition by id.",
+            description=(
+                "Run a saved custom report definition by id. The API always replays "
+                "saved reports with blended attribution because attribution is not "
+                "persisted."
+            ),
             inputSchema={
                 "type": "object",
                 "required": ["report_id"],
@@ -4297,7 +4330,7 @@ async def _create_custom_report(args: dict) -> list[TextContent]:
         "spend_threshold": args.get("spend_threshold", 500),
         "limit": limit,
     }
-    for key in ("start_date", "end_date"):
+    for key in ("start_date", "end_date", "attribution"):
         if args.get(key) not in (None, ""):
             payload[key] = args[key]
     async with httpx.AsyncClient(timeout=30.0, headers=_headers()) as client:
