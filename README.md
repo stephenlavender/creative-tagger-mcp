@@ -2,10 +2,17 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release note (2026-08-30): this source tree and its packaged metadata are
-version `0.2.5`. The hosted and stdio surfaces are separate clients of the same
-API and may expose different tool counts. The companion API must be deployed
-and live before this stdio release is tagged and published.
+Release status (2026-08-31): this source tree and its packaged metadata are the
+unpublished `0.2.5` candidate. The hosted and stdio surfaces are separate
+clients of the same API and may expose different tool counts. The companion API
+must be deployed and live before this candidate is tagged and published.
+
+Publication status (audited 2026-08-31): PyPI still serves the immutable
+`creative-tagger-mcp==0.2.4` release with 43 public tools. This 0.2.5 source
+candidate exposes 47 public tools and 10 prompts, but has no `v0.2.5` tag or
+PyPI release yet. Use the hosted endpoint for current remote discovery; install
+0.2.4 for the current published stdio path until the guarded 0.2.5 release
+workflow completes.
 
 Your AI of choice gets:
 
@@ -15,7 +22,7 @@ Your AI of choice gets:
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Competitive intelligence** — read saved competitor scans; live native Market scanning remains provider-gated and is disabled in current production launch health
 
 ## Quick Start
 
@@ -26,12 +33,12 @@ URL: https://api.creativetagger.ai/mcp/
 Authorization: Bearer ct_your_key
 ```
 
-The repository package is the stdio path for clients that require a local
+The published package is the stdio path for clients that require a local
 command:
 
 ```bash
-# Install this release after it appears on PyPI
-pip install creative-tagger-mcp==0.2.5
+# Install the current reviewed PyPI release
+pip install creative-tagger-mcp==0.2.4
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
@@ -134,11 +141,18 @@ Restart Claude Desktop. The tools appear in the MCP picker.
 
 ## Tools
 
+The default `0.2.5` source candidate advertises 47 public stdio tools and 10
+report-recipe prompts. One additional competitor-import tool is internal-only
+and hidden unless its explicit backfill flag is enabled. PyPI `0.2.4` remains
+the shipped 43-tool stdio release; discover the hosted catalog separately.
+
 ### `analyze_creative`
-Analyze any ad creative and get structured classification across 21 dimensions.
+Analyze an uploaded ad creative or supplied email HTML and get structured
+classification across 21 dimensions. The `url` field remains in this client's
+compatibility schema, but production currently returns
+`customer_url_fetch_disabled`; upload the asset instead.
 ```
 { "file_path": "./ad.mp4", "brand_name": "Brand" }
-{ "url": "https://example.com/landing-page", "brand_name": "Brand" }
 { "html_content": "<html>...</html>", "brand_name": "Brand" }
 ```
 Results auto-save to the user's library.
@@ -728,10 +742,12 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 ```
 
 ### `scan_competitor`
-Classify a competitor's Meta Ad Library ads and get strategy breakdown.
+When native Meta Ad Library access is provider-enabled, classify a competitor's
+ads and get a strategy breakdown. Current production launch health reports this
+provider feature disabled, so use saved scan history until that status changes.
 `limit` is clamped to 1–50 ads before the API request.
 ```
-{ "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
+{ "brand_name": "Acme", "page_name": "Everwell Labs (Demo)", "limit": 25 }
 ```
 
 Internal competitor-row backfill is also hidden from the default published MCP
