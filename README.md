@@ -2,8 +2,8 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release note (2026-07-15): this source tree and its packaged metadata are
-version `0.2.4`. The hosted and stdio surfaces are separate clients of the same
+Release note (2026-08-30): this source tree and its packaged metadata are
+version `0.2.5`. The hosted and stdio surfaces are separate clients of the same
 API and may expose different tool counts. The companion API must be deployed
 and live before this stdio release is tagged and published.
 
@@ -31,7 +31,7 @@ command:
 
 ```bash
 # Install this release after it appears on PyPI
-pip install creative-tagger-mcp==0.2.4
+pip install creative-tagger-mcp==0.2.5
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
@@ -53,8 +53,8 @@ wheel that will be uploaded to PyPI:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
+  dist/creative_tagger_mcp-0.2.5-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.5.tar.gz
 ```
 
 The smoke test installs the wheel into a temporary virtualenv, verifies the
@@ -66,12 +66,12 @@ confirms the V1 tool surface is present from the installed artifact.
 The release workflow publishes from GitHub Actions after it builds the package,
 runs `scripts/smoke_release.py`, and passes `twine check`.
 
-After the `0.2.4` review and API-dependency gates pass, tag the exact current
+After the `0.2.5` review and API-dependency gates pass, tag the exact current
 `main` commit:
 
 ```bash
-git tag -a v0.2.4 -m "Creative Tagger MCP v0.2.4"
-git push origin refs/tags/v0.2.4
+git tag -a v0.2.5 -m "Creative Tagger MCP v0.2.5"
+git push origin refs/tags/v0.2.5
 ```
 
 The workflow supports PyPI trusted publishing with GitHub OIDC. Configure the
@@ -101,11 +101,11 @@ Local fallback:
 python -m build
 python scripts/smoke_release.py
 python -m twine check \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
+  dist/creative_tagger_mcp-0.2.5-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.5.tar.gz
 python -m twine upload \
-  dist/creative_tagger_mcp-0.2.4-py3-none-any.whl \
-  dist/creative_tagger_mcp-0.2.4.tar.gz
+  dist/creative_tagger_mcp-0.2.5-py3-none-any.whl \
+  dist/creative_tagger_mcp-0.2.5.tar.gz
 ```
 
 Always select the exact release artifacts for a local upload. A reused checkout
@@ -563,12 +563,20 @@ offer, founder x hook, audience x offer, or brand segment x product. Add
 `start_date` and `end_date` when the report should isolate a specific test
 window instead of the full synced history. `limit` is clamped to 1–50 rows
 before the API request.
+
+`attribution` accepts `blended`, `7d_click`, `1d_view`, or `incremental`.
+Omitting it and passing `blended` return the byte-identical legacy response.
+The selected basis recomputes only conversion-derived metrics (conversions,
+revenue, CPA, ROAS, and CVR); delivery, rate, and video metrics stay
+unchanged. Incremental results are labelled modelled, and an unmeasured
+conversion value is never turned into zero.
 ```
 {
   "brand_name": "Acme",
   "dimensions": ["hook_type", "landing_page", "offer_type"],
   "layer": "all",
   "metric": "roas",
+  "attribution": "7d_click",
   "start_date": "2026-05-01",
   "end_date": "2026-05-31"
 }
@@ -584,6 +592,8 @@ plus dashboard-style preset state such as `view_type`, `date_range`,
 `group_by`, `metrics`, `filters`, `sort`, and `saved_metric_preset`.
 Current chart view types are `table`, `bar`, `line`, and `pie`.
 `save_custom_report` clamps `limit` to 1–50 rows before the API request.
+The API accepts `attribution` on a save request but does not persist it;
+`run_saved_custom_report` always replays blended attribution.
 ```
 {
   "brand_name": "Acme",
@@ -666,7 +676,7 @@ and returns an explicit observational association score and controlled-test
 hypotheses—never a forecast, lift estimate, or causal recommendation. Turn a
 promising association into a falsifiable, one-variable controlled test with a
 predeclared primary metric, minimum data, guardrails, and ship/stop criteria.
-Version 0.2.4 sends the required `predict_observational.v2` request handshake
+Version 0.2.5 sends the required `predict_observational.v2` request handshake
 and rejects legacy or mixed response shapes instead of decorating them. A
 contract mismatch returns no prediction evidence.
 ```

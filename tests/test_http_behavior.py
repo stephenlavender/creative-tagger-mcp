@@ -138,6 +138,42 @@ def test_public_tool_catalog_stays_under_context_budget_without_losing_contracts
     assert "cross_contract" in demographics_export.description
 
 
+def test_custom_report_attribution_contract_survives_catalog_compaction():
+    by_name = {tool.name: tool for tool in run(server.list_tools())}
+    expected_values = ["blended", "7d_click", "1d_view", "incremental"]
+
+    attribution = by_name["create_custom_report"].inputSchema["properties"][
+        "attribution"
+    ]
+    assert attribution["type"] == "string"
+    assert attribution["enum"] == expected_values
+    assert "default" not in attribution
+
+    description = attribution["description"].lower()
+    assert "absent" in description or "absence" in description
+    assert "blended" in description
+    assert "byte-identical" in description
+    assert "incremental" in description
+    assert "labelled" in description
+    assert "modelled" in description
+    assert "unmeasured" in description
+    assert "never" in description
+    assert "coerced to zero" in description
+
+    saved_tool = by_name["save_custom_report"]
+    assert "attribution" not in saved_tool.inputSchema["properties"]
+    saved_description = saved_tool.description.lower()
+    assert "attribution" in saved_description
+    assert "not persisted" in saved_description or "does not persist" in saved_description
+    assert "replay" in saved_description
+    assert "blended" in saved_description
+
+    replay_description = by_name["run_saved_custom_report"].description.lower()
+    assert "attribution" in replay_description
+    assert "not persisted" in replay_description
+    assert "blended" in replay_description
+
+
 # ---------------------------------------------------------------------------
 # Closed-vocabulary params without a schema enum: a param whose valid values
 # are a fixed set but that carries no JSON-schema `enum` has exactly one
@@ -327,7 +363,7 @@ def test_shared_instructions_do_not_misstate_compare_periods_presets():
 def test_initialize_reports_package_version_and_workspace_first_playbook():
     options = server.server.create_initialization_options()
 
-    assert options.server_version == __version__ == "0.2.4"
+    assert options.server_version == __version__ == "0.2.5"
     assert "call list_workspaces first" in options.instructions
     assert "historical associations" in options.instructions
     assert "falsifiable" in options.instructions
@@ -394,6 +430,55 @@ def test_call_tool_dispatches_sync_tool_without_any_http_call(mock_api):
 # ---------------------------------------------------------------------------
 # Request shape: representative GET / POST(json) / POST(form) / DELETE calls
 # ---------------------------------------------------------------------------
+
+CUSTOM_REPORT_ATTRIBUTION_VALUES = (
+    "blended",
+    "7d_click",
+    "1d_view",
+    "incremental",
+)
+
+
+@pytest.mark.parametrize("attribution", CUSTOM_REPORT_ATTRIBUTION_VALUES)
+def test_create_custom_report_forwards_explicit_attribution(
+    mock_api,
+    attribution,
+):
+    mock_api.queue(httpx.Response(200, json={"ok": True}))
+
+    result = run(
+        server.call_tool(
+            "create_custom_report",
+            {
+                "brand_name": "Acme",
+                "dimensions": ["hook_type"],
+                "attribution": attribution,
+            },
+        )
+    )
+
+    assert as_json(result) == {"ok": True}
+    request = mock_api.last_request
+    assert request.method == "POST"
+    assert request.url.path == "/reports/custom"
+    assert json.loads(request.content)["attribution"] == attribution
+
+
+def test_create_custom_report_omits_unsupplied_attribution(mock_api):
+    mock_api.queue(httpx.Response(200, json={"ok": True}))
+
+    result = run(
+        server.call_tool(
+            "create_custom_report",
+            {"brand_name": "Acme", "dimensions": ["hook_type"]},
+        )
+    )
+
+    assert as_json(result) == {"ok": True}
+    request = mock_api.last_request
+    assert request.method == "POST"
+    assert request.url.path == "/reports/custom"
+    assert "attribution" not in json.loads(request.content)
 
 
 def test_get_tool_sends_header_auth_and_query_params_without_api_key(mock_api):

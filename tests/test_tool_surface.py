@@ -96,9 +96,9 @@ class ToolSurfaceTest(unittest.TestCase):
 
     def test_package_version_matches_v2_surface(self) -> None:
         init_file = ROOT / "src" / "creative_tagger_mcp" / "__init__.py"
-        self.assertIn('__version__ = "0.2.4"', init_file.read_text())
+        self.assertIn('__version__ = "0.2.5"', init_file.read_text())
         pyproject = (ROOT / "pyproject.toml").read_text()
-        self.assertIn('version = "0.2.4"', pyproject)
+        self.assertIn('version = "0.2.5"', pyproject)
         self.assertIn('"mcp>=1.28.1,<2"', pyproject)
 
     def test_workspace_first_surface_and_brand_scopes_are_declared(self) -> None:
@@ -166,10 +166,10 @@ class ToolSurfaceTest(unittest.TestCase):
     def test_readme_matches_published_surface_and_current_models(self) -> None:
         readme = README.read_text()
 
-        self.assertIn("packaged metadata are\nversion `0.2.4`", readme)
-        self.assertIn("pip install creative-tagger-mcp==0.2.4", readme)
+        self.assertIn("packaged metadata are\nversion `0.2.5`", readme)
+        self.assertIn("pip install creative-tagger-mcp==0.2.5", readme)
         self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
-        self.assertNotIn("unreleased `0.2.4` candidate", readme)
+        self.assertNotIn("unreleased `0.2.5` candidate", readme)
         self.assertIn("companion API must be deployed", readme)
         self.assertIn("Current chart view types are `table`, `bar`, `line`, and `pie`", readme)
         self.assertNotIn('"view_type": "matrix"', readme)
@@ -233,7 +233,7 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("15 controlled dimensions", readme)
         self.assertIn("one derived/open `aspect_ratio` dimension", readme)
         self.assertIn("`allow_other_values: true`", readme)
-        self.assertIn("packaged metadata are\nversion `0.2.4`", readme)
+        self.assertIn("packaged metadata are\nversion `0.2.5`", readme)
         self.assertNotIn("PyPI still serves `creative-tagger-mcp==0.1.0`", readme)
         self.assertNotIn("28 dimensions", readme)
 
@@ -279,9 +279,9 @@ class ToolSurfaceTest(unittest.TestCase):
 
         self.assertNotIn("python -m twine upload dist/*", readme)
         self.assertIn(
-            "dist/creative_tagger_mcp-0.2.4-py3-none-any.whl", readme
+            "dist/creative_tagger_mcp-0.2.5-py3-none-any.whl", readme
         )
-        self.assertIn("dist/creative_tagger_mcp-0.2.4.tar.gz", readme)
+        self.assertIn("dist/creative_tagger_mcp-0.2.5.tar.gz", readme)
         self.assertIn("never publish with\n`twine upload dist/*`", readme)
 
     def test_release_smoke_does_not_require_tomli_on_old_python(self) -> None:
@@ -310,8 +310,8 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("package_metadata.get_payload()", source)
         self.assertIn("call list_workspaces first", source)
         self.assertIn('"packaged metadata are"', source)
-        self.assertIn('"version `0.2.4`"', source)
-        self.assertIn('"pip install creative-tagger-mcp==0.2.4"', source)
+        self.assertIn('"version `0.2.5`"', source)
+        self.assertIn('"pip install creative-tagger-mcp==0.2.5"', source)
         self.assertIn('"pip install creative-tagger-mcp==0.2.1" not in readme', source)
         self.assertIn("len(tool_catalog) < 40_000", source)
         self.assertIn('strategy_schema["response_format"]["default"] == "concise"', source)
@@ -1683,6 +1683,48 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("end_date", saved_schema)
         self.assertIn("YYYY-MM-DD", saved_schema["start_date"]["description"])
         self.assertIn("YYYY-MM-DD", saved_schema["end_date"]["description"])
+
+    def test_custom_report_attribution_schemas_are_exact_and_honest(self) -> None:
+        tools = _declared_tools()
+        expected_values = ["blended", "7d_click", "1d_view", "incremental"]
+
+        attribution = tools["create_custom_report"]["inputSchema"]["properties"][
+            "attribution"
+        ]
+        self.assertEqual(attribution["type"], "string")
+        self.assertEqual(attribution["enum"], expected_values)
+        self.assertNotIn("default", attribution)
+
+        description = attribution["description"].lower()
+        self.assertTrue(
+            "absent" in description or "absence" in description,
+            description,
+        )
+        self.assertIn("blended", description)
+        self.assertIn("byte-identical", description)
+        self.assertIn("incremental", description)
+        self.assertIn("labelled", description)
+        self.assertIn("modelled", description)
+        self.assertIn("unmeasured", description)
+        self.assertIn("never", description)
+        self.assertIn("coerced to zero", description)
+
+        saved_properties = tools["save_custom_report"]["inputSchema"]["properties"]
+        self.assertNotIn("attribution", saved_properties)
+        saved_description = tools["save_custom_report"]["description"].lower()
+        self.assertIn("attribution", saved_description)
+        self.assertTrue(
+            "not persisted" in saved_description
+            or "does not persist" in saved_description,
+            saved_description,
+        )
+        self.assertIn("replay", saved_description)
+        self.assertIn("blended", saved_description)
+
+        replay_description = tools["run_saved_custom_report"]["description"].lower()
+        self.assertIn("attribution", replay_description)
+        self.assertIn("not persisted", replay_description)
+        self.assertIn("blended", replay_description)
 
     def test_no_catalog_description_advertises_the_impossible_tag_demographic_cross(
         self,
