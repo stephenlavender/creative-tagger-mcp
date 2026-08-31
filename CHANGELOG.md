@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.5 - 2026-08-30
+## 0.2.5 - Unreleased (source checkpoint 2026-08-30)
 
 - Exposed `blended`, `7d_click`, `1d_view`, and `incremental` attribution on
   custom-report requests. Omitted and explicit `blended` preserve the legacy

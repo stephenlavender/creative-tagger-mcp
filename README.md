@@ -2,10 +2,11 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release note (2026-08-30): this source tree and its packaged metadata are
-version `0.2.5`. The hosted and stdio surfaces are separate clients of the same
-API and may expose different tool counts. The companion API must be deployed
-and live before this stdio release is tagged and published.
+Release status (2026-08-31): PyPI `0.2.4` is the current published stdio
+release and exposes 43 tools. This source tree and its packaged metadata are
+the unreleased `0.2.5` candidate with 47 tools and 10 prompts. Hosted MCP,
+published stdio, and unreleased source are separate discovery surfaces; the
+companion API must be deployed before this candidate is tagged and published.
 
 Your AI of choice gets:
 
@@ -15,7 +16,7 @@ Your AI of choice gets:
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Competitive intelligence** — read saved Market scans; live Meta Ad Library scanning remains provider-gated and must not be promised while launch health reports it disabled
 
 ## Quick Start
 
@@ -26,20 +27,27 @@ URL: https://api.creativetagger.ai/mcp/
 Authorization: Bearer ct_your_key
 ```
 
-The repository package is the stdio path for clients that require a local
-command:
+For the current published stdio path:
 
 ```bash
-# Install this release after it appears on PyPI
-pip install creative-tagger-mcp==0.2.5
+pip install creative-tagger-mcp==0.2.4
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
+```
+
+For a reviewed source checkout of the unreleased `0.2.5` candidate:
+
+```bash
+uv sync
+
+# Run against production (default)
+CREATIVE_TAGGER_API_KEY=ct_your_key uv run creative-tagger-mcp
 
 # Or against a local API
 CREATIVE_TAGGER_URL=http://localhost:8000 \
 CREATIVE_TAGGER_API_KEY=ct_your_key \
-  creative-tagger-mcp
+  uv run creative-tagger-mcp
 ```
 
 Get an API key at [app.creativetagger.ai](https://app.creativetagger.ai).
