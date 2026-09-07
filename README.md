@@ -2,10 +2,12 @@
 
 The MCP layer for [Creative Tagger](https://creativetagger.ai) — plug structured creative intelligence into any AI agent (Claude Desktop, Cursor, Windsurf, ChatGPT with MCP, etc.).
 
-Release note (2026-08-30): this source tree and its packaged metadata are
-version `0.2.5`. The hosted and stdio surfaces are separate clients of the same
-API and may expose different tool counts. The companion API must be deployed
-and live before this stdio release is tagged and published.
+Release status (2026-09-07): PyPI `0.2.4` is the current published stdio
+release and exposes 43 tools. This source tree and its packaged metadata are
+the unreleased `0.2.5` candidate with 47 tools and 10 prompts. Hosted MCP,
+published stdio, and unreleased source are separate discovery surfaces; the
+required API surface is deployed and verified at `7ec2f37`, but this candidate
+still must pass its release review before it is tagged and published.
 
 Your AI of choice gets:
 
@@ -13,9 +15,10 @@ Your AI of choice gets:
 - **Memory** — every analysis is saved to the user's library; the agent can search it, recall patterns, and pull individual results
 - **Brand-custom taxonomy** — extend the standard taxonomy with each brand's founders, products, segments, aliases, and naming variables
 - **Meta performance memory** — read-only Meta sync/status/tools so agents can reason over objective-aware results, unproven tags, observational demographic delivery, and taxonomy gaps
+- **Outcome-safe costs** — CPA is spend per measured purchase and CPL is spend per measured lead; absent outcome families remain unmeasured instead of borrowing the pooled conversion count
 - **Brain learnings** — auto-written account learnings in plain language, with agent-ready context for the next brief
 - **Strategist** — recommendation + gap-analysis tools that reason over the user's library plus saved brand context (voice, audience, anti-patterns)
-- **Competitive intelligence** — scan a competitor's Meta Ad Library through Creative Tagger's native Market access
+- **Competitive intelligence** — read saved Market scans; live Meta Ad Library scanning remains provider-gated and must not be promised while launch health reports it disabled
 
 ## Quick Start
 
@@ -26,20 +29,27 @@ URL: https://api.creativetagger.ai/mcp/
 Authorization: Bearer ct_your_key
 ```
 
-The repository package is the stdio path for clients that require a local
-command:
+For the current published stdio path:
 
 ```bash
-# Install this release after it appears on PyPI
-pip install creative-tagger-mcp==0.2.5
+pip install creative-tagger-mcp==0.2.4
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
+```
+
+For a reviewed source checkout of the unreleased `0.2.5` candidate:
+
+```bash
+uv sync
+
+# Run against production (default)
+CREATIVE_TAGGER_API_KEY=ct_your_key uv run creative-tagger-mcp
 
 # Or against a local API
 CREATIVE_TAGGER_URL=http://localhost:8000 \
 CREATIVE_TAGGER_API_KEY=ct_your_key \
-  creative-tagger-mcp
+  uv run creative-tagger-mcp
 ```
 
 Get an API key at [app.creativetagger.ai](https://app.creativetagger.ai).
@@ -281,6 +291,10 @@ Creative Tagger must have an approved native Meta OAuth connection before
 customer accounts can sync Meta performance.
 Pass `attribution_windows` when the buyer uses a non-default Meta lookback
 window and Creative Tagger should match Ads Manager exactly.
+For an entitled paid/platform workspace, the first successful sync also starts
+its one included history import automatically (up to 37 months). Poll
+`get_backfill_status`; neither MCP nor the dashboard requires a separate
+purchase or start action.
 ```
 {
   "brand_name": "Acme",
@@ -536,6 +550,11 @@ Returns account totals plus performance by standard taxonomy and brand-custom ta
 Each aggregate can include `funnel_score` and a `funnel` explanation object for
 capture -> hold -> bring-to-site -> convert diagnosis.
 
+CPA is always spend divided by measured purchases; CPL is spend divided by
+measured leads. Do not relabel pooled `conversions` as either outcome family,
+and keep the corresponding cost absent when purchases or leads were not
+measured.
+
 ### `get_taxonomy_performance`
 Find historical tag associations, under-observed tags, and standard taxonomy
 values that have not been tested. Rows include ROAS, CTR, thumbstop, and funnel
@@ -731,7 +750,7 @@ creative library, then optionally save them to Brand Taxonomy Studio.
 Classify a competitor's Meta Ad Library ads and get strategy breakdown.
 `limit` is clamped to 1–50 ads before the API request.
 ```
-{ "brand_name": "Acme", "page_name": "Hims & Hers", "limit": 25 }
+{ "brand_name": "Acme", "page_name": "Everwell Labs (Demo)", "limit": 25 }
 ```
 
 Internal competitor-row backfill is also hidden from the default published MCP
