@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.2.5 - Unreleased (source checkpoint 2026-08-30)
+## 0.2.5 - Unreleased (source checkpoint 2026-09-07)
+
+- Aligned agent instructions with the deployed API's automatic per-workspace
+  included-history import and its split outcome contract: CPA uses measured
+  purchases, CPL uses measured leads, and a missing family stays unmeasured.
 
 - Exposed `blended`, `7d_click`, `1d_view`, and `incremental` attribution on
   custom-report requests. Omitted and explicit `blended` preserve the legacy
