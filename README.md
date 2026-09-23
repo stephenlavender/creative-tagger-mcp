@@ -19,7 +19,26 @@ Your AI of choice gets:
 
 ## Quick Start
 
-For clients that support remote MCP, connect the current hosted server:
+The hosted server speaks standard MCP OAuth (dynamic client registration,
+PKCE) at `https://api.creativetagger.ai/mcp/`. Point your client at that URL
+and sign in when prompted:
+
+- **Claude Code** — `claude mcp add --transport http creative-tagger https://api.creativetagger.ai/mcp/`
+  then `claude mcp login creative-tagger` (or run `/mcp` inside a session).
+- **Codex CLI / IDE** — `codex mcp add creative-tagger --url https://api.creativetagger.ai/mcp/`
+  then `codex mcp login creative-tagger`.
+- **claude.ai** (web/desktop/mobile) — Settings → Connectors → Add custom
+  connector → paste `https://api.creativetagger.ai/mcp/` → Connect.
+- **ChatGPT** — Settings → Connectors → Advanced → Developer mode → add
+  `https://api.creativetagger.ai/mcp/`.
+- **Other MCP clients** (Cursor, VS Code, Gemini CLI, Windsurf, Hermes, etc.) —
+  add the URL to the client's MCP config; the client's own OAuth prompt fires
+  on first use.
+
+Manage or revoke connected assistants any time under Settings → Connections.
+
+For clients that don't do OAuth discovery (e.g. Grok's custom-connector
+integration), fall back to a bearer API key:
 
 ```text
 URL: https://api.creativetagger.ai/mcp/
