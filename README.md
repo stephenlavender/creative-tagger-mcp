@@ -46,11 +46,13 @@ Authorization: Bearer ct_your_key
 ```
 
 The repository package is the stdio path for clients that require a local
-command:
+command. `0.2.5` is unreleased; install `0.2.4`, the latest version on PyPI.
+Tools and options listed under 0.2.5 in [CHANGELOG.md](CHANGELOG.md) are not in
+`0.2.4`:
 
 ```bash
-# Install this release after it appears on PyPI
-pip install creative-tagger-mcp==0.2.5
+# Install the latest published release (0.2.5 is not on PyPI yet)
+pip install creative-tagger-mcp==0.2.4
 
 # Run against production (default)
 CREATIVE_TAGGER_API_KEY=ct_your_key creative-tagger-mcp
@@ -695,9 +697,9 @@ and returns an explicit observational association score and controlled-test
 hypotheses—never a forecast, lift estimate, or causal recommendation. Turn a
 promising association into a falsifiable, one-variable controlled test with a
 predeclared primary metric, minimum data, guardrails, and ship/stop criteria.
-Version 0.2.5 sends the required `predict_observational.v2` request handshake
-and rejects legacy or mixed response shapes instead of decorating them. A
-contract mismatch returns no prediction evidence.
+Since 0.2.3 the package sends the required `predict_observational.v2` request
+handshake and rejects legacy or mixed response shapes instead of decorating
+them. A contract mismatch returns no prediction evidence.
 ```
 {
   "brand_name": "Acme",
