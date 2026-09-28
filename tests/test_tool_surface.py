@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import json
 import math
+import re
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -17,6 +18,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "src" / "creative_tagger_mcp" / "server.py"
 README = ROOT / "README.md"
+PYPROJECT = ROOT / "pyproject.toml"
+
+# The version PyPI actually serves (`pip index versions creative-tagger-mcp`,
+# or https://pypi.org/pypi/creative-tagger-mcp/json -> info.version). The API
+# launch gate and the site's llms.txt pin the same version. The README's
+# install line must name it, never the unreleased source version, or the
+# documented command fails. scripts/smoke_release.py separately requires the
+# packaged README of the version being published to name that version, so the
+# release commit bumps this constant and the install line together.
+PUBLISHED_VERSION = "0.2.4"
 
 PUBLIC_EXPECTED_TOOLS = {
     "analyze_creative",
@@ -167,7 +178,6 @@ class ToolSurfaceTest(unittest.TestCase):
         readme = README.read_text()
 
         self.assertIn("packaged metadata are\nversion `0.2.5`", readme)
-        self.assertIn("pip install creative-tagger-mcp==0.2.5", readme)
         self.assertNotIn("pip install creative-tagger-mcp==0.2.1", readme)
         self.assertNotIn("unreleased `0.2.5` candidate", readme)
         self.assertIn("companion API must be deployed", readme)
@@ -183,6 +193,21 @@ class ToolSurfaceTest(unittest.TestCase):
         self.assertIn("`lower_observed_efficiency`", brain_docs)
         self.assertNotIn("opportunity", brain_docs.lower())
         self.assertNotIn("waste", brain_docs.lower())
+
+    def test_readme_install_line_names_the_published_version(self) -> None:
+        readme = README.read_text()
+        source_version = re.search(
+            r'^version = "([^"]+)"$', PYPROJECT.read_text(), re.MULTILINE
+        ).group(1)
+
+        pins = re.findall(r"pip install creative-tagger-mcp==(\S+)", readme)
+        self.assertEqual(pins, [PUBLISHED_VERSION])
+        if source_version != PUBLISHED_VERSION:
+            # Say it, rather than hide it: a reader of this source tree must be
+            # told the documented version is not the one pip will install.
+            self.assertIn(f"`{source_version}` is unreleased", readme)
+        else:
+            self.assertNotIn(f"`{source_version}` is unreleased", readme)
 
     def test_readme_never_advertises_the_impossible_tag_demographic_cross(self) -> None:
         """The server catalog/prompt fix for the tag x demographic_segment
