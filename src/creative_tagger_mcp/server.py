@@ -84,8 +84,10 @@ PLAYBOOK_INSTRUCTIONS = """\
 Creative Tagger is observational decision support, not a causal attribution or
 forecasting system. For authenticated work, call list_workspaces first and pass
 the exact returned brand_name to every scoped tool; never blend or infer across
-workspaces. Treat ROAS, CPA, CTR, fatigue, demographic, and taxonomy outputs as
-historical associations. Turn a promising association into a falsifiable
+workspaces. Treat ROAS, CPA, CPL, CTR, fatigue, demographic, and taxonomy
+outputs as historical associations. CPA is spend per measured purchase and CPL
+is spend per measured lead; never substitute pooled conversions when either
+outcome family is absent. Turn a promising association into a falsifiable
 controlled test: state the hypothesis, change one variable, choose a primary
 metric and guardrails, define a minimum data/duration rule, and set ship/stop
 criteria before launch. Preserve read-only behavior and say when evidence is
@@ -1342,7 +1344,9 @@ async def list_tools() -> list[Tool]:
                 "performance rows and reports summaries by standard and brand-custom "
                 "taxonomy values. Supports explicit attribution/lookback windows so "
                 "agents can match the buyer's Ads Manager view. Does not create "
-                "campaigns or edit budgets."
+                "campaigns or edit budgets. For an eligible paid workspace whose "
+                "included history import has not completed, the API can start that "
+                "one-per-connected-account import automatically after sync."
             ),
             inputSchema={
                 "type": "object",
